@@ -200,6 +200,16 @@ one, and 5.9 seconds on the text of a PR, an issue, or a comment, and the longes
 medians fell to 1.3 and 2.3 seconds, but over two runs of 60 posted texts that an earlier review
 found clean, a finding was kept on 63 of 120 checks against 42 at the model's default.
 
+The system prompt is marked for the prompt cache. The review prompt is 5,655 tokens, and a call
+within five minutes of the last one reads it from the cache at a tenth of the input price. That
+does not make a call faster. Over 15 drafts each sent once with the mark and once without, the
+median difference was 9 ms, because the time goes to thinking: 300 to 1,300 output tokens at about
+6 ms each on a draft that passes. The command classifier's 842-token prompt is cached too, and the
+MCP classifier's 358-token prompt is under the minimum. According to the type notes for
+`$.model.complete`, text marked in the system prompt is not found again on Bedrock, Vertex, or a
+gateway, so there the cache-write price, 1.25 times the input price, is probably charged for each
+review. This was not measured.
+
 Every failure lets the command through, so a commit is not blocked when no model can be called. The
 first time in a session that a check fails, the user is told once that model review is off, in a
 toast, which is shown to the user and not to the model. A reply from a call that was answered is not

@@ -76,7 +76,7 @@ async function ask($: any, system: string[], prompt: string): Promise<string> {
   // (README, "The gate at publication").
   const reply = await $.model.complete({
     model: (await $.env.get('WRITING_CONVENTIONS_GATE_MODEL')) || 'sonnet',
-    system: parts.join(''),
+    system: [{ text: parts.join(''), cache: true }],
     prompt,
     timeoutMs: 60000,
   })

@@ -49,7 +49,7 @@ const response: { chunks: any[]; fail: boolean } = { chunks: [], fail: false }
 function world(on: any, w: World = {}) {
   const base = w.base ?? '2.1.289'
   const files: Record<string, string> = { ...w.files }
-  const seen = { reader: [] as string[], commands: [] as string[], tool: [] as string[], system: '', toasts: [] as string[], files, ran: 0, gh: [] as string[], sent: [] as string[], origins: [] as unknown[], contexts: [] as string[][] }
+  const seen = { reader: [] as string[], commands: [] as string[], tool: [] as string[], system: '', systemBlocks: undefined as unknown, toasts: [] as string[], files, ran: 0, gh: [] as string[], sent: [] as string[], origins: [] as unknown[], contexts: [] as string[][] }
   // On Windows an engine-level step turns a "/foo" path into "C:\foo" before the
   // mock sees it, so each lookup reads it back as POSIX. On macOS a "C:/foo"
   // path is not absolute, so the engine prepends the cwd and the drive letter
@@ -78,6 +78,7 @@ function world(on: any, w: World = {}) {
   })
   on('model.complete', (_$: any, e: any) => {
     seen.system = e.system
+    seen.systemBlocks = e.systemBlocks
     const [list, reply] = e.system.includes('<classify-command.md>') ? [seen.commands, w.commands]
       : e.system.includes('<classify-prompt.md>') ? [seen.tool, w.tool]
       : [seen.reader, w.verdict]
@@ -132,6 +133,8 @@ test('commands in the four publishing families are reviewed, git -C included', a
   expect(seen.reader).toHaveLength(5)
   expect(seen.commands).toHaveLength(0)
   expect(seen.system).toBe('<gate-prompt.md><rules.md>')
+  // The same prompt opens every review, so it is read from the prompt cache within five minutes.
+  expect(seen.systemBlocks).toEqual([{ text: '<gate-prompt.md><rules.md>', cache: true }])
   expect(JSON.parse(seen.reader[0])).toMatchObject({ session_id: 's1', cwd: '/proj', tool_name: 'Bash', tool_input: { command: 'git commit -m "Plain message"' } })
 })
 
