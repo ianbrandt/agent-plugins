@@ -197,25 +197,33 @@ planted commit messages and flagged on 1 of 40 checks of ordinary compound sente
 The review runs at `medium` effort, and the two classifiers at the model's default. On Sonnet 5.5,
 over two runs of 60 posted texts that an earlier review found clean, a finding was kept on 49 of 120
 checks at `medium` and on 45 of 119 at the default. The default's two runs differed by three texts.
-Of two runs on 35 texts with a planted inanimate-agency violation, 68 of 70 checks were caught at
-`medium` and 65 of 69 at the default. The median review of a clean PR body took 1.6 seconds at
-`medium` and 4.4 at the default, and of a planted one 6.1 and 8.9 seconds. At `medium` most clean
-texts were passed with no thinking, and the longest of 190 calls took 16 seconds. A call is given at
-most 60 seconds. At `low`, a finding was kept on 63 of 120 checks of the clean texts against 42 at
-the default. In an earlier run at `medium`, one reply in 40 put its reasoning ahead of `VIOLATION`,
-and a verdict below the first line is not read, so the text passes. None of the 190 replies at
-`medium` here did that.
+The 52 of 120 above and the 42 of 120 below are counts on the same texts at the default, from
+earlier versions of the gate prompt and rules. Of two runs on 35 texts with a planted
+inanimate-agency violation, 68 of 70 checks were caught at `medium` and 65 of 69 at the default.
+The median review of a clean PR body took 1.6 seconds at `medium` and 4.4 at the default, and of a
+planted one 6.1 and 8.9 seconds. Of the 70 clean checks passed at `medium`, 57 were passed with no
+thinking, and the longest of 190 calls took 16 seconds. A call is given at most 60 seconds. These
+runs were on PR bodies only, so commit messages, MCP calls, prose files, and chat drafts were not
+measured at `medium`. At `low`, a finding was kept on 63 of 120 checks of the clean texts against
+42 at the default. Haiku 4.5, Sonnet 4.5, and Opus 4.1 each answered a call with `effort` set, so
+an older model set in `WRITING_CONVENTIONS_GATE_MODEL` still answers. A gateway, Bedrock, and
+Vertex were not tried.
+
+In an earlier run at `medium`, one reply in 40 put its reasoning ahead of `VIOLATION`, and Sonnet
+4.5 has put `VIOLATION` inside a code fence. The verdict is the first line that is a verdict word,
+so lines before it are skipped and the findings after it are still used.
 
 The system prompt is marked for the prompt cache. The review prompt is 5,655 tokens, and a call
 within five minutes of the last one reads it from the cache at a tenth of the input price. That
-does not make a call faster. Over 15 drafts each sent once with the mark and once without, the
-median difference was 9 ms, because at the default effort the time goes to thinking: 300 to 1,300
-output tokens at about 6 ms each on a draft that passes. The command classifier's 842-token prompt is cached too, and the
-MCP classifier's 358-token prompt is under the minimum. According to the type notes for
-`$.model.complete`, text marked in the system prompt is not found again on Bedrock, Vertex, or a
-gateway. Through a LiteLLM proxy in front of the Anthropic API on Claude Code 2.1.318, it was found
-again: in `e2e/cache-probe.sh`, the second and third reviews each read 5,655 tokens from the cache.
-Bedrock and Vertex were not measured.
+does not make a call faster. Over 15 drafts at the default effort, each sent once with the mark and
+once without, the median difference was 9 ms, because the time goes to thinking: 300 to 1,300
+output tokens at about 6 ms each on a draft that passes. Over 15 clean PR bodies at `medium`, where
+the median reply was 5 tokens, it was 45 ms. The command classifier's 842-token prompt is cached
+too, and the MCP classifier's 358-token prompt is under the minimum. According to the type notes
+for `$.model.complete`, text marked in the system prompt is not found again on Bedrock, Vertex, or
+a gateway. Through a LiteLLM proxy in front of the Anthropic API on Claude Code 2.1.318, it was
+found again: in `e2e/cache-probe.sh`, the second and third reviews each read 5,655 tokens from the
+cache. Bedrock and Vertex were not measured.
 
 Every failure lets the command through, so a commit is not blocked when no model can be called. The
 first time in a session that a check fails, the user is told once that model review is off, in a
