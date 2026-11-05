@@ -207,8 +207,9 @@ median difference was 9 ms, because the time goes to thinking: 300 to 1,300 outp
 6 ms each on a draft that passes. The command classifier's 842-token prompt is cached too, and the
 MCP classifier's 358-token prompt is under the minimum. According to the type notes for
 `$.model.complete`, text marked in the system prompt is not found again on Bedrock, Vertex, or a
-gateway, so there the cache-write price, 1.25 times the input price, is probably charged for each
-review. This was not measured.
+gateway. Through a LiteLLM proxy in front of the Anthropic API on Claude Code 2.1.318, it was found
+again: in `e2e/cache-probe.sh`, the second and third reviews each read 5,655 tokens from the cache.
+Bedrock and Vertex were not measured.
 
 Every failure lets the command through, so a commit is not blocked when no model can be called. The
 first time in a session that a check fails, the user is told once that model review is off, in a
