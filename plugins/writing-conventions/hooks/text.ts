@@ -138,9 +138,20 @@ export function excerpt(newText: string, fileText: string, cap: number): string 
   return out
 }
 
-// findings(verdict, sources): the findings in a review model's verdict that quote the
-// text under review, which is `sources`. The first line of a verdict is SKIP,
-// PASS, VIOLATION, or LOCAL, and only the last two have findings. LOCAL is
+const squash = (t: string) => t.replace(/[ \t\r\n]+/g, ' ').replace(/^ /, '').replace(/ $/, '')
+const WORDS = ['SKIP', 'PASS', 'VIOLATION', 'LOCAL']
+
+// verdict(reply): the first line of a review model's reply that is a verdict
+// word, or '' when there is none. Lines before it, such as reasoning or a code
+// fence, are skipped, since reading only the first line let such a reply pass.
+export function verdict(reply: string): string {
+  return records(reply).map(squash).find(l => WORDS.includes(l)) ?? ''
+}
+
+// findings(reply, sources): the findings in a review model's reply that quote the
+// text under review, which is `sources`. The verdict line, found as verdict()
+// finds it, is SKIP, PASS, VIOLATION, or LOCAL, and only the last two have
+// findings. A finding is read only after the verdict line. LOCAL is
 // VIOLATION for text that only goes into a local file, and what it changes is
 // in gate.ts. A finding is one line:
 //   "fragment" + "fragment" -> rewrite
@@ -148,17 +159,16 @@ export function excerpt(newText: string, fileText: string, cap: number): string 
 // one of the sources; the fragments need not share a source. The model can see
 // text quoted from an untrusted source, so no finding is acted on until its
 // quote is found in the text that was sent for review. Anything else returns
-// nothing: a verdict line with a second word, a finding that does not parse, a
-// quote that is nowhere in the sources, a rewrite that is the quote itself, and
-// a verdict with a later PASS line.
-export function findings(verdict: string, sources: string[]): string {
-  const squash = (t: string) => t.replace(/[ \t\r\n]+/g, ' ').replace(/^ /, '').replace(/ $/, '')
+// nothing: a reply with no verdict line, a finding that does not parse, a quote
+// that is nowhere in the sources, a rewrite that is the quote itself, and a
+// verdict with a later PASS line.
+export function findings(reply: string, sources: string[]): string {
   const src = sources.map(text => squash(records(text).map(record => ` ${record}`).join('')))
   let out = ''
   let seen = false
-  for (const record of records(verdict)) {
+  for (const record of records(reply)) {
     if (!seen) {
-      if (/^[ \t\r]*$/.test(record)) continue
+      if (!WORDS.includes(squash(record))) continue
       seen = true
       if (squash(record) !== 'VIOLATION' && squash(record) !== 'LOCAL') return ''
       continue

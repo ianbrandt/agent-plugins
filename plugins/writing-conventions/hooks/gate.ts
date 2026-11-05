@@ -18,7 +18,7 @@ import type { Call } from './hold'
 import { bodyFiles, keys, type Mode, walk } from './keys'
 import { lint } from './lint'
 import { headings, linked, literal, repoFlag, unheaded, unquoted } from './template'
-import { bytes, drafts, excerpt, findings } from './text'
+import { bytes, drafts, excerpt, findings, verdict as word } from './text'
 
 // The first CLI where hooks modules are on by default, and the oldest one the
 // module was checked on, by the live checks in the README. On an older one the
@@ -245,8 +245,7 @@ async function read($: any, prompt: string, sources: string[]): Promise<{ found:
   // within run-to-run spread of the default (DESIGN.md). The classifiers were not measured at
   // `medium`, so they run at the default.
   const verdict = await ask($, ['gate-prompt.md', 'rules.md'], prompt, 'medium')
-  const head = verdict.split('\n').find(l => /[^ \t\r]/.test(l)) ?? ''
-  return { found: findings(verdict, sources).replace(/\n+$/, ''), local: head.replace(/[ \t\r]/g, '') === 'LOCAL' }
+  return { found: findings(verdict, sources).replace(/\n+$/, ''), local: word(verdict) === 'LOCAL' }
 }
 
 const join = (...parts: string[]) => parts.filter(p => p !== '').join('\n')

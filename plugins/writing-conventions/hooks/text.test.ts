@@ -1,6 +1,6 @@
 // claude plugin test: the three scanners in text.ts.
 import { expect, test } from 'claude-code/testing'
-import { drafts, excerpt, findings } from './text'
+import { drafts, excerpt, findings, verdict } from './text'
 
 const F = '```'
 // What follows each draft block.
@@ -132,9 +132,9 @@ test('LOCAL has findings as VIOLATION does', () => {
   expect(findings('LOCAL MAYBE\n"The report says so" -> x\n', [SAYS])).toBe('')
 })
 
-// A verdict line with a second word, a finding that does not parse, an empty
-// quote, prose with no verdict line, and the reply the gate asked for before
-// this contract.
+// A verdict line with a second word, which is not read as a verdict, a finding
+// that does not parse, an empty quote, prose with no verdict line, and the
+// reply the gate asked for before this contract.
 test('a verdict in any other form has no findings', () => {
   for (const verdict of [
     'VIOLATION MAYBE\n"The report says so" -> x',
@@ -150,6 +150,22 @@ test('a verdict in any other form has no findings', () => {
     'CLEAN',
     '',
   ]) expect([verdict, findings(`${verdict}\n`, [SAYS])]).toEqual([verdict, ''])
+})
+
+// The verdict is the first line that is a verdict word, so the findings are
+// still used when reasoning or a code fence comes ahead of it.
+test('a verdict after reasoning or inside a fence still has its findings', () => {
+  expect(findings('The draft has one issue.\n\nVIOLATION\n"The report says so" -> x\n', [SAYS])).toBe('"The report says so" -> x\n')
+  expect(findings(`${F}\nVIOLATION\n${F}\n\n"The report says so" -> x\n`, [SAYS])).toBe('"The report says so" -> x\n')
+  expect(findings('Reading it.\nPASS\n"The report says so" -> x\n', [SAYS])).toBe('')
+  expect(findings('"The report says so" -> x\nVIOLATION\n', [SAYS])).toBe('')
+})
+
+test('the verdict word is read past reasoning and fences', () => {
+  expect(verdict('LOCAL\n"x" -> y')).toBe('LOCAL')
+  expect(verdict(`Some reasoning.\n${F}\n LOCAL \r\n${F}`)).toBe('LOCAL')
+  expect(verdict('VIOLATION MAYBE\nPASS')).toBe('PASS')
+  expect(verdict('the report says: rewrite it')).toBe('')
 })
 
 // The model sometimes writes a finding, then takes it back and ends on PASS.
