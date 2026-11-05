@@ -69,15 +69,14 @@ function alone(cmd: string, mode: Mode): boolean {
 // A model call that failed, or a reply that could not be used.
 class Off extends Error {}
 
-async function ask($: any, system: string[], prompt: string): Promise<string> {
+async function ask($: any, system: string[], prompt: string, effort?: 'medium'): Promise<string> {
   const parts: string[] = []
   for (const f of system) parts.push(await $.fs.read(`${$.plugin.root}/hooks/${f}`))
-  // No effort is set: at `low`, Sonnet 5.5 kept a finding on more clean text
-  // (README, "The gate at publication").
   const reply = await $.model.complete({
     model: (await $.env.get('WRITING_CONVENTIONS_GATE_MODEL')) || 'sonnet',
     system: [{ text: parts.join(''), cache: true }],
     prompt,
+    effort,
     timeoutMs: 60000,
   })
   if (!reply.isAnswered) throw new Off()
@@ -242,7 +241,10 @@ async function bodies($: any, cmd: string, mode: 'bash' | 'pwsh', base: string, 
 // untrusted source, so no finding is acted on until its quote is found in the
 // text under review.
 async function read($: any, prompt: string, sources: string[]): Promise<{ found: string; local: boolean }> {
-  const verdict = await ask($, ['gate-prompt.md', 'rules.md'], prompt)
+  // At `medium` a clean draft is passed in a third of the time, and the rates of findings stay
+  // within run-to-run spread of the default (DESIGN.md). The classifiers were not measured at
+  // `medium`, so they run at the default.
+  const verdict = await ask($, ['gate-prompt.md', 'rules.md'], prompt, 'medium')
   const head = verdict.split('\n').find(l => /[^ \t\r]/.test(l)) ?? ''
   return { found: findings(verdict, sources).replace(/\n+$/, ''), local: head.replace(/[ \t\r]/g, '') === 'LOCAL' }
 }

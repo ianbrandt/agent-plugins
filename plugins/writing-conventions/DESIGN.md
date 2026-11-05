@@ -194,17 +194,23 @@ with") were allowed on 30 of 30. The cost is more findings on text an earlier re
 finding was kept on 52 of 120 checks of 60 posted texts. Matched clauses are caught on 17 of 18
 planted commit messages and flagged on 1 of 40 checks of ordinary compound sentences.
 
-On Sonnet 5.5 the median call took 1.6 seconds on a planted commit message, 3.6 seconds on a clean
-one, and 5.9 seconds on the text of a PR, an issue, or a comment, and the longest of 317 calls took
-16 seconds. A call is given at most 60 seconds. No effort is set on it. At `low` the last two
-medians fell to 1.3 and 2.3 seconds, but over two runs of 60 posted texts that an earlier review
-found clean, a finding was kept on 63 of 120 checks against 42 at the model's default.
+The review runs at `medium` effort, and the two classifiers at the model's default. On Sonnet 5.5,
+over two runs of 60 posted texts that an earlier review found clean, a finding was kept on 49 of 120
+checks at `medium` and on 45 of 119 at the default. The default's two runs differed by three texts.
+Of two runs on 35 texts with a planted inanimate-agency violation, 68 of 70 checks were caught at
+`medium` and 65 of 69 at the default. The median review of a clean PR body took 1.6 seconds at
+`medium` and 4.4 at the default, and of a planted one 6.1 and 8.9 seconds. At `medium` most clean
+texts were passed with no thinking, and the longest of 190 calls took 16 seconds. A call is given at
+most 60 seconds. At `low`, a finding was kept on 63 of 120 checks of the clean texts against 42 at
+the default. In an earlier run at `medium`, one reply in 40 put its reasoning ahead of `VIOLATION`,
+and a verdict below the first line is not read, so the text passes. None of the 190 replies at
+`medium` here did that.
 
 The system prompt is marked for the prompt cache. The review prompt is 5,655 tokens, and a call
 within five minutes of the last one reads it from the cache at a tenth of the input price. That
 does not make a call faster. Over 15 drafts each sent once with the mark and once without, the
-median difference was 9 ms, because the time goes to thinking: 300 to 1,300 output tokens at about
-6 ms each on a draft that passes. The command classifier's 842-token prompt is cached too, and the
+median difference was 9 ms, because at the default effort the time goes to thinking: 300 to 1,300
+output tokens at about 6 ms each on a draft that passes. The command classifier's 842-token prompt is cached too, and the
 MCP classifier's 358-token prompt is under the minimum. According to the type notes for
 `$.model.complete`, text marked in the system prompt is not found again on Bedrock, Vertex, or a
 gateway. Through a LiteLLM proxy in front of the Anthropic API on Claude Code 2.1.318, it was found

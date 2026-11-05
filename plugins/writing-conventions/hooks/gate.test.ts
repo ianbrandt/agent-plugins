@@ -49,7 +49,7 @@ const response: { chunks: any[]; fail: boolean } = { chunks: [], fail: false }
 function world(on: any, w: World = {}) {
   const base = w.base ?? '2.1.289'
   const files: Record<string, string> = { ...w.files }
-  const seen = { reader: [] as string[], commands: [] as string[], tool: [] as string[], system: '', systemBlocks: undefined as unknown, toasts: [] as string[], files, ran: 0, gh: [] as string[], sent: [] as string[], origins: [] as unknown[], contexts: [] as string[][] }
+  const seen = { reader: [] as string[], commands: [] as string[], tool: [] as string[], system: '', systemBlocks: undefined as unknown, toasts: [] as string[], files, ran: 0, gh: [] as string[], sent: [] as string[], origins: [] as unknown[], contexts: [] as string[][], efforts: [] as unknown[][] }
   // On Windows an engine-level step turns a "/foo" path into "C:\foo" before the
   // mock sees it, so each lookup reads it back as POSIX. On macOS a "C:/foo"
   // path is not absolute, so the engine prepends the cwd and the drive letter
@@ -83,6 +83,7 @@ function world(on: any, w: World = {}) {
       : e.system.includes('<classify-prompt.md>') ? [seen.tool, w.tool]
       : [seen.reader, w.verdict]
     list.push(e.prompt)
+    seen.efforts.push([list === seen.reader ? 'review' : 'classifier', e.effort])
     return { value: w.down || reply === undefined ? { isAnswered: false, reason: 'api-error', status: 529, usage: {} } : { isAnswered: true, text: reply, usage: {} } }
   })
   on('tool.call', (_$: any, e: any) => {
@@ -306,6 +307,14 @@ test('a body file that is not read is listed with the reason', async ($: any, on
 })
 
 const notion = ($: any, input: Record<string, unknown>) => $.tool.call({ tool: 'mcp__notion__create_page', tool_use_id: 'toolu_2', ...input })
+
+test('the review runs at medium effort, and the classifiers at the default', async ($: any, on: any) => {
+  const seen = world(on, { commands: 'ls\tCAN_PUBLISH', tool: 'CAN_PUBLISH', verdict: 'PASS' })
+  await bash($, 'git commit -m "Plain message"')
+  await bash($, 'ls -la')
+  await notion($, { title: 'Plain' })
+  expect(seen.efforts).toEqual([['review', 'medium'], ['classifier', undefined], ['review', 'medium'], ['classifier', undefined], ['review', 'medium']])
+})
 
 test('an MCP tool is classified once, and a publishing call is read', async ($: any, on: any) => {
   const seen = world(on, { tool: 'CAN_PUBLISH', verdict: FINDING })
