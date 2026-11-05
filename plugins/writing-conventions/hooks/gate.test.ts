@@ -697,6 +697,14 @@ test('the lint tool returns the review model\'s findings on the draft', async ($
   expect(seen.reader).toEqual(['Plain text.\n\n'])
 })
 
+test('a prose file, a draft at the end of a reply, and the lint tool are reviewed at medium effort', async ($: any, on: any) => {
+  const seen = world(on, { verdict: 'PASS' })
+  await write($, '/proj/a.md', 'Plain text.')
+  await reply($, DRAFT)
+  await lintTool($, 'Other text.')
+  expect(seen.efforts).toEqual([['review', 'medium'], ['review', 'medium'], ['review', 'medium']])
+})
+
 test('a draft the lint tool passed is not read again at the end of the turn, and any other draft is', async ($: any, on: any) => {
   const w: World = { verdict: 'PASS' }
   const seen = world(on, w)
