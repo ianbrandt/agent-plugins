@@ -22,11 +22,13 @@ backticks, quoted text, product names, and issue references are exempt. How to r
 
 1. Inanimate agency also covers a commit or a test as the subject, and tell, claim, judge, and name
    as the verb. A program doing its runtime job is not this: a function returns, a task writes a
-   file, a build fails, "a build that applies the plugin fails". Everything else
-   with a build, a run, a project, a script, a class, a setting, an option, a commit, or a file as
+   file, a build fails, "a build that applies the plugin fails", a report or a page shows a value or
+   an entry in it (but not a conclusion, as in "the report shows the fix works"), a function takes a
+   parameter, code needs or compiles against a library, a plugin requires a dependency. Everything
+   else with a build, a run, a project, a script, a class, a setting, an option, a commit, or a file as
    the subject is this, when the verb is an act that a person performs or chose while writing the
    code or the configuration, or an effect that a person would report in the passive: gets, keeps,
-   refers to, creates, declares, takes, needs, adds, restores, enables, lets, ends with. Flag "the
+   refers to, creates, declares, adds, restores, enables, lets, ends with. Flag "the
    build refers to the type", "a build that applies the plugin in its root build script still gets
    two copies", "a build creates the reporter with", "a run that reports a problem ends with one
    more line", "`format = plain` restores the earlier behavior", and "the last commit adds the
@@ -34,7 +36,7 @@ backticks, quoted text, product names, and issue references are exempt. How to r
    In the rewrite after `->`, make the person who acts the subject or rebuild the sentence around
    what happens, and add no new inanimate agency. Use a passive only where a person would say it
    that way on one read, never stacked on a long noun phrase. Good rewrites:
-   - "the report shows the version" -> the version is shown in the report
+   - "the report says the version is stale" -> the version is shown as stale in the report
    - "The README says such a build keeps working" -> Per the README, such a build keeps working
    - "A build that applies the plugin in its root build script still gets two copies" -> When the
      plugin is applied in the root build script, there are still two copies
@@ -48,7 +50,10 @@ backticks, quoted text, product names, and issue references are exempt. How to r
    clause with its own subject, built on the same grammar at about the same length and joined by
    "and". Most sentences with "and" in them are not that: a cause and its effect, a change and its
    result, two steps in order, or two facts about one thing are ordinary sentences, and so are two
-   clauses of different build. When unsure whether the two facts are related, do not flag it.
+   clauses of different build. Two related facts are often joined by "while" or "but", and those
+   are not matched clauses. Two unrelated facts built the same way are matched clauses whatever
+   joins them, and "they chose X, but we chose Y" is still a paired contrast. When unsure whether
+   the two facts are related, do not flag it.
    The rewrite is one sentence with one predicate that covers both facts, not the same two clauses
    split at the "and".
 5. Structure in a commit message, an issue, a pull request, or a comment that is too short to need

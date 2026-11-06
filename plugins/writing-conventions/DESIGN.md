@@ -195,10 +195,32 @@ with") were allowed on 30 of 30. The cost is more findings on text an earlier re
 finding was kept on 52 of 120 checks of 60 posted texts. Matched clauses are caught on 17 of 18
 planted commit messages and flagged on 1 of 40 checks of ordinary compound sentences.
 
+A report or a page showing a value or an entry in it, a function taking a parameter, code needing or
+compiling against a library, and a plugin requiring a dependency are listed as runtime jobs, and
+"takes" and "needs" are off the verb list. A report that shows a conclusion, as in "the report shows
+the fix works", is still flagged. Blind Opus judges read the findings kept on those 60 texts in the
+commit message, MCP comment, prose file, and chat draft requests below, two runs each at the default
+effort, against `rules.md`. Of 475 calls on the earlier prompt, 58 came back with only findings the
+judges rejected, 46 of them on agency, most often "the report shows" or "it takes the same
+predicate". With the change, 36 of 477 did, and a finding was kept on 143 checks against 180. Twelve
+sentences with a person's act and a verb in neither version were flagged on 35 of 36 checks against
+33 of 36, and ten sentences of the newly listed runtime jobs on none of 30 against 8 of 30. On the
+35 planted texts, the planted sentence was flagged on 240 of 279 checks against 238 of 278. Here a
+planted text counts as caught only when its planted sentence was flagged, not on a finding elsewhere
+in it as in the table below. The rest of the rejected agency findings are the test working as
+intended, such as "a build that relies on that fallback gets the same report".
+
+Two related facts joined by "while" or "but" are no longer read as matched clauses, but two
+unrelated facts are matched clauses whatever joins them. The matched-clause example in `rules.md`,
+with "while" or "but" in place of "and", was flagged on 8 of 8 checks, and the two reversals given
+under rule 6 on none of 8. On the 20 clean texts with "while" or ", but", 6 of 40 calls came back
+with only rejected findings, against 7 of 39 before.
+
 A prose file is reviewed at `medium` effort. Commands, MCP calls, drafts, and the two classifiers
-run at the model's default. On Sonnet 5.5, the same 60 posted texts that an earlier review found
-clean and 35 texts with a planted inanimate-agency violation were each sent twice at both efforts,
-in the request each kind of review makes:
+run at the model's default. On Sonnet 5.5, with the gate prompt from before the runtime jobs above,
+the same 60 posted texts that an earlier review found clean and 35 texts with a planted
+inanimate-agency violation were each sent twice at both efforts, in the request each kind of review
+makes:
 
 | Request | Planted caught, default | At `medium` | Clean with a finding, default | At `medium` | Median clean review |
 | --- | --- | --- | --- | --- | --- |
@@ -225,7 +247,7 @@ In an earlier run at `medium`, one reply in 40 put its reasoning ahead of `VIOLA
 4.5 has put `VIOLATION` inside a code fence. The verdict is the first line that is a verdict word,
 so lines before it are skipped and the findings after it are still used.
 
-The system prompt is marked for the prompt cache. The review prompt is 5,655 tokens, and a call
+The system prompt is marked for the prompt cache. The review prompt is 5,793 tokens, and a call
 within five minutes of the last one reads it from the cache at a tenth of the input price. That
 does not make a call faster. Over 15 drafts at the default effort, each sent once with the mark and
 once without, the median difference was 9 ms, because the time goes to thinking: 300 to 1,300
@@ -234,8 +256,8 @@ the median reply was 5 tokens, it was 45 ms. The command classifier's 842-token 
 too, and the MCP classifier's 358-token prompt is under the minimum. According to the type notes
 for `$.model.complete`, text marked in the system prompt is not found again on Bedrock, Vertex, or
 a gateway. Through a LiteLLM proxy in front of the Anthropic API on Claude Code 2.1.318, it was
-found again: in `e2e/cache-probe.sh`, the second and third reviews each read 5,655 tokens from the
-cache. Bedrock and Vertex were not measured.
+found again: in `e2e/cache-probe.sh`, the second and third reviews each read the whole review
+prompt, 5,655 tokens at the time, from the cache. Bedrock and Vertex were not measured.
 
 Every failure lets the command through, so a commit is not blocked when no model can be called. The
 first time in a session that a check fails, the user is told once that model review is off, in a
