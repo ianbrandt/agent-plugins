@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Checks whether the writing-conventions review prompt is read from the prompt cache on this
 # machine's endpoint: first-party, Bedrock, Vertex, or a gateway. One headless session runs six
-# reviews at medium effort from a scratch plugin's session.start hook, with the gate prompt from
+# reviews at high effort from a scratch plugin's session.start hook, with the gate prompt from
 # this checkout: three with the cache mark on the system prompt, as gate.ts sends it, then three
 # with the same text as the first block of the prompt. User settings are loaded, so the endpoint and any apiKeyHelper
 # configured there apply.
@@ -35,7 +35,7 @@ export const register = (on: any) => {
         const request = arm === 'system'
           ? { model: MODEL, system: [{ text: fixed, cache: true }], prompt: text }
           : { model: MODEL, prompt: [{ text: fixed, cache: true }, { text: \`\n\n\${text}\` }] }
-        const r = await \$.model.complete({ ...request, effort: 'medium', timeoutMs: 60000 })
+        const r = await \$.model.complete({ ...request, effort: 'high', timeoutMs: 60000 })
         out += JSON.stringify({ arm, ok: r.isAnswered, usage: r.usage, reason: r.isAnswered ? undefined : r.reason }) + '\n'
       }
     }

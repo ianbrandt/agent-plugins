@@ -199,16 +199,16 @@ A report or a page showing a value or an entry in it, a function taking a parame
 compiling against a library, and a plugin requiring a dependency are listed as runtime jobs, and
 "takes" and "needs" are off the verb list. A report that shows a conclusion, as in "the report shows
 the fix works", is still flagged. Blind Opus judges read the findings kept on those 60 texts in the
-commit message, MCP comment, prose file, and chat draft requests below, two runs each at the default
-effort, against `rules.md`. Of 475 calls on the earlier prompt, 58 came back with only findings the
-judges rejected, 46 of them on agency, most often "the report shows" or "it takes the same
-predicate". With the change, 36 of 477 did, and a finding was kept on 143 checks against 180. Twelve
-sentences with a person's act and a verb in neither version were flagged on 35 of 36 checks against
-33 of 36, and ten sentences of the newly listed runtime jobs on none of 30 against 8 of 30. On the
-35 planted texts, the planted sentence was flagged on 240 of 279 checks against 238 of 278. Here a
-planted text counts as caught only when its planted sentence was flagged, not on a finding elsewhere
-in it as in the table below. The rest of the rejected agency findings are the test working as
-intended, such as "a build that relies on that fallback gets the same report".
+commit message, MCP comment, prose file, and chat draft requests below, two runs each at `high`,
+against `rules.md`. Of 475 calls on the earlier prompt, 58 came back with only findings the judges
+rejected, 46 of them on agency, most often "the report shows" or "it takes the same predicate". With
+the change, 36 of 477 did, and a finding was kept on 143 checks against 180. Twelve sentences with a
+person's act and a verb in neither version were flagged on 35 of 36 checks against 33 of 36, and ten
+sentences of the newly listed runtime jobs on none of 30 against 8 of 30. On the 35 planted texts,
+the planted sentence was flagged on 240 of 279 checks against 238 of 278. Here a planted text counts
+as caught only when its planted sentence was flagged, not on a finding elsewhere in it as in the
+table below. The rest of the rejected agency findings are the test working as intended, such as "a
+build that relies on that fallback gets the same report".
 
 Two related facts joined by "while" or "but" are no longer read as matched clauses, but two
 unrelated facts are matched clauses whatever joins them. The matched-clause example in `rules.md`,
@@ -216,13 +216,20 @@ with "while" or "but" in place of "and", was flagged on 8 of 8 checks, and the t
 under rule 6 on none of 8. On the 20 clean texts with "while" or ", but", 6 of 40 calls came back
 with only rejected findings, against 7 of 39 before.
 
-A prose file is reviewed at `medium` effort. Commands, MCP calls, drafts, and the two classifiers
-run at the model's default. On Sonnet 5.5, with the gate prompt from before the runtime jobs above,
-the same 60 posted texts that an earlier review found clean and 35 texts with a planted
-inanimate-agency violation were each sent twice at both efforts, in the request each kind of review
-makes:
+Every review and both classifiers are sent at `high` effort. It is set in `gate.ts` so that the
+level depends neither on the session's effort nor on a default that could change. It is the level an
+unset effort resolved to: 15 clean texts were sent with no effort from sessions at Low and at Max,
+and with `high`, and the median reply was 525 to 746 output tokens in each case. In an earlier run
+of the 60 clean texts as PR bodies at `medium`, the median was 64. Prose files were reviewed at
+`medium` until the runtime jobs above. With them, the planted sentence was flagged on 171 of 210
+prose-file checks at `medium` against 184 of 210 on the earlier prompt, and 20 of 120 clean files
+came back with only rejected findings, against 9 of 118 at `high`. Every other run labeled `high` in
+this document was sent with no effort set, which resolved to `high` as above. On Sonnet 5.5, with
+the gate prompt from before the runtime jobs above, the same 60 posted texts that an earlier review
+found clean and 35 texts with a planted inanimate-agency violation were each sent twice at `high`
+and at `medium`, in the request each kind of review makes:
 
-| Request | Planted caught, default | At `medium` | Clean with a finding, default | At `medium` | Median clean review |
+| Request | Planted caught, `high` | At `medium` | Clean with a finding, `high` | At `medium` | Median clean review |
 | --- | --- | --- | --- | --- | --- |
 | `gh pr create` body | 65/69 | 68/70 | 45/119 | 49/120 | 4.4 s, 1.6 s |
 | `git commit` message | 67/69 | 63/70 | 45/119 | 55/120 | 4.5 s, 1.7 s |
@@ -230,18 +237,20 @@ makes:
 | Prose file | 68/70 | 69/70 | 46/119 | 46/120 | 4.3 s, 2.4 s |
 | Chat draft | 67/69 | 68/70 | 47/118 | 59/120 | 4.5 s, 1.9 s |
 
-Between the default's two runs, the count of clean texts with a finding differed by zero to four.
+Between the two runs at `high`, the count of clean texts with a finding differed by zero to four.
 At `medium` the count rose by 10 to 12 on the commit message, MCP comment, and chat draft, by four
 on the PR body, and not at all on the prose file. Over all five requests, a finding was kept on
-262 of 600 clean checks at `medium` against 225 of 594 at the default, and the commit message lost
+262 of 600 clean checks at `medium` against 225 of 594 at `high`, and the commit message lost
 planted catches. A total under 70 or 120 means a call came back empty. When the findings on 25 of
 the clean texts were judged in an earlier run, 30 of 41 were real problems, so a count of clean
 texts with a finding is not a count of false alarms. The 52 of 120 above and the 42 of 120 below are
-counts on the same clean texts at the default, from earlier versions of the gate prompt and rules.
+counts on the same clean texts at `high`, from earlier versions of the gate prompt and rules.
 A call is given at most 60 seconds, and the longest of the 1,710 calls took 22.5 seconds. At `low`,
-a finding was kept on 63 of 120 checks of the clean texts against 42 at the default. Haiku 4.5,
+a finding was kept on 63 of 120 checks of the clean texts against 42 at `high`. Haiku 4.5,
 Sonnet 4.5, and Opus 4.1 each answered a call with `effort` set, so an older model set in
-`WRITING_CONVENTIONS_GATE_MODEL` still answers. A gateway, Bedrock, and Vertex were not tried.
+`WRITING_CONVENTIONS_GATE_MODEL` still answers. A gateway, Bedrock, and Vertex were not tried
+with `effort` set. If it were refused there, every review would be off, not only the prose-file
+review.
 
 In an earlier run at `medium`, one reply in 40 put its reasoning ahead of `VIOLATION`, and Sonnet
 4.5 has put `VIOLATION` inside a code fence. The verdict is the first line that is a verdict word,
@@ -249,7 +258,7 @@ so lines before it are skipped and the findings after it are still used.
 
 The system prompt is marked for the prompt cache. The review prompt is 5,793 tokens, and a call
 within five minutes of the last one reads it from the cache at a tenth of the input price. That
-does not make a call faster. Over 15 drafts at the default effort, each sent once with the mark and
+does not make a call faster. Over 15 drafts at `high`, each sent once with the mark and
 once without, the median difference was 9 ms, because the time goes to thinking: 300 to 1,300
 output tokens at about 6 ms each on a draft that passes. Over 15 clean PR bodies at `medium`, where
 the median reply was 5 tokens, it was 45 ms. The command classifier's 842-token prompt is cached

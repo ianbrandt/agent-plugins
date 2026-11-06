@@ -69,14 +69,16 @@ function alone(cmd: string, mode: Mode): boolean {
 // A model call that failed, or a reply that could not be used.
 class Off extends Error {}
 
-async function ask($: any, system: string[], prompt: string, effort?: 'medium'): Promise<string> {
+async function ask($: any, system: string[], prompt: string): Promise<string> {
   const parts: string[] = []
   for (const f of system) parts.push(await $.fs.read(`${$.plugin.root}/hooks/${f}`))
   const reply = await $.model.complete({
     model: (await $.env.get('WRITING_CONVENTIONS_GATE_MODEL')) || 'sonnet',
     system: [{ text: parts.join(''), cache: true }],
     prompt,
-    effort,
+    // An unset effort resolves to high today. It is set here so that the level depends neither on
+    // the session's effort nor on a default that could change (DESIGN.md).
+    effort: 'high',
     timeoutMs: 60000,
   })
   if (!reply.isAnswered) throw new Off()
@@ -240,8 +242,8 @@ async function bodies($: any, cmd: string, mode: 'bash' | 'pwsh', base: string, 
 // findings in it that quote one of `sources`. The model can see text quoted from an
 // untrusted source, so no finding is acted on until its quote is found in the
 // text under review.
-async function read($: any, prompt: string, sources: string[], effort?: 'medium'): Promise<{ found: string; local: boolean }> {
-  const verdict = await ask($, ['gate-prompt.md', 'rules.md'], prompt, effort)
+async function read($: any, prompt: string, sources: string[]): Promise<{ found: string; local: boolean }> {
+  const verdict = await ask($, ['gate-prompt.md', 'rules.md'], prompt)
   return { found: findings(verdict, sources).replace(/\n+$/, ''), local: word(verdict) === 'LOCAL' }
 }
 
@@ -335,9 +337,7 @@ async function file($: any, e: any): Promise<Verdict> {
   }
   // A file may be the draft of an issue, to a repo it links or to the session's.
   const kept = await headings($, await $.session.cwd(), [text], linked(text), true)
-  // At `medium` a file is reviewed in about half the time, with the same rates of findings as at
-  // the default. On commands, MCP calls, and drafts it flagged more clean text (DESIGN.md).
-  const { found } = await read($, `File: ${path}\n\n${unheaded(text, kept)}`, [text], 'medium')
+  const { found } = await read($, `File: ${path}\n\n${unheaded(text, kept)}`, [text])
   return { context: join(found && `${found}\nFix the quoted text in ${path}. ${ADVICE}`, unread) }
 }
 
