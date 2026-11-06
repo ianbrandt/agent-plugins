@@ -240,11 +240,8 @@ async function bodies($: any, cmd: string, mode: 'bash' | 'pwsh', base: string, 
 // findings in it that quote one of `sources`. The model can see text quoted from an
 // untrusted source, so no finding is acted on until its quote is found in the
 // text under review.
-async function read($: any, prompt: string, sources: string[]): Promise<{ found: string; local: boolean }> {
-  // At `medium` a clean draft is passed in a third of the time, and the rates of findings stay
-  // within run-to-run spread of the default (DESIGN.md). The classifiers were not measured at
-  // `medium`, so they run at the default.
-  const verdict = await ask($, ['gate-prompt.md', 'rules.md'], prompt, 'medium')
+async function read($: any, prompt: string, sources: string[], effort?: 'medium'): Promise<{ found: string; local: boolean }> {
+  const verdict = await ask($, ['gate-prompt.md', 'rules.md'], prompt, effort)
   return { found: findings(verdict, sources).replace(/\n+$/, ''), local: word(verdict) === 'LOCAL' }
 }
 
@@ -338,7 +335,9 @@ async function file($: any, e: any): Promise<Verdict> {
   }
   // A file may be the draft of an issue, to a repo it links or to the session's.
   const kept = await headings($, await $.session.cwd(), [text], linked(text), true)
-  const { found } = await read($, `File: ${path}\n\n${unheaded(text, kept)}`, [text])
+  // At `medium` a file is reviewed in about half the time, with the same rates of findings as at
+  // the default. On commands, MCP calls, and drafts it flagged more clean text (DESIGN.md).
+  const { found } = await read($, `File: ${path}\n\n${unheaded(text, kept)}`, [text], 'medium')
   return { context: join(found && `${found}\nFix the quoted text in ${path}. ${ADVICE}`, unread) }
 }
 

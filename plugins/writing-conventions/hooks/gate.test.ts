@@ -308,12 +308,12 @@ test('a body file that is not read is listed with the reason', async ($: any, on
 
 const notion = ($: any, input: Record<string, unknown>) => $.tool.call({ tool: 'mcp__notion__create_page', tool_use_id: 'toolu_2', ...input })
 
-test('the review runs at medium effort, and the classifiers at the default', async ($: any, on: any) => {
+test('commands and MCP calls are reviewed at the default effort, as the classifiers are', async ($: any, on: any) => {
   const seen = world(on, { commands: 'ls\tCAN_PUBLISH', tool: 'CAN_PUBLISH', verdict: 'PASS' })
   await bash($, 'git commit -m "Plain message"')
   await bash($, 'ls -la')
   await notion($, { title: 'Plain' })
-  expect(seen.efforts).toEqual([['review', 'medium'], ['classifier', undefined], ['review', 'medium'], ['classifier', undefined], ['review', 'medium']])
+  expect(seen.efforts).toEqual([['review', undefined], ['classifier', undefined], ['review', undefined], ['classifier', undefined], ['review', undefined]])
 })
 
 test('an MCP tool is classified once, and a publishing call is read', async ($: any, on: any) => {
@@ -697,12 +697,12 @@ test('the lint tool returns the review model\'s findings on the draft', async ($
   expect(seen.reader).toEqual(['Plain text.\n\n'])
 })
 
-test('a prose file, a draft at the end of a reply, and the lint tool are reviewed at medium effort', async ($: any, on: any) => {
+test('a prose file is reviewed at medium effort, and a draft at the end of a reply and in the lint tool at the default', async ($: any, on: any) => {
   const seen = world(on, { verdict: 'PASS' })
   await write($, '/proj/a.md', 'Plain text.')
   await reply($, DRAFT)
   await lintTool($, 'Other text.')
-  expect(seen.efforts).toEqual([['review', 'medium'], ['review', 'medium'], ['review', 'medium']])
+  expect(seen.efforts).toEqual([['review', 'medium'], ['review', undefined], ['review', undefined]])
 })
 
 test('a draft the lint tool passed is not read again at the end of the turn, and any other draft is', async ($: any, on: any) => {

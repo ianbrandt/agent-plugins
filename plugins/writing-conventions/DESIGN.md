@@ -194,20 +194,31 @@ with") were allowed on 30 of 30. The cost is more findings on text an earlier re
 finding was kept on 52 of 120 checks of 60 posted texts. Matched clauses are caught on 17 of 18
 planted commit messages and flagged on 1 of 40 checks of ordinary compound sentences.
 
-The review runs at `medium` effort, and the two classifiers at the model's default. On Sonnet 5.5,
-over two runs of 60 posted texts that an earlier review found clean, a finding was kept on 49 of 120
-checks at `medium` and on 45 of 119 at the default. The default's two runs differed by three texts.
-The 52 of 120 above and the 42 of 120 below are counts on the same texts at the default, from
-earlier versions of the gate prompt and rules. Of two runs on 35 texts with a planted
-inanimate-agency violation, 68 of 70 checks were caught at `medium` and 65 of 69 at the default.
-The median review of a clean PR body took 1.6 seconds at `medium` and 4.4 at the default, and of a
-planted one 6.1 and 8.9 seconds. Of the 70 clean checks passed at `medium`, 57 were passed with no
-thinking, and the longest of 190 calls took 16 seconds. A call is given at most 60 seconds. These
-runs were on PR bodies only, so commit messages, MCP calls, prose files, and chat drafts were not
-measured at `medium`. At `low`, a finding was kept on 63 of 120 checks of the clean texts against
-42 at the default. Haiku 4.5, Sonnet 4.5, and Opus 4.1 each answered a call with `effort` set, so
-an older model set in `WRITING_CONVENTIONS_GATE_MODEL` still answers. A gateway, Bedrock, and
-Vertex were not tried.
+A prose file is reviewed at `medium` effort. Commands, MCP calls, drafts, and the two classifiers
+run at the model's default. On Sonnet 5.5, the same 60 posted texts that an earlier review found
+clean and 35 texts with a planted inanimate-agency violation were each sent twice at both efforts,
+in the request each kind of review makes:
+
+| Request | Planted caught, default | At `medium` | Clean with a finding, default | At `medium` | Median clean review |
+| --- | --- | --- | --- | --- | --- |
+| `gh pr create` body | 65/69 | 68/70 | 45/119 | 49/120 | 4.4 s, 1.6 s |
+| `git commit` message | 67/69 | 63/70 | 45/119 | 55/120 | 4.5 s, 1.7 s |
+| MCP comment | 67/70 | 66/70 | 42/119 | 53/120 | 4.1 s, 1.5 s |
+| Prose file | 68/70 | 69/70 | 46/119 | 46/120 | 4.3 s, 2.4 s |
+| Chat draft | 67/69 | 68/70 | 47/118 | 59/120 | 4.5 s, 1.9 s |
+
+Between the default's two runs, the count of clean texts with a finding differed by zero to four.
+At `medium` the count rose by 10 to 12 on the commit message, MCP comment, and chat draft, by four
+on the PR body, and not at all on the prose file. Over all five requests, a finding was kept on
+262 of 600 clean checks at `medium` against 225 of 594 at the default, and the commit message lost
+planted catches. A total under 70 or 120 means a call came back empty. When the findings on 25 of
+the clean texts were judged in an earlier run, 30 of 41 were real problems, so a count of clean
+texts with a finding is not a count of false alarms. The 52 of 120 above and the 42 of 120 below are
+counts on the same clean texts at the default, from earlier versions of the gate prompt and rules.
+A call is given at most 60 seconds, and the longest of the 1,710 calls took 22.5 seconds. At `low`,
+a finding was kept on 63 of 120 checks of the clean texts against 42 at the default. Haiku 4.5,
+Sonnet 4.5, and Opus 4.1 each answered a call with `effort` set, so an older model set in
+`WRITING_CONVENTIONS_GATE_MODEL` still answers. A gateway, Bedrock, and Vertex were not tried.
 
 In an earlier run at `medium`, one reply in 40 put its reasoning ahead of `VIOLATION`, and Sonnet
 4.5 has put `VIOLATION` inside a code fence. The verdict is the first line that is a verdict word,
