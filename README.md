@@ -77,7 +77,9 @@ invoked.
   differs from the one on `origin/main`. An installed session reads a cache keyed by version, so
   it keeps the old copy of a plugin until the version changes. One new version is enough for every
   commit waiting to be pushed, and no new version is needed for a change to only evals, tests, or
-  a plugin's `README.md` or `DESIGN.md`.
+  a plugin's `README.md` or `DESIGN.md`. Versions follow SemVer: the major part goes up for a
+  breaking change, the minor part for a new feature or a change in behavior, and the patch part
+  only for a fix. In a plugin still at 0.x, a breaking change is a minor bump too.
 
 The same script runs in GitHub Actions on Linux and Windows for each push and pull request
 ([`test.yml`](.github/workflows/test.yml)). A pass on Windows does not replace a live run there: the
