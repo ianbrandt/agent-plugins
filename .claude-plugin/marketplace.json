@@ -35,7 +35,7 @@
     {
       "name": "writing-conventions",
       "source": "./plugins/writing-conventions",
-      "version": "0.53.2",
+      "version": "0.54.0",
       "description": "Always-on rules for plain prose without AI tells—in chat, in repo docs, and in anything published under your name—with a lint that reports each miss in the next turn.",
       "keywords": ["register", "summary", "prose", "style", "lint"]
     },

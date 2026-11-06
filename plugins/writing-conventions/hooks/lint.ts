@@ -256,6 +256,9 @@ function prose(r: Run, x: string): void {
   x = x.replace(/“[^”]*”/gu, 'QUOTE')
   x = x.replace(/\]\([^)]*\)/gu, '')
   x = x.replace(/[*\[]+/gu, '')
+  // A dash that fills a table cell stands for an empty value, so its spaces are markdown. No two
+  // runs of spaces are next to each other in the pattern, so a long run is matched in linear time.
+  x = x.replace(/(^[ \t>]*|(?<!\\)\|[ \t]*)—[ \t]*(?=\||\r?$)/gu, '$1')
   // literal senses stay: a Slack or byte channel, an array shape, a time slot
   x = x.replace(/[Ss]lack channel|[Mm]essage channel|[Bb]yte channel|[Rr]elease channel|[Aa]rray shape|[Tt]ensor shape|[Tt]imetable slot|[Tt]ime slot/gu, 'LITERAL')
   // With each lookbehind a match can start only where a run of these starts,

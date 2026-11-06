@@ -97,6 +97,14 @@ const CORPUS: [string, string][] = [
   ['-', 'Post it in the Slack channel and check the array shape.'],
   ['spaced em dash', 'This is one thing — and another.'],
   ['-', 'This is correct—no space here, nothing else flagged.'],
+  ['-', '| Plugin | Version |\n| --- | --- |\n| writing-conventions | — |\n| — | 0.54.0 |'],
+  ['spaced em dash', '| Plugin | Note |\n| --- | --- |\n| writing-conventions | one — two |'],
+  ['-', 'Plugin | Version\n--- | ---\n— | 0.54.0\nsession-skills | —'],
+  ['-', '> Plugin | Version\n> --- | ---\n> — | 0.54.0'],
+  ['-', '| Plugin | Version |\n| --- | --- |\n| writing-conventions | **—** |'],
+  ['-', '| Plugin | Version |\n| --- | --- |\n| writing-conventions | [—](https://example.com/status) |'],
+  ['spaced em dash', '| Label | Value |\n| --- | --- |\n| left \\| — | present |'],
+  ['spaced em dash', '> A quote.\n> — Its author'],
   ['-', 'Headings: ## Title—subtitle'],
   ['oxford comma', 'The built-in formatters are json, xml, html, plain, text and problems.'],
   ['oxford comma', 'Run it on JDK 8, 11, 17 or 21.'],
@@ -152,6 +160,12 @@ test('a 40,000-line reply is counted line by line', () => {
   let reply = ''
   for (let i = 0; i < 40000; i++) reply += `line ${i} says "hi" \\ the shape\n`
   expect(lint(reply, { note: true })).toContain('- banned word x40000, e.g. "shape".')
+})
+
+test('a line of 100,000 spaces before a dash is linted in under a second', () => {
+  const start = Date.now()
+  expect(lint(`${' '.repeat(100000)}— x`)).toContain('spaced em dash')
+  expect(Date.now() - start).toBeLessThan(1000)
 })
 
 // These expected values are not copied from the awk script, which was wrong in

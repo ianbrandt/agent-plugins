@@ -40,8 +40,8 @@ backticks, quoted text, product names, and issue references are exempt. How to r
      plugin is applied in the root build script, there are still two copies
    A bad rewrite, since nobody would say it: "which the README said would keep working" -> which
    the README's instructions were expected to keep working
-2. A spaced dash is " — " or " – ". Unspaced word—word is fine. Two items, or two clauses joined by
-   "and", are not a list of three, so they need no comma.
+2. A spaced dash is " — " or " – ". Unspaced word—word is fine, and so is a dash alone in a table
+   cell. Two items, or two clauses joined by "and", are not a list of three, so they need no comma.
 3. Flag only the words listed as "Never". The "Rarely right" words and the intensifiers are not
    yours to judge.
 4. "not X but Y" is a paired contrast too. Matched clauses are two unrelated facts, each a full
