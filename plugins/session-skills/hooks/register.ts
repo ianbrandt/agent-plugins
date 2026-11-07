@@ -504,12 +504,14 @@ const TRUE = /^(?:true|yes|on|-?[1-9]\d*)$/i
 
 // What config set before the command adds to a push: a force where the
 // remote mirrors or has a + refspec, and submodules where push.recurseSubmodules
-// or submodule.recurse sends the push into them.
+// or submodule.recurse sends the push into them. A remote that is not written
+// out may be any of them.
 async function pushConfig($: any, dir: string, p: Push): Promise<{ force: boolean; submodules: boolean }> {
   const config = await configList($, dir)
   const name = p.remote === undefined ? await pushRemote($, dir) : p.remote
   const get = (key: string) => config.get(key) ?? []
-  const force = !!name && (get(`remote.${name}.mirror`).some(v => TRUE.test(v)) || get(`remote.${name}.push`).some(v => v.startsWith('+')))
+  const of = (field: string) => (name === null ? [...config].filter(([k]) => k.startsWith('remote.') && k.endsWith(`.${field}`)).flatMap(([, v]) => v) : get(`remote.${name}.${field}`))
+  const force = of('mirror').some(v => TRUE.test(v)) || of('push').some(v => v.startsWith('+'))
   const mode = get('push.recursesubmodules').at(-1)
   const submodules = p.submodules ?? (mode !== undefined ? /^(?:on-demand|only)$/i.test(mode) : get('submodule.recurse').some(v => TRUE.test(v)))
   return { force, submodules }

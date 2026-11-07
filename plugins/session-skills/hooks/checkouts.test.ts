@@ -1511,3 +1511,14 @@ test('a variable is set for git only before a command or by env, export, or Powe
   }
   expect(pushTargets("$env:HOME = '/tmp'; git push origin main", 'PowerShell')[0]).toMatchObject({ remote: null, force: true })
 })
+
+test('a mirror or + refspec in config forces a push whose remote is not written out, with the public hold lifted', async ($: any, on: any) => {
+  const config: Record<string, string> = { 'session-skills.holdPublicPush': 'false' }
+  targetWorld(on, config)
+  expect((await verdict($, 'R=origin; git push "$R"')).decision).toBe('allow')
+  config['remote.origin.mirror'] = 'true'
+  expect((await verdict($, 'R=origin; git push "$R"')).reason).toContain('Force push')
+  delete config['remote.origin.mirror']
+  config['remote.pub.push'] = '+refs/heads/*:refs/heads/*'
+  expect((await verdict($, 'R=origin; git push "$R"')).reason).toContain('Force push')
+})
