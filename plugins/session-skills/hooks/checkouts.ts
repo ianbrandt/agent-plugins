@@ -678,7 +678,7 @@ update-index update-ref var verify-commit verify-pack verify-tag version whatcha
 // null where it cannot be read from the command. `submodules` is set where the
 // command says whether the push recurses into submodules, and is otherwise read
 // from config. `configs` are the -c values given with an alias the hook reads.
-// `staged` is set where an earlier command may have staged a gitlink.
+// `staged` is set where another command in the line may have staged a gitlink.
 export type Push = { dir: Dir; dryRun: boolean; force: boolean; remote?: string | null; submodules?: boolean; alias?: string; rest?: string; configs?: Word[]; staged?: boolean }
 
 // The long options of a command, the ones that take a value, and its short
@@ -1031,11 +1031,11 @@ const moves = (sub: string, rest: Word[]) =>
 // it is when the hook runs: a git command below with nothing left to run that
 // does not move the branch, a cd or pushd to a literal path with no `..`, a
 // read such as echo or cat, an assignment, a test runner, and a subshell or
-// script block, whose commands are read on their own. Anything else before such
-// a push, such as `gh pr checkout`, a git alias, or `npm install`, makes its
-// remote unread, and the hold asks.
+// script block, whose commands are read on their own. Anything else in the line
+// with such a push, such as `gh pr checkout`, a git alias, or `npm install`,
+// makes its remote unread, and the hold asks.
 const SAFE_GIT = new Set('add blame commit describe diff fetch grep log ls-files merge merge-base pull rebase rev-list rev-parse shortlog show status symbolic-ref'.split(' '))
-const READS = /^(?::|\[|true|test|echo|printf|cat|head|tail|wc|ls|pwd|write-output|write-host|get-content|get-location|get-childitem)$/i
+const READS = /^(?::|\[|true|test|echo|printf|cat|head|tail|grep|wc|ls|pwd|write-output|write-host|get-content|get-location|get-childitem)$/i
 const RUNNERS = /^(?:(?:\.[\\/])?(?:gradlew(?:\.bat)?|mvnw|test\.sh)|gradle|mvn|pytest|(?:npm|pnpm|yarn|bun|cargo|go) test|claude plugin test)(?: |$)/i
 function harmless(words: Word[], ps: boolean): boolean {
   const [first, ...args] = words
@@ -1059,12 +1059,14 @@ function harmless(words: Word[], ps: boolean): boolean {
 // may stage a nested repo as a gitlink that a later push recurses into.
 const STAGES = new Set('add commit merge pull rebase'.split(' '))
 const writesIndex = (words: Word[]) => gitCommands(words).some(g => STAGES.has(g.words[gitOptions(g.words, g.k).j]?.text ?? ''))
-// For each command, whether a command before it may have moved the branch, its
-// config, or the directory, and whether one may have staged a gitlink.
-function before(cmds: Command[], ps: boolean): { unknown: boolean; staged: boolean }[] {
+// For each command, whether another command in the line may have moved the
+// branch, its config, or the directory, and whether one may have staged a
+// gitlink. A command listed after it counts too, since a heredoc body, a
+// function, or a loop can run it first.
+function others(cmds: Command[], ps: boolean): { unknown: boolean; staged: boolean }[] {
   const unsafe = cmds.map(c => !harmless(c.words, ps))
   const writes = cmds.map((c, x) => unsafe[x] || writesIndex(c.words))
-  return cmds.map((_, i) => ({ unknown: unsafe.slice(0, i).some(Boolean), staged: writes.slice(0, i).some(Boolean) }))
+  return cmds.map((_, i) => ({ unknown: unsafe.some((u, x) => u && x !== i), staged: writes.some((w, x) => w && x !== i) }))
 }
 
 // Every push in a shell command, read in `shell`: the repo it runs in, whether
@@ -1074,18 +1076,18 @@ function before(cmds: Command[], ps: boolean): { unknown: boolean; staged: boole
 // An alias set with -c is read in place, and any other subcommand that is not
 // built in is returned with `alias` set, for the hook to read. A subcommand
 // that is not written out, such as `git $sub`, is a push in a directory that
-// cannot be read, so the hold asks. A push with no remote after any command not
-// known to leave the branch and its config as they were (see `harmless`) has a
-// remote that cannot be read. A mirror or + refspec set with -c, or any config
+// cannot be read, so the hold asks. A push with no remote in a line with any
+// other command not known to leave the branch and its config as they were (see
+// `harmless`) has a remote that cannot be read. A mirror or + refspec set with -c, or any config
 // set in the environment, forces it.
 export function pushTargets(cmd: string, shell = 'Bash', outer?: Dir, inherited: Word[] = [], depth = 0): Push[] {
   nested(depth)
   const found: Push[] = []
   const cmds = commands(cmd, shell, outer)
   const envConfig = sets(cmds, CONFIG_VARS)
-  const earlier = before(cmds, isPowerShell(shell))
+  const around = others(cmds, isPowerShell(shell))
   for (const [i, { words: all, at }] of cmds.entries()) {
-    const { unknown: afterUnknown, staged } = earlier[i]
+    const { unknown: afterUnknown, staged } = around[i]
     for (const r of later(all)) for (const p of pushTargets(r.text, 'Bash', null, [...inherited, ...r.configs], depth + 1)) found.push({ ...p, dir: null })
     for (const { words, k } of gitCommands(all)) {
       const { j, cs, configs: own, gitDir } = gitOptions(words, k)
@@ -1191,7 +1193,7 @@ export function hostWrites(cmd: string, shell = 'Bash', outer?: Dir, depth = 0):
   const cmds = commands(cmd, shell, outer)
   // A variable that moves the config gh reads can send the PR to another repo too.
   const envRepo = sets(cmds, REPO_VARS) || sets(cmds, CONFIG_VARS)
-  const earlier = before(cmds, isPowerShell(shell))
+  const around = others(cmds, isPowerShell(shell))
   for (const [i, { words, at }] of cmds.entries()) {
     for (const r of later(words)) for (const w of hostWrites(r.text, 'Bash', null, depth + 1)) found.push({ ...w, dir: null })
     const k = cliAt(words)
@@ -1255,7 +1257,7 @@ export function hostWrites(cmd: string, shell = 'Bash', outer?: Dir, depth = 0):
       if (m !== 'GET' && m !== 'HEAD') what = `${cli} api ${m}`
     } else if (noun && verb && !LOCAL_NOUNS.has(noun) && !READ_VERBS.has(verb) && !(verb === 'clone' && (noun === 'repo' || noun === 'gist'))) what = `${cli} ${noun} ${verb}`
     const prCreate = !early && noun === PR_CREATE[cli] && (verb === 'create' || verb === 'new')
-    if (what) found.push({ what, dir: repoDir(at, words.slice(0, k)), prCreate, otherRepo, pushes: prCreate && prPushes(cli, args), ...(earlier[i].staged && { staged: true }) })
+    if (what) found.push({ what, dir: repoDir(at, words.slice(0, k)), prCreate, otherRepo, pushes: prCreate && prPushes(cli, args), ...(around[i].staged && { staged: true }) })
   }
   return unique(found)
 }

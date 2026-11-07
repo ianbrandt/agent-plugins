@@ -941,7 +941,7 @@ test('a force push is put to the user whatever the holds, but a dry run is not',
 
 test('every push in a command is read, each in its own directory', async ($: any, on: any) => {
   expect(pushTargets('git push origin a && git -C /fork push --force; git push -n')).toEqual([
-    { dir: undefined, dryRun: false, force: false, remote: 'origin' },
+    { dir: undefined, dryRun: false, force: false, remote: 'origin', staged: true },
     { dir: '/fork', dryRun: false, force: true, remote: null, staged: true },
     { dir: undefined, dryRun: true, force: false, remote: null, staged: true },
   ])
@@ -1457,6 +1457,16 @@ test('a push with no remote goes unasked only after commands known to leave its 
     'if git diff --quiet; then :; else git push; fi', `git commit -m "$(cat <<'EOF'\nSubject\n\nBody.\nEOF\n)" && git push`,
   ]) expect(pushTargets(cmd).at(-1)?.remote, cmd).toBeUndefined()
   expect(pushTargets('git add -A; git commit -m x; Set-Location C:\\repo; Write-Output done; git push', 'PowerShell')[0]?.remote).toBeUndefined()
+})
+
+// A heredoc body, a function, and a loop can run a command before a push that
+// is listed after it, so every other command in the line is read.
+test('a command listed after a push with no remote is read too', () => {
+  for (const cmd of [
+    'git commit -F - <<EOF && git push\n$(git checkout other)\nEOF', 'f() { git push; }; git checkout pubb; f',
+    'n=0; while [ $n -lt 2 ]; do git push; git switch pubb; n=$((n+1)); done',
+  ]) expect(pushTarget(cmd)?.remote, cmd).toBeNull()
+  for (const cmd of ['git push 2>&1 | grep -v remote:', 'git push 2>&1 | tail -3', 'git push && echo done']) expect(pushTarget(cmd)?.remote, cmd).toBeUndefined()
 })
 
 // In a worktree, notes.local links into the primary checkout. bash 3.2's

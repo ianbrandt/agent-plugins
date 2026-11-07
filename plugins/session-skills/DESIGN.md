@@ -82,7 +82,7 @@ the environment) is put to the user whatever the holds, because it replaces comm
 outright, because it is a normal step after a rebase. A push that may recurse into submodules, by
 `--recurse-submodules=on-demand` or `only`, `push.recurseSubmodules`, or `submodule.recurse`, is
 held too where the index has a gitlink, since the submodules' remotes are not checked. The hook
-reads the index before the command runs, so the push is held as well where an earlier command in
+reads the index before the command runs, so the push is held as well where another command in
 the line may stage one, such as `git add -A` with a nested repo in the tree, or any command not on
 the known-safe list below. The gitlink
 is checked rather than `.gitmodules`, because git also pushes a nested repo that has no entry there.
@@ -154,8 +154,9 @@ each member and prefers a group to a remote of the same name. A `send-pack` or `
 remote is not read. `git push .` updates this repo and is not held.
 
 A push with no remote is read against the branch config as it is when the hook runs, so it is asked
-about after any earlier command in the line that is not known to leave the branch, its config, and
-the directory as they were. The known-safe commands are a few git commands (`add`, `commit`,
+about where any other command in the line is not known to leave the branch, its config, and the
+directory as they were. A command listed after the push counts too, since a heredoc body, a
+function, or a loop can run it first. The known-safe commands are a few git commands (`add`, `commit`,
 `status`, `diff`, `log`, `show`, `fetch`, `pull`, `merge`, `rebase`, and some reads such as
 `rev-parse`), a `cd` or `pushd` to a literal path with no `..`, reads such as `echo` and `cat`, a
 command that only sets variables, and a test runner such as `./gradlew`, `npm test`, or
