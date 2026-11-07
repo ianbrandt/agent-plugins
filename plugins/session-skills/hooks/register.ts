@@ -469,7 +469,7 @@ async function pushHold($: any, dir: string): Promise<string> {
 async function hostHold($: any, w: HostWrite): Promise<string> {
   const write = `\`${w.what}\` writes to the remote host`
   if (!w.prCreate || w.otherRepo) return `${write}.`
-  if (w.dir === null) return `${write}, and the directory it runs in could not be read.`
+  if (w.dir === null) return `${write}, and the repo it runs in could not be read from the command.`
   const dir = w.dir ?? (await primary($))
   const lift = (hold: string) => `The user can lift it for this clone with \`git config session-skills.${hold} false\`.`
   if ((await remoteUrl($, dir, 'upstream')) !== null && (await setting($, dir, 'holdFork')) !== 'false') return `${write}, and this repo is a fork, which writes nothing there. ${lift('holdFork')}`
@@ -570,7 +570,12 @@ export const register: Register = on => {
   for (const tool of ['Bash', 'PowerShell']) {
     on('tool.call', { tool }, async ($, e: any, next: any) => {
       const ran = await next(e)
-      if (e.agentId || ran.deny !== undefined || (ran as any).isError || !pushTargets(String(e.command ?? ''), tool).some(p => !p.alias)) return ran
+      if (e.agentId || ran.deny !== undefined || (ran as any).isError) return ran
+      let pushed = false
+      try {
+        pushed = pushTargets(String(e.command ?? ''), tool).some(p => !p.alias)
+      } catch {}
+      if (!pushed) return ran
       return { ...ran, context: [...(ran.context ?? []), NEXT_STEP] }
     })
   }
@@ -588,16 +593,21 @@ export const register: Register = on => {
       const command = String(e.input?.command ?? '')
       const reasons: string[] = []
       const add = (reason: string) => reasons.includes(reason) || reasons.push(reason)
-      for (const push of (await pushesIn($, pushTargets(command, tool))).filter(p => !p.dryRun)) {
-        const why = push.dir === null
-          ? "the directory it runs in could not be read, so the push waits for the user's go."
-          : await pushHold($, push.dir ?? (await primary($))).catch(err => `the push hold could not be checked: ${(err as Error).message}`)
-        if (push.force) add('Force push: this replaces commits on the remote branch that a reviewer may already have read.')
-        if (why) add(`Push held: ${why}`)
-      }
-      for (const w of hostWrites(command, tool)) {
-        const why = await hostHold($, w).catch(err => `the hold on \`${w.what}\` could not be checked: ${(err as Error).message}`)
-        if (why) add(`Host write held: ${why}`)
+      // The engine skips a hook that throws, and the command would run unasked.
+      try {
+        for (const push of (await pushesIn($, pushTargets(command, tool))).filter(p => !p.dryRun)) {
+          const why = push.dir === null
+            ? "the repo it runs in could not be read from the command, so the push waits for the user's go."
+            : await pushHold($, push.dir ?? (await primary($))).catch(err => `the push hold could not be checked: ${(err as Error).message}`)
+          if (push.force) add('Force push: this replaces commits on the remote branch that a reviewer may already have read.')
+          if (why) add(`Push held: ${why}`)
+        }
+        for (const w of hostWrites(command, tool)) {
+          const why = await hostHold($, w).catch(err => `the hold on \`${w.what}\` could not be checked: ${(err as Error).message}`)
+          if (why) add(`Host write held: ${why}`)
+        }
+      } catch (err) {
+        add(`The command could not be checked for a push or a host write: ${(err as Error).message}.`)
       }
       return reasons.length ? { decision: 'ask', reason: reasons.join(' ') } : verdict
     })

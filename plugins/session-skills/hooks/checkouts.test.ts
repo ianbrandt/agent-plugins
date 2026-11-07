@@ -743,6 +743,12 @@ test('a git subcommand that is not built in is returned as a possible alias, and
   expect(pushTarget(`git -c alias.p='push -f' p origin main`)?.force).toBe(true)
 })
 
+test('a push with no session repo is put to the user', async ($: any, on: any) => {
+  on('tool.check', () => ({ decision: 'allow' }))
+  on('session.repo', () => ({ value: null }))
+  expect((await verdict($, 'git push -f origin main')).decision).toBe('ask')
+})
+
 // The engine's own verdict beneath the plugin is an allow.
 const verdict = ($: any, command: string, tool = 'Bash') => $.tool.check({ tool, input: { command } })
 function pushWorld(on: any, config: Record<string, string>, upstream = false) {
