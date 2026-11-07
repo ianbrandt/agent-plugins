@@ -1083,18 +1083,20 @@ test('a gh or glab subcommand is a write unless it reads or acts on this machine
 // A repo whose remotes push to the URLs in `remotes`, with each git config key
 // read from `config`, the branch checked out, and each URL's visibility as gh
 // reports it where `vis` has it.
-function targetWorld(on: any, config: Record<string, string>, remotes: Record<string, string[]> = { origin: ['https://h/a/b.git'] }, vis: Record<string, string> = {}, branch = 'main') {
+// A key given several values is set in several scopes, the last one winning.
+// `index` is what `git ls-files -s :/` prints.
+function targetWorld(on: any, config: Record<string, string | string[]>, remotes: Record<string, string[]> = { origin: ['https://h/a/b.git'] }, vis: Record<string, string> = {}, branch = 'main', index: Said = '') {
   on('tool.check', () => ({ decision: 'allow' }))
+  const last = (key: string) => [config[key] ?? []].flat().at(-1)
   return world(on, line => {
     const url = /^remote get-url (?:--push --all )?(\S+)$/.exec(line)
     if (url) return remotes[url[1]] ? remotes[url[1]].join('\n') : 2
     if (line === 'remote') return Object.keys(remotes).join('\n')
-    if (line === 'symbolic-ref --short -q HEAD') return branch || 1
-    const re = /^config --get-regexp (\S+)$/.exec(line)
-    if (re) return Object.entries(config).filter(([k]) => new RegExp(re[1]).test(k)).map(([k, v]) => `${k} ${v}`).join('\n') || 1
-    if (line.startsWith('config --get ')) return config[line.slice(13)] ?? 1
-    if (line.startsWith('config --default= --get ')) return config[line.slice(24)] ?? ''
-    if (line === 'config -z --list') return Object.entries(config).map(([k, v]) => `${k}\n${v}\0`).join('')
+    if (line === 'branch --show-current') return branch
+    if (line === 'ls-files -s :/') return index
+    if (line.startsWith('config --get ')) return last(line.slice(13)) ?? 1
+    if (line.startsWith('config --default= --get ')) return last(line.slice(24)) ?? ''
+    if (line === 'config -z --list') return Object.entries(config).flatMap(([k, v]) => [v].flat().map(x => `${k}\n${x}\0`)).join('')
   }, line => {
     const m = /^gh repo view (\S+) /.exec(line)
     if (m && vis[m[1]]) return vis[m[1]]
@@ -1474,18 +1476,23 @@ test('a push held for its submodules or its config is put to the user, and one t
   expect(lift.reason).toContain('`gh alias set`')
 })
 
-test('a read of the push remote that fails holds the push', async ($: any, on: any) => {
+// Claude Code reports a git that crashed as exit 1 with no output.
+test('a read of the push remote or its branch that fails holds the push', async ($: any, on: any) => {
   on('tool.check', () => ({ decision: 'allow' }))
+  let crashed = 'config --default= --get branch.main.pushRemote'
   world(on, line => {
-    if (line === 'symbolic-ref --short -q HEAD') return 'main'
-    if (line === 'config --default= --get branch.main.pushRemote') return 1
+    if (line === crashed) return 1
+    if (line === 'branch --show-current') return 'main'
     if (line === 'config --get session-skills.originVisibility') return 'private'
     if (/^remote get-url (--push --all )?upstream$/.test(line)) return 2
     if (line.startsWith('remote get-url')) return 'https://h/a/b.git'
   })
-  const held = await verdict($, 'git push')
-  expect(held.decision).toBe('ask')
-  expect(held.reason).toContain('could not be checked')
+  for (const line of [crashed, 'branch --show-current']) {
+    crashed = line
+    const held = await verdict($, 'git push')
+    expect(held.decision, line).toBe('ask')
+    expect(held.reason, line).toContain('could not be checked')
+  }
 })
 
 test('a config write that sends a later push into submodules is held', () => {
@@ -1536,11 +1543,26 @@ test('a PR is held when the default repo set with gh repo set-default cannot be 
   on('tool.check', () => ({ decision: 'allow' }))
   world(on, line => {
     if (line === 'remote') return 'origin'
-    if (line.startsWith('config --get-regexp')) return 128
+    if (line === 'config -z --list') return 1
     if (line.startsWith('config --get session-skills.')) return { 'config --get session-skills.holdPrText': 'false', 'config --get session-skills.holdFork': 'false' }[line] ?? 1
     if (/^remote get-url (--push --all )?upstream$/.test(line)) return 2
   })
   const held = await verdict($, 'gh pr create --fill --head feature')
   expect(held.decision).toBe('ask')
   expect(held.reason).toContain('could not be checked')
+})
+
+// What git 2.56.0 printed on a branch `release` with a tag `release`.
+test('the push remote is read for a branch that has a tag of the same name', async ($: any, on: any) => {
+  on('tool.check', () => ({ decision: 'allow' }))
+  world(on, line => {
+    if (line === 'symbolic-ref --short -q HEAD') return 'heads/release'
+    if (line === 'branch --show-current') return 'release'
+    if (line === 'config --default= --get branch.release.pushRemote') return 'pub'
+    if (line === 'config --get session-skills.originVisibility') return 'private'
+    if (/^remote get-url (--push --all )?upstream$/.test(line)) return 2
+    if (/^remote get-url (--push --all )?pub$/.test(line)) return 'https://h/o/pub.git'
+    if (line.startsWith('remote get-url')) return 'https://h/a/b.git'
+  }, line => (line.startsWith('gh repo view https://h/o/pub.git ') ? 'public' : undefined))
+  expect((await verdict($, 'git push')).reason).toContain('`pub` is public')
 })

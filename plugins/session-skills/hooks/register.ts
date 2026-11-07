@@ -474,11 +474,13 @@ async function configValue($: any, dir: string, key: string): Promise<string> {
 }
 
 // The remote a `git push` with none given goes to: the branch's pushRemote,
-// then remote.pushDefault, then the branch's remote, then origin.
+// then remote.pushDefault, then the branch's remote, then origin. The branch is
+// '' on a detached HEAD, and is printed without the `heads/` that symbolic-ref
+// adds where a tag has the same name.
 async function pushRemote($: any, dir: string): Promise<string> {
-  const head = await git($, dir, 'symbolic-ref', '--short', '-q', 'HEAD')
-  if (head.exitCode > 1) failed(head)
-  const branch = head.exitCode === 0 ? head.stdout.trim() : ''
+  const head = await git($, dir, 'branch', '--show-current')
+  if (head.exitCode !== 0) failed(head)
+  const branch = head.stdout.trim()
   for (const key of [branch && `branch.${branch}.pushRemote`, 'remote.pushDefault', branch && `branch.${branch}.remote`]) {
     const name = key && (await configValue($, dir, key))
     if (name) return name
@@ -575,12 +577,9 @@ async function otherBase($: any, dir: string, what: string): Promise<string> {
   if (repo) return `${name} is set to ${repo}`
   const others = (await must($, dir, 'remote')).split(/\r?\n/).map(r => r.trim()).filter(r => r && r !== 'origin')
   if (others.length) return `this clone has ${others.map(r => `\`${r}\``).join(', ')} besides origin, and the PR may open there`
-  // git config exits 1 where no key matches, and a read that fails holds the PR.
-  const resolved = await git($, dir, 'config', '--get-regexp', '^remote\\.origin\\.(gh|glab)-resolved')
-  if (resolved.exitCode > 1) failed(resolved)
-  for (const line of resolved.stdout.trim().split(/\r?\n/)) {
-    const [key, value] = line.trim().split(/\s+/)
-    if (key && value !== 'base') return `${key} is set to ${value}`
+  // A read that fails holds the PR.
+  for (const [key, values] of await configList($, dir)) {
+    if (/^remote\.origin\.(?:gh|glab)-resolved$/.test(key) && values.at(-1) !== 'base') return `${key} is set to ${values.at(-1)}`
   }
   return ''
 }
