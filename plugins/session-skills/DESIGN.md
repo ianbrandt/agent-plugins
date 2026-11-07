@@ -77,6 +77,24 @@ and where nobody can be asked, as under `claude -p`, the push is refused. A dry 
 and a subagent's push is held like any other. A path with a shell variable in it is not read, so
 that push is checked in the session's repo.
 
+The same hook puts every write to the host through `gh` or `glab` to the user, such as a comment, a
+merge, a release, or a workflow run. Every subcommand is taken as a write except a short list of
+reads (`view`, `list`, `diff`, `checks`, and the like), nouns that act on this machine only (`auth`,
+`config`, `extension`), and a call for help. A list of writes was tried first, and an adversarial
+pass found 101 of 120 probes it missed, among them `gh pr new`, `glab mr new`, and a verb new in a
+recent release. An `api` call is read by its method instead: with a field and no method it is a
+POST, as both CLIs send it, and a GraphQL call is a write unless its query is inline and starts with
+`query` or `{`. Line continuations are joined and comment lines dropped before the command is read,
+a `$(...)` or backtick substitution is read on its own even inside double quotes, and a command
+with a quote left open is read again unmasked.
+
+These asks hold whatever `origin`'s visibility, since a comment or a merge cannot be pulled back the
+way a private push can. The one exception is a `gh pr create` or `glab mr create` in this clone's
+own repo, with `holdPrText` lifted and past the fork hold. A PR aimed at another repo with `-R`, or
+with `GH_REPO` or `GITLAB_REPO` anywhere in the command, is still asked about. Each write in a
+chained command is checked, so a comment added after a PR opened unasked is still asked about. A write run
+through `bash -c`, `eval`, or a user's own `gh alias` is not seen.
+
 A follow-up prompt after the reply used to do this. It showed in the transcript as a message from the
 plugin, it took a fenced block as the only sign of a next step, so it fired after "This session
 carries on with R104", and it cost a turn.

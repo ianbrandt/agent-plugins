@@ -2,7 +2,7 @@
 // run the git work of both skills, and the tool a worktree session calls to edit
 // a file that is only in the primary checkout.
 import type { Register } from 'claude-code'
-import { pickBase, pushTarget, refLine, visibility, worktreeName } from './checkouts'
+import { type HostWrite, hostWrites, pickBase, pushTarget, refLine, visibility, worktreeName } from './checkouts'
 import { splice } from './splice'
 
 const NONE = { type: 'object', properties: {} } as const
@@ -463,6 +463,19 @@ async function pushHold($: any, dir: string): Promise<string> {
   return `${vis ? `origin is ${vis}` : "origin's visibility is unknown"}, so the push waits for the user's go. ${lift('holdPublicPush')}`
 }
 
+// Why a host write waits for the user, or '' when it does not. Only a PR or MR
+// opened in this clone's own repo, with holdPrText lifted and past the fork
+// hold, goes unasked.
+async function hostHold($: any, w: HostWrite): Promise<string> {
+  const write = `\`${w.what}\` writes to the remote host`
+  if (!w.prCreate || w.otherRepo) return `${write}.`
+  const dir = w.dir ?? (await primary($))
+  const lift = (hold: string) => `The user can lift it for this clone with \`git config session-skills.${hold} false\`.`
+  if ((await remoteUrl($, dir, 'upstream')) !== null && (await setting($, dir, 'holdFork')) !== 'false') return `${write}, and this repo is a fork, which writes nothing there. ${lift('holdFork')}`
+  if ((await setting($, dir, 'holdPrText')) === 'false') return ''
+  return `${write}, and a PR's text waits for the user's go. ${lift('holdPrText')}`
+}
+
 const NEXT_STEP = 'This command pushed work. End the reply with the next step, under the session rules: the hand-off block for the next unit of work, or one line stating that this session carries on with it. When nothing can start yet, write one line on what the next item waits on, then the block for when it can start. When nothing comes next at all, say so in one line.'
 
 const TITLE_RULES: Record<string, string> = { 'claude-desktop': 'title-desktop', cli: 'title-cli' }
@@ -541,15 +554,25 @@ export const register: Register = on => {
   // A held push is put to the user in the permission prompt, in every mode: a
   // session that pushed without reading land-and-wrap pushed to this public
   // repo on 2026-11-06. A force push is put to the user whatever the holds,
-  // since it replaces commits a reviewer may have read. Where nobody can be
-  // asked, the push is refused. A subagent's push is held too.
+  // since it replaces commits a reviewer may have read. A write to the host
+  // with gh or glab, such as a comment or a merge, is put to the user too. Where
+  // nobody can be asked, the command is refused. A subagent's is held too.
   for (const tool of ['Bash', 'PowerShell']) {
     on('tool.check', { tool }, async ($, e: any, next: any) => {
       const verdict = await next(e)
-      const push = verdict.decision === 'deny' ? null : pushTarget(String(e.input?.command ?? ''))
-      if (!push || push.dryRun) return verdict
-      const why = await pushHold($, push.dir ?? (await primary($))).catch(err => `the push hold could not be checked: ${(err as Error).message}`)
-      const reasons = [push.force && 'Force push: this replaces commits on the remote branch that a reviewer may already have read.', why && `Push held: ${why}`].filter(Boolean)
+      if (verdict.decision === 'deny') return verdict
+      const command = String(e.input?.command ?? '')
+      const push = pushTarget(command)
+      const reasons: string[] = []
+      if (push && !push.dryRun) {
+        const why = await pushHold($, push.dir ?? (await primary($))).catch(err => `the push hold could not be checked: ${(err as Error).message}`)
+        if (push.force) reasons.push('Force push: this replaces commits on the remote branch that a reviewer may already have read.')
+        if (why) reasons.push(`Push held: ${why}`)
+      }
+      for (const w of hostWrites(command)) {
+        const why = await hostHold($, w).catch(err => `the hold on \`${w.what}\` could not be checked: ${(err as Error).message}`)
+        if (why && !reasons.includes(`Host write held: ${why}`)) reasons.push(`Host write held: ${why}`)
+      }
       return reasons.length ? { decision: 'ask', reason: reasons.join(' ') } : verdict
     })
   }

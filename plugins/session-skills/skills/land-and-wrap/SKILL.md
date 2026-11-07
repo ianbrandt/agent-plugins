@@ -82,8 +82,10 @@ git config session-skills.holdFork false          # a fork lands as a PR against
 git config session-skills.holdPrText false        # open a PR without first showing its text
 ```
 
-A push that a hold applies to, and every force push, is put to the user in the permission prompt by
-this plugin's hook, so a push the user already approved in chat is asked about once more there.
+A push that a hold applies to, every force push, and every write to the host through `gh` or `glab`
+is put to the user in the permission prompt by this plugin's hook, so a step the user already
+approved in chat is asked about once more there. A PR or MR opened with `holdPrText` lifted is the
+one write that goes unasked.
 
 These are independent of the backlog. A repo you own can track its work in an untracked, local-only
 roadmap and still merge into its default branch; that combination needs no special handling.

@@ -1,8 +1,8 @@
-// claude plugin test: where a new branch starts, the four tools and the push
-// hold against a faked git. The costly errors are a branch opened without commits held on the
+// claude plugin test: where a new branch starts, the four tools, the push
+// hold, and the host-write hold against a faked git. The costly errors are a branch opened without commits held on the
 // local default branch, and an unmerged branch deleted by the prune.
 import { expect, test } from 'claude-code/testing'
-import { pickBase, pushTarget, refLine, visibility, worktreeName } from './checkouts'
+import { hostWrites, pickBase, pushTarget, refLine, visibility, worktreeName } from './checkouts'
 
 test('a new branch starts from origin, except where the local default branch has everything origin has', () => {
   expect(pickBase('main', false, true, false, false)).toEqual({ base: 'main' })
@@ -704,4 +704,101 @@ test('a force push is put to the user whatever the holds, but a dry run is not',
   expect(both.reason).toContain('Force push')
   expect(both.reason).toContain('holdPublicPush')
   expect((await verdict($, 'git push --dry-run --force origin b')).decision).toBe('allow')
+})
+
+const hostWrite = (cmd: string) => hostWrites(cmd)[0] ?? null
+test('a host write from gh or glab is read from the command, with its directory and whether it opens a PR', () => {
+  expect(hostWrite('gh pr create --title x --body-file f')).toEqual({ what: 'gh pr create', dir: undefined, prCreate: true, otherRepo: false })
+  expect(hostWrite(`cd '/y' && glab mr create -s b -b main`)).toEqual({ what: 'glab mr create', dir: '/y', prCreate: true, otherRepo: false })
+  expect(hostWrite('gh pr create -R o/r')?.otherRepo).toBe(true)
+  expect(hostWrite('gh pr --repo=o/r create')?.otherRepo).toBe(true)
+  expect(hostWrites('gh pr create --fill && gh issue comment 1 -b x').map(w => w.what)).toEqual(['gh pr create', 'gh issue comment'])
+  const writes: [string, string][] = [
+    ['gh issue comment 12 --body-file f', 'gh issue comment'],
+    ['gh release create v1 --notes x', 'gh release create'],
+    ['gh pr -R o/r merge 3 --squash', 'gh pr merge'],
+    ['gh pr view 3 && gh pr merge 3', 'gh pr merge'],
+    ['/opt/homebrew/bin/gh pr review 3 --approve', 'gh pr review'],
+    ['x=$(gh workflow run ci.yml)', 'gh workflow run'],
+    ['glab mr note 3 -m hi', 'glab mr note'],
+    ['glab issue create -t x', 'glab issue create'],
+    ['glab ci run', 'glab ci run'],
+    ['gh api -X PATCH repos/o/r/issues/1', 'gh api PATCH'],
+    ['gh api repos/o/r/issues -f title=x', 'gh api POST'],
+    ['gh api --input body.json repos/o/r/issues', 'gh api POST'],
+    ['gh api --method=DELETE repos/o/r/labels/x', 'gh api DELETE'],
+    ['gh api -XPUT repos/o/r/subscription', 'gh api PUT'],
+    [`gh api -X 'post' repos/o/r/issues`, 'gh api POST'],
+    ['glab api projects/1/issues -F title=x', 'glab api POST'],
+    [`gh api graphql -f query='mutation { addComment(input: {}) { clientMutationId } }'`, 'gh api graphql'],
+    ['gh api graphql -F query=@q.graphql', 'gh api graphql'],
+  ]
+  for (const [cmd, what] of writes) expect(hostWrite(cmd)?.what).toBe(what)
+  for (const cmd of [
+    'gh pr view 3', 'gh pr list --state open', 'gh repo view --json visibility', 'glab mr view 3', 'gh run view 9 --log',
+    'gh api repos/o/r', 'gh api -X GET search/issues -f q=x', `gh api graphql -f query='query { viewer { login } }'`,
+    'echo "gh pr create"', `git commit -m 'run gh pr merge later'`, 'ghx pr create', 'gh issue list --search "gh pr merge"',
+    `git commit -F - <<'EOF'\ngh pr merge 3\nEOF`, 'gh', 'gh pr',
+  ]) expect(hostWrite(cmd)).toBeNull()
+})
+
+test('a host write is put to the user whatever the visibility, in either shell', async ($: any, on: any) => {
+  pushWorld(on, { originVisibility: 'private', holdPrText: 'false' })
+  for (const tool of ['Bash', 'PowerShell']) {
+    const held = await verdict($, 'gh issue comment 1 --body-file c.md', tool)
+    expect(held.decision).toBe('ask')
+    expect(held.reason).toContain('`gh issue comment` writes to the remote host')
+  }
+  expect((await verdict($, 'gh pr merge 3')).decision).toBe('ask')
+  expect((await verdict($, 'gh pr view 3')).decision).toBe('allow')
+})
+
+test('a PR or MR is opened unasked only with holdPrText lifted, in its own repo, and past the fork hold', async ($: any, on: any) => {
+  const config: Record<string, string> = { originVisibility: 'private' }
+  pushWorld(on, config, true)
+  const held = await verdict($, 'gh pr create --title x --body-file b.md')
+  expect(held.decision).toBe('ask')
+  expect(held.reason).toContain('git config session-skills.holdFork false')
+  config.holdFork = 'false'
+  expect((await verdict($, 'gh pr create --title x --body-file b.md')).reason).toContain('git config session-skills.holdPrText false')
+  config.holdPrText = 'false'
+  expect((await verdict($, 'gh pr create --title x --body-file b.md')).decision).toBe('allow')
+  expect((await verdict($, 'glab mr create -s b -b main')).decision).toBe('allow')
+  expect((await verdict($, 'gh pr create -R up/b --title x')).decision).toBe('ask')
+  expect((await verdict($, 'gh pr create --fill && gh pr comment --body x')).reason).toContain('`gh pr comment`')
+})
+
+test('a push and a host write in one command are both put to the user', async ($: any, on: any) => {
+  pushWorld(on, { originVisibility: 'public' })
+  const both = await verdict($, 'git push -u origin b && gh pr create --fill')
+  expect(both.reason).toContain('holdPublicPush')
+  expect(both.reason).toContain('holdPrText')
+})
+
+// Each command here was missed by a list of write verbs, in an adversarial pass with live probes.
+test('a gh or glab subcommand is a write unless it reads or acts on this machine, however the command is written', () => {
+  for (const [cmd, what] of [
+    ['gh pr new --fill', 'gh pr new'],
+    ['glab mr new -t x --fill --yes', 'glab mr new'],
+    ['gh discussion create --title x', 'gh discussion create'],
+    ['gh agent-task create "fix the bug"', 'gh agent-task create'],
+    ['url="$(gh pr merge 3 --squash)"', 'gh pr merge'],
+    ['echo "`gh pr merge 3`"', 'gh pr merge'],
+    ["# Post the review (it's long)\ngh pr comment 3 --body-file c.md", 'gh pr comment'],
+    ["$body = @'\nIt's done\n'@\ngh pr comment 3 --body $body", 'gh pr comment'],
+    [`cut -d'"' -f1 x; gh pr merge 3`, 'gh pr merge'],
+    ['gh api repos/o/r/issues/1/comments \\\n  -f body=hi', 'gh api POST'],
+    ['gh api repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/issues -f title=x', 'gh api POST'],
+    ['glab api projects/1/uploads --form file=@a.png', 'glab api POST'],
+    ['& "C:\\Program Files\\GitHub CLI\\gh.exe" pr merge 3', 'gh pr merge'],
+  ]) expect(hostWrites(cmd).map(w => w.what)).toContain(what)
+  for (const cmd of ['gh pr create \\\n  --repo up/r --fill', 'gh pr create -Rup/r --fill', 'GH_REPO=up/r gh pr create --fill', 'gh pr create --body (Get-Content b.md -Raw) --repo up/r']) {
+    expect(hostWrite(cmd)?.otherRepo).toBe(true)
+  }
+  expect(hostWrite('gh pr new --fill')?.prCreate).toBe(true)
+  expect(hostWrite('Set-Location /fork; gh pr create --fill')?.dir).toBe('/fork')
+  expect(hostWrite('{ cd /fork; gh pr create --fill; }')?.dir).toBe('/fork')
+  for (const cmd of ['gh pr create --help', 'glab mr merge -h', 'gh auth status', 'gh extension install o/gh-x', 'gh pr checks 3 --watch', 'glab ci trace', 'gh run watch 9', '# then gh pr merge 3']) {
+    expect(hostWrite(cmd)).toBeNull()
+  }
 })
