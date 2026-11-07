@@ -68,10 +68,11 @@ in the marketplace's README.
 
 The skills call six tools that the plugin registers as `mcp__session-skills__<tool>`, and the session
 rules in [`hooks/rules.md`](hooks/rules.md) are added to the first prompt, and again after
-`/clear` and compaction. The result of a `git push` includes a request for the next step, so the
-reply is written with it in view. In the terminal the session title is set with `/rename` when the
+`/clear` and compaction. A push that a hold in `land-and-wrap` applies to is put to the user in the
+permission prompt, in any permission mode. The result of a `git push` includes a request for the
+next step, so the reply is written with it in view. In the terminal the session title is set with `/rename` when the
 turn ends, and that command shows as one line. Claude Code
-2.1.308 or later is required. [DESIGN.md](DESIGN.md) covers each tool, how the session title is
+2.1.314 or later is required. [DESIGN.md](DESIGN.md) covers each tool, how the session title is
 set, and why the rules are loaded by a hook.
 
 ## Measuring it

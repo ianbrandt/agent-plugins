@@ -82,6 +82,9 @@ git config session-skills.holdFork false          # a fork lands as a PR against
 git config session-skills.holdPrText false        # open a PR without first showing its text
 ```
 
+A push that a hold applies to is put to the user in the permission prompt by this plugin's hook, so
+a push the user already approved in chat is asked about once more there.
+
 These are independent of the backlog. A repo you own can track its work in an untracked, local-only
 roadmap and still merge into its default branch; that combination needs no special handling.
 Whether work merges depends on fork-ness and the landing mode, and whether it is pushed depends on

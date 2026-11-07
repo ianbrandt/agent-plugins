@@ -1,8 +1,8 @@
-// claude plugin test: where a new branch starts, and the four tools against a
-// faked git. The costly errors are a branch opened without commits held on the
+// claude plugin test: where a new branch starts, the four tools and the push
+// hold against a faked git. The costly errors are a branch opened without commits held on the
 // local default branch, and an unmerged branch deleted by the prune.
 import { expect, test } from 'claude-code/testing'
-import { pickBase, refLine, visibility, worktreeName } from './checkouts'
+import { pickBase, pushTarget, refLine, visibility, worktreeName } from './checkouts'
 
 test('a new branch starts from origin, except where the local default branch has everything origin has', () => {
   expect(pickBase('main', false, true, false, false)).toEqual({ base: 'main' })
@@ -587,4 +587,95 @@ test('landing_facts reads a protected default branch, or a pull-request ruleset,
     now = gh(isProtected, rules)
     expect((await call($, 'landing_facts')).result).toBe(`fork: yes, an upstream remote is set\norigin visibility: public (gh)\nlanding mode: ${mode} (gh)\nholds lifted: none`)
   }
+})
+
+test('a push is read with the directory it runs in, from -C or the last cd before it, and a dry run is told apart', () => {
+  expect(pushTarget('git push')).toEqual({ dir: undefined, dryRun: false })
+  expect(pushTarget('git -C "/a b" push origin main')).toEqual({ dir: '/a b', dryRun: false })
+  expect(pushTarget(`cd /x && git fetch && cd '/y' && git push -u origin b`)).toEqual({ dir: '/y', dryRun: false })
+  expect(pushTarget('cd /x && git -C /z push')?.dir).toBe('/z')
+  expect(pushTarget('git push --dry-run')?.dryRun).toBe(true)
+  expect(pushTarget('git push -n origin main')?.dryRun).toBe(true)
+  expect(pushTarget('git push origin main && git log -n 1')?.dryRun).toBe(false)
+  // A path with a shell variable in it cannot be read, so the session's repo is checked.
+  expect(pushTarget('cd "$WT" && git push')?.dir).toBeUndefined()
+  expect(pushTarget('echo "git push"')).toBeNull()
+  expect(pushTarget('claude -p "git -C /z push" && git push')).toEqual({ dir: undefined, dryRun: false })
+  expect(pushTarget(`git commit -F - <<'EOF'\nThen git -C /z push it\nEOF\ncd /y && git push`)?.dir).toBe('/y')
+})
+
+// The engine's own verdict beneath the plugin is an allow.
+const verdict = ($: any, command: string, tool = 'Bash') => $.tool.check({ tool, input: { command } })
+function pushWorld(on: any, config: Record<string, string>, upstream = false) {
+  on('tool.check', () => ({ decision: 'allow' }))
+  return world(on, line => {
+    if (line === 'remote get-url origin') return 'https://example.com/a/b.git'
+    if (line === 'remote get-url upstream') return upstream ? 'https://example.com/up/b.git' : 2
+    if (line.startsWith('config --get')) return config[line.split('.')[1]] ?? 1
+  })
+}
+
+test('a push to a public origin, or of unknown visibility, is put to the user, in either shell', async ($: any, on: any) => {
+  const config: Record<string, string> = { originVisibility: 'public' }
+  pushWorld(on, config)
+  for (const tool of ['Bash', 'PowerShell']) {
+    const held = await verdict($, 'git push origin main', tool)
+    expect(held.decision).toBe('ask')
+    expect(held.reason).toContain('origin is public')
+    expect(held.reason).toContain('git config session-skills.holdPublicPush false')
+  }
+  delete config.originVisibility
+  expect((await verdict($, 'git push')).reason).toContain("origin's visibility is unknown")
+})
+
+test('a push to a private origin, with the public hold lifted, or a dry run, is not held', async ($: any, on: any) => {
+  const config: Record<string, string> = { originVisibility: 'private' }
+  const calls = pushWorld(on, config)
+  expect((await verdict($, 'git push')).decision).toBe('allow')
+  Object.assign(config, { originVisibility: 'public', holdPublicPush: 'false' })
+  expect((await verdict($, 'git push')).decision).toBe('allow')
+  delete config.holdPublicPush
+  calls.length = 0
+  expect((await verdict($, 'git push --dry-run origin main')).decision).toBe('allow')
+  expect((await verdict($, 'git log origin/main..main')).decision).toBe('allow')
+  expect(calls).toEqual([])
+})
+
+test('a fork holds a push until holdFork is lifted, and then by visibility', async ($: any, on: any) => {
+  const config: Record<string, string> = { originVisibility: 'public' }
+  pushWorld(on, config, true)
+  expect((await verdict($, 'git push')).reason).toContain('git config session-skills.holdFork false')
+  config.holdFork = 'false'
+  expect((await verdict($, 'git push')).reason).toContain('holdPublicPush')
+  config.originVisibility = 'private'
+  expect((await verdict($, 'git push')).decision).toBe('allow')
+})
+
+test('the hold is read in the directory the push runs in, and a failed read holds the push', async ($: any, on: any) => {
+  on('tool.check', () => ({ decision: 'allow' }))
+  on('session.repo', () => ({ value: { root: '/repo', remote: null, internal: false } }))
+  const dirs: string[] = []
+  on('process.run', (_$: any, e: any) => {
+    dirs.push(e.argv[2])
+    const line = e.argv.slice(3).join(' ')
+    if (line === 'remote get-url upstream') return { value: { exitCode: e.argv[2] === '/broken' ? 128 : 2, stdout: '', stderr: 'fatal: no' } }
+    return { value: { exitCode: 0, stdout: line.includes('originVisibility') ? 'private\n' : 'https://example.com/a/b.git\n', stderr: '' } }
+  })
+  expect((await verdict($, 'git -C "/other repo" push')).decision).toBe('allow')
+  expect(new Set(dirs)).toEqual(new Set(['/other repo']))
+  dirs.length = 0
+  expect((await verdict($, 'git push')).decision).toBe('allow')
+  expect(new Set(dirs)).toEqual(new Set(['/repo']))
+  const failed = await verdict($, 'cd /broken && git push')
+  expect(failed.decision).toBe('ask')
+  expect(failed.reason).toContain('could not be checked')
+})
+
+test('a held push never reaches the shell when nobody can allow it, and a refusal underneath stands', async ($: any, on: any) => {
+  pushWorld(on, { originVisibility: 'public' })
+  let ran = 0
+  on('tool.call', { tool: 'Bash' }, () => { ran++; return { result: {} } })
+  const refused = await $.tool.call({ tool: 'Bash', command: 'git push' })
+  expect(refused.deny ?? refused.isError).toBeTruthy()
+  expect(ran).toBe(0)
 })

@@ -65,6 +65,15 @@ denied and did not fail. A command that a settings hook rewrote into a push is n
 runs of each arm on Sonnet 5.5, the first reply stated a next step 4 of 4 times with the request and
 0 of 4 without it. Opus 5.5 stated one 2 of 2 times either way.
 
+The holds in `land-and-wrap` are read from the skill text, so a session that pushes without the
+skill pushes anyway: on 2026-11-06 a session pushed a cleared TODO to this public repo. A
+`tool.check` hook on `Bash` and `PowerShell` reads the holds for the directory a push runs in, from
+its `-C` or the last `cd` before it, and puts a held push to the user in the permission prompt with
+the `git config` line that lifts the hold. A hook's ask reaches a person in every permission mode,
+and where nobody can be asked, as under `claude -p`, the push is refused. A dry run is not held,
+and a subagent's push is held like any other. A path with a shell variable in it is not read, so
+that push is checked in the session's repo.
+
 A follow-up prompt after the reply used to do this. It showed in the transcript as a message from the
 plugin, it took a fenced block as the only sign of a next step, so it fired after "This session
 carries on with R104", and it cost a turn.

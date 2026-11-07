@@ -2,7 +2,7 @@
 // run the git work of both skills, and the tool a worktree session calls to edit
 // a file that is only in the primary checkout.
 import type { Register } from 'claude-code'
-import { pickBase, refLine, visibility, worktreeName } from './checkouts'
+import { pickBase, pushTarget, refLine, visibility, worktreeName } from './checkouts'
 import { splice } from './splice'
 
 const NONE = { type: 'object', properties: {} } as const
@@ -393,16 +393,26 @@ async function pruneBranches($: any): Promise<string> {
   return lines.length ? lines.join('\n') : 'nothing to prune'
 }
 
+const setting = ($: any, dir: string, key: string) => out(git($, dir, 'config', '--get', `session-skills.${key}`))
+
+// origin's visibility and where it was read, or '' for both where it is unknown.
+async function originVisibility($: any, dir: string): Promise<[string, string]> {
+  const url = (await remoteUrl($, dir, 'origin')) ?? ''
+  const vis = visibility(await setting($, dir, 'originVisibility'))
+  if (vis) return [vis, 'git config']
+  for (const [from, argv] of [['gh', ['--json', 'visibility', '-q', '.visibility']], ['glab', ['-F', 'json', '--jq', '.visibility']]] as const) {
+    const read = url && visibility(await out(run($, [from, 'repo', 'view', url, ...argv])))
+    if (read) return [read, from]
+  }
+  return ['', '']
+}
+
 async function landingFacts($: any): Promise<string> {
   const main = await primary($)
-  const config = (key: string) => out(git($, main, 'config', '--get', `session-skills.${key}`))
+  const config = (key: string) => setting($, main, key)
   const fork = (await remoteUrl($, main, 'upstream')) !== null
   const url = (await remoteUrl($, main, 'origin')) ?? ''
-
-  let vis = visibility(await config('originVisibility'))
-  let visFrom = 'git config'
-  if (!vis && url) [vis, visFrom] = [visibility(await out(run($, ['gh', 'repo', 'view', url, '--json', 'visibility', '-q', '.visibility']))), 'gh']
-  if (!vis && url) [vis, visFrom] = [visibility(await out(run($, ['glab', 'repo', 'view', url, '-F', 'json', '--jq', '.visibility']))), 'glab']
+  const [vis, visFrom] = await originVisibility($, main)
 
   // GitHub returns `protected` from its plain branch endpoint to any reader,
   // and its protection endpoint needs admin rights, so the first is read, plus
@@ -440,6 +450,17 @@ async function answer(name: string, run: () => Promise<string>) {
     const text = `${name}: ${(err as Error).message}`
     return { result: text, text, isError: true }
   }
+}
+
+// Why a push run in `dir` waits for the user, by the holds in land-and-wrap §1,
+// or '' when nothing holds it.
+async function pushHold($: any, dir: string): Promise<string> {
+  const lift = (hold: string) => `The user can lift it for this clone with \`git config session-skills.${hold} false\`.`
+  if ((await remoteUrl($, dir, 'upstream')) !== null && (await setting($, dir, 'holdFork')) !== 'false') return `this repo is a fork, and a fork never pushes. ${lift('holdFork')}`
+  if ((await setting($, dir, 'holdPublicPush')) === 'false') return ''
+  const [vis] = await originVisibility($, dir)
+  if (vis === 'private') return ''
+  return `${vis ? `origin is ${vis}` : "origin's visibility is unknown"}, so the push waits for the user's go. ${lift('holdPublicPush')}`
 }
 
 const NEXT_STEP = 'This command pushed work. End the reply with the next step, under the session rules: the hand-off block for the next unit of work, or one line stating that this session carries on with it. When nothing can start yet, write one line on what the next item waits on, then the block for when it can start. When nothing comes next at all, say so in one line.'
@@ -508,23 +529,26 @@ export const register: Register = on => {
 
   // The turn that pushes is the last turn of a landing, and in October 2026 13
   // of 16 such turns ended with no next step. The request for one is added to the
-  // push's own result, so the reply is written with it in view. The push is read
-  // from the call as it reached this plugin, so a command a settings hook rewrote
-  // into a push is not seen.
-  const PUSH = /\bgit(\s+-C\s+\S+)?\s+push\b/
-  // Each quoted argument is replaced with X so the regex matches only text the
-  // shell executes: a mention of git push inside a quoted argument, such as
-  // `claude -p "...git push..."`, no longer counts. The body of a heredoc whose
-  // delimiter is quoted goes first, since a quote in it closes nothing.
-  // shortcut: a push run as `bash -c 'git push'` is no longer detected, and an unquoted heredoc delimiter is not parsed.
-  const unquoted = (cmd: string) =>
-    cmd.replace(/(<<-?[ \t]*(["'])([^"'\s]+)\2[^\n]*\n)[\s\S]*?^([ \t]*\3)$/gm, '$1$4')
-      .replace(/"(?:[^"\\]|\\.)*"?/g, 'X').replace(/'[^']*'?/g, 'X')
+  // push's own result, so the reply is written with it in view.
   for (const tool of ['Bash', 'PowerShell']) {
     on('tool.call', { tool }, async ($, e: any, next: any) => {
       const ran = await next(e)
-      if (e.agentId || ran.deny !== undefined || (ran as any).isError || !PUSH.test(unquoted(String(e.command ?? '')))) return ran
+      if (e.agentId || ran.deny !== undefined || (ran as any).isError || !pushTarget(String(e.command ?? ''))) return ran
       return { ...ran, context: [...(ran.context ?? []), NEXT_STEP] }
+    })
+  }
+
+  // A held push is put to the user in the permission prompt, in every mode: a
+  // session that pushed without reading land-and-wrap pushed to this public
+  // repo on 2026-11-06. Where nobody can be asked, the push is refused. A
+  // subagent's push is held too.
+  for (const tool of ['Bash', 'PowerShell']) {
+    on('tool.check', { tool }, async ($, e: any, next: any) => {
+      const verdict = await next(e)
+      const push = verdict.decision === 'deny' ? null : pushTarget(String(e.input?.command ?? ''))
+      if (!push || push.dryRun) return verdict
+      const why = await pushHold($, push.dir ?? (await primary($))).catch(err => `the push hold could not be checked: ${(err as Error).message}`)
+      return why ? { decision: 'ask', reason: `Push held: ${why}` } : verdict
     })
   }
 

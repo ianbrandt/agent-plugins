@@ -1,5 +1,6 @@
 // The rules behind the worktree and landing tools, apart from git: where a new
-// branch starts, what a visibility lookup may return, and a worktree's name.
+// branch starts, what a visibility lookup may return, a worktree's name, and
+// where a shell command pushes.
 
 // Where a new branch starts. `origin/<default>` after a fetch, except that a
 // local default branch with nothing missing is the base: while a push is held
@@ -32,3 +33,34 @@ export function visibility(text: string): string {
 }
 
 export const worktreeName = (name: string, id = '') => (id ? `${id.toLowerCase()}-${name}` : name)
+
+// A push is read from the call as it reached this plugin, so a command a
+// settings hook rewrote into a push is not seen.
+const PUSH = /\bgit(?:\s+-C\s+(\S+))?\s+push\b([^;&|\n]*)/d
+const CD = /(?:^|[;&|(\n])\s*cd\s+(\S+)/g
+// Each quoted argument is masked with X so the regex matches only text the
+// shell executes: a mention of git push inside a quoted argument, such as
+// `claude -p "...git push..."`, no longer counts. The body of a heredoc whose
+// delimiter is quoted goes first, since a quote in it closes nothing. The
+// length is kept, so a match is read back from the command at its position.
+// shortcut: a push run as `bash -c 'git push'` is no longer detected, and an unquoted heredoc delimiter is not parsed.
+const mask = (cmd: string) =>
+  cmd.replace(/(<<-?[ \t]*(["'])([^"'\s]+)\2[^\n]*\n)([\s\S]*?)^([ \t]*\3)$/gm, (_m, open, _q, _d, body, close) => open + body.replace(/[^\n]/g, ' ') + close)
+    .replace(/"(?:[^"\\]|\\.)*"?/g, m => 'X'.repeat(m.length)).replace(/'[^']*'?/g, m => 'X'.repeat(m.length))
+
+// The first push in a shell command: the directory it runs in, from its -C or
+// the last cd before it, and whether it is a dry run. Null for no push.
+// shortcut: a path with a shell variable or ~ in it is not read, and the push is checked in the session's repo.
+export function pushTarget(cmd: string): { dir: string | undefined; dryRun: boolean } | null {
+  const masked = mask(cmd)
+  const push = PUSH.exec(masked)
+  if (!push) return null
+  const read = ([start, end]: [number, number]) => {
+    const word = cmd.slice(start, end).replace(/^(["'])(.*)\1$/, '$2')
+    return /[$`~]/.test(word) ? undefined : word
+  }
+  const cd = [...masked.slice(0, push.index).matchAll(CD)].pop()
+  const at = push.indices!
+  const dir = at[1] ? read(at[1]) : cd ? read([cd.index! + cd[0].length - cd[1].length, cd.index! + cd[0].length]) : undefined
+  return { dir, dryRun: /(^|\s)(--dry-run|-n)(?=\s|$)/.test(push[2]) }
+}

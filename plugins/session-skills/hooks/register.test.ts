@@ -189,9 +189,12 @@ test('the user is told when the rename is refused', async ($: any, on: any) => {
   expect(toasts.join()).toContain('Parser core')
 })
 
-// The context added to a command's result, with the command's own result beneath.
+// The context added to a command's result, with the command's own result
+// beneath, in a repo with a private origin, so no push is held.
 function pushes(on: any) {
   const w = { result: { result: {} } as any }
+  on('session.repo', () => ({ value: { root: '/repo', remote: null, internal: false } }))
+  on('process.run', (_$: any, e: any) => ({ value: e.argv.includes('upstream') ? { exitCode: 2, stdout: '', stderr: '' } : { exitCode: 0, stdout: 'private\n', stderr: '' } }))
   on('tool.call', { tool: 'Bash' }, () => w.result)
   on('tool.call', { tool: 'PowerShell' }, () => w.result)
   return w
