@@ -488,18 +488,18 @@ async function pushRemote($: any, dir: string): Promise<string> {
   return 'origin'
 }
 
-// Every git config key read in `dir`, as git prints it, with each of its values.
-// A boolean key with no value is true.
-async function configList($: any, dir: string): Promise<Map<string, string[]>> {
+// Every git config entry read in `dir`, as git prints it, in the order git
+// reads them. A boolean key with no value is true.
+async function configList($: any, dir: string): Promise<[string, string][]> {
   const r = await git($, dir, 'config', '-z', '--list')
   if (r.exitCode !== 0) failed(r)
-  const keys = new Map<string, string[]>()
+  const entries: [string, string][] = []
   for (const entry of r.stdout.split('\0')) {
     const nl = entry.indexOf('\n')
     const key = nl < 0 ? entry : entry.slice(0, nl)
-    if (key.trim()) keys.set(key, [...(keys.get(key) ?? []), nl < 0 ? 'true' : entry.slice(nl + 1)])
+    if (key.trim()) entries.push([key, nl < 0 ? 'true' : entry.slice(nl + 1)])
   }
-  return keys
+  return entries
 }
 
 const TRUE = /^(?:true|yes|on|-?[1-9]\d*)$/i
@@ -508,14 +508,15 @@ const TRUE = /^(?:true|yes|on|-?[1-9]\d*)$/i
 // remote mirrors or has a + refspec, and submodules where push.recurseSubmodules
 // or submodule.recurse sends the push into them and the index has a gitlink,
 // with or without a .gitmodules. A remote that is not written out may be any of
-// them. A setting is read from its last value, the one git uses.
+// them. A setting is read from its last value, the one git uses, and of the two
+// recursion keys git uses the one set last.
 async function pushConfig($: any, dir: string, p: Push): Promise<{ force: boolean; submodules: boolean }> {
-  const config = await configList($, dir)
+  const entries = await configList($, dir)
   const name = p.remote === undefined ? await pushRemote($, dir) : p.remote
-  const remotes = (field: string) => [...config].filter(([k]) => (name === null ? k.startsWith('remote.') && k.endsWith(`.${field}`) : k === `remote.${name}.${field}`)).map(([, v]) => v)
-  const force = remotes('mirror').some(v => TRUE.test(v.at(-1) ?? '')) || remotes('push').flat().some(v => v.startsWith('+'))
-  const mode = config.get('push.recursesubmodules')?.at(-1)
-  const recurses = p.submodules ?? (mode !== undefined ? /^(?:on-demand|only)$/i.test(mode) : TRUE.test(config.get('submodule.recurse')?.at(-1) ?? ''))
+  const remote = ([k]: [string, string], field: string) => (name === null ? k.startsWith('remote.') && k.endsWith(`.${field}`) : k === `remote.${name}.${field}`)
+  const force = [...new Map(entries)].some(e => remote(e, 'mirror') && TRUE.test(e[1])) || entries.some(e => remote(e, 'push') && e[1].startsWith('+'))
+  const [key, mode] = entries.filter(([k]) => k === 'push.recursesubmodules' || k === 'submodule.recurse').at(-1) ?? ['', '']
+  const recurses = p.submodules ?? (key === 'push.recursesubmodules' ? /^(?:on-demand|only)$/i.test(mode) : TRUE.test(mode))
   // `:/` lists the whole index from a subdirectory too.
   // shortcut: the whole index is printed to find one gitlink, read only where recursion is set; filter in git if a large repo slows the hook.
   return { force, submodules: recurses && /^160000 /m.test(await must($, dir, 'ls-files', '-s', ':/')) }
@@ -580,8 +581,8 @@ async function otherBase($: any, dir: string, what: string): Promise<string> {
   const others = (await must($, dir, 'remote')).split(/\r?\n/).map(r => r.trim()).filter(r => r && r !== 'origin')
   if (others.length) return `this clone has ${others.map(r => `\`${r}\``).join(', ')} besides origin, and the PR may open there`
   // A read that fails holds the PR.
-  for (const [key, values] of await configList($, dir)) {
-    if (/^remote\.origin\.(?:gh|glab)-resolved$/.test(key) && values.at(-1) !== 'base') return `${key} is set to ${values.at(-1)}`
+  for (const [key, value] of new Map(await configList($, dir))) {
+    if (/^remote\.origin\.(?:gh|glab)-resolved$/.test(key) && value !== 'base') return `${key} is set to ${value}`
   }
   return ''
 }

@@ -1600,6 +1600,17 @@ test('the last recursion or mirror setting is read, from config and from -c', as
   expect((await verdict($, 'R=origin; git push "$R"')).reason).toContain('Force push')
 })
 
+// git 2.56.0 recursed with a global push.recurseSubmodules=check and a local
+// submodule.recurse=true, and did not with the two the other way around.
+test('the recursion key set last in config is read, whichever key it is', async ($: any, on: any) => {
+  const config: Record<string, string> = { 'session-skills.originVisibility': 'private', 'push.recursesubmodules': 'check', 'submodule.recurse': 'true' }
+  targetWorld(on, config, undefined, undefined, 'main', GITLINK)
+  expect((await verdict($, 'git push origin main')).reason).toContain('submodules')
+  delete config['push.recursesubmodules']
+  config['push.recursesubmodules'] = 'check'
+  expect((await verdict($, 'git push origin main')).decision).toBe('allow')
+})
+
 test('a variable set with env after a wrapper such as timeout is read', () => {
   for (const wrapper of ['timeout 60s', 'nohup', 'nice -n 5']) {
     const cmd = `${wrapper} env GH_REPO=o/other gh pr create --head feature --fill`
