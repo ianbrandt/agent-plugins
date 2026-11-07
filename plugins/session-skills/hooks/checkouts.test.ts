@@ -1128,7 +1128,7 @@ test('a push to a remote other than origin is held by that remote\'s visibility,
   vis['https://h/o/pub.git'] = 'private'
   expect((await verdict($, 'git push pub main')).decision).toBe('allow')
   expect((await verdict($, 'git push https://h/a/b.git main')).reason).toContain('not a remote of this repo')
-  expect((await verdict($, 'git push "$R" main')).reason).toContain('could not be read from the command')
+  expect((await verdict($, 'git push "$R" main')).reason).toContain('the remote it pushes to could not be read')
   expect((await verdict($, 'git -c remote.origin.pushurl=https://h/o/pub.git push origin main')).decision).toBe('ask')
 })
 
@@ -1612,6 +1612,21 @@ test('the recursion key set last in config is read, whichever key it is', async 
   delete config['push.recursesubmodules']
   config['push.recursesubmodules'] = 'check'
   expect((await verdict($, 'git push origin main')).decision).toBe('allow')
+})
+
+// git 2.56.0 pushed `git push publish` to each member of remotes.publish,
+// mirroring b, and preferred the group to a remote also named publish.
+test('a push to a remote group is read as a push to a remote that is not written out', async ($: any, on: any) => {
+  const config: Record<string, string> = { 'session-skills.holdPublicPush': 'false', 'remotes.publish': 'a b', 'remote.b.mirror': 'true' }
+  targetWorld(on, config, { origin: ['https://h/a/b.git'], a: ['https://h/a/b.git'], b: ['https://h/o/pub.git'], publish: ['https://h/a/b.git'] })
+  expect((await verdict($, 'git push publish')).reason).toContain('Force push')
+  delete config['remote.b.mirror']
+  expect((await verdict($, 'git push publish main')).decision).toBe('allow')
+  config['session-skills.holdPublicPush'] = 'true'
+  config['session-skills.originVisibility'] = 'private'
+  expect((await verdict($, 'git push publish main')).reason).toContain('the remote it pushes to could not be read')
+  expect(configWrites("git config remotes.publish 'a b'")).toEqual(['git config remotes.publish'])
+  expect(pushTarget('git -c remotes.origin=pub push origin main')?.remote).toBeNull()
 })
 
 test('a variable set with env after a wrapper such as timeout is read', () => {

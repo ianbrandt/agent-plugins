@@ -509,17 +509,21 @@ const TRUE = /^(?:true|yes|on|-?[1-9]\d*)$/i
 // or submodule.recurse sends the push into them and the index has a gitlink,
 // with or without a .gitmodules. A remote that is not written out may be any of
 // them. A setting is read from its last value, the one git uses, and of the two
-// recursion keys git uses the one set last.
-async function pushConfig($: any, dir: string, p: Push): Promise<{ force: boolean; submodules: boolean }> {
+// recursion keys git uses the one set last. git pushes to each member of a
+// remote group, and prefers a group to a remote of the same name, so a group
+// is read as a remote that is not written out.
+async function pushConfig($: any, dir: string, p: Push): Promise<{ force: boolean; submodules: boolean; group: boolean }> {
   const entries = await configList($, dir)
-  const name = p.remote === undefined ? await pushRemote($, dir) : p.remote
+  const named = p.remote === undefined ? await pushRemote($, dir) : p.remote
+  const group = named !== null && entries.some(([k]) => k === `remotes.${named.toLowerCase()}`)
+  const name = group ? null : named
   const remote = ([k]: [string, string], field: string) => (name === null ? k.startsWith('remote.') && k.endsWith(`.${field}`) : k === `remote.${name}.${field}`)
   const force = [...new Map(entries)].some(e => remote(e, 'mirror') && TRUE.test(e[1])) || entries.some(e => remote(e, 'push') && e[1].startsWith('+'))
   const [key, mode] = entries.filter(([k]) => k === 'push.recursesubmodules' || k === 'submodule.recurse').at(-1) ?? ['', '']
   const recurses = p.submodules ?? (key === 'push.recursesubmodules' ? /^(?:on-demand|only)$/i.test(mode) : TRUE.test(mode))
   // `:/` lists the whole index from a subdirectory too.
   // shortcut: the whole index is printed to find one gitlink, read only where recursion is set; filter in git if a large repo slows the hook.
-  return { force, submodules: recurses && /^160000 /m.test(await must($, dir, 'ls-files', '-s', ':/')) }
+  return { force, submodules: recurses && /^160000 /m.test(await must($, dir, 'ls-files', '-s', ':/')), group }
 }
 
 // Every URL a remote pushes to, or null where git has no such remote.
@@ -553,7 +557,7 @@ async function pushHold($: any, dir: string, remote: string | null | undefined):
   const waits = `so the push waits for the user's go. ${lift('holdPublicPush')}`
   if ((await remoteUrl($, dir, 'upstream')) !== null && (await setting($, dir, 'holdFork')) !== 'false') return `this repo is a fork, and a fork never pushes. ${lift('holdFork')}`
   if ((await setting($, dir, 'holdPublicPush')) === 'false') return ''
-  if (remote === null) return `the remote it pushes to could not be read from the command, ${waits}`
+  if (remote === null) return `the remote it pushes to could not be read, ${waits}`
   const name = remote ?? (await pushRemote($, dir))
   // `git push .` updates a branch in this repo, and a path is on this machine.
   if (name === '.' || LOCAL_PATH.test(name)) return ''
@@ -743,7 +747,7 @@ export const register: Register = on => {
               const config = await pushConfig($, dir, push)
               force ||= config.force
               submodules = config.submodules
-              why = await pushHold($, dir, push.remote)
+              why = await pushHold($, dir, config.group ? null : push.remote)
             } catch (err) {
               why = `the push hold could not be checked: ${(err as Error).message}`
             }

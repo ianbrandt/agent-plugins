@@ -144,7 +144,8 @@ It asks for a push whose remote is not written out or is changed for that push w
 the command, as an assignment before a command's first word, with `env`, `export`, or `sudo`, after
 a wrapper such as `timeout 60s` too, or with PowerShell's `$env:`. A variable in an argument, as in `git commit -m 'HOME=/tmp'`, is not set. When a push's
 remote is not written out, it is read as a force push if any remote has a mirror or a `+` refspec in
-config. A `send-pack` or `http-push` takes a URL or a path, so its
+config. A push to a remote group set with `remotes.<name>` is read the same way, since git pushes to
+each member and prefers a group to a remote of the same name. A `send-pack` or `http-push` takes a URL or a path, so its
 remote is not read. It asks too for a push with no remote after a `git switch`, `checkout`, or
 `symbolic-ref` that sets HEAD, a `git rebase` given a branch to check out, with or without `--root`,
 a `git rebase --continue`, `--skip`, or `--abort`, or a `git bisect reset`, since HEAD is detached while the hook reads
@@ -156,7 +157,7 @@ adversarial pass found 18 commands that got past these checks, among them a PR b
 and each has a regression test.
 
 The hold reads git config before the command runs, so a write that changes where a later push goes
-is put to the user too: a `git config` write to a key under `remote`, `url`, `branch`, `include`,
+is put to the user too: a `git config` write to a key under `remote`, `remotes`, `url`, `branch`, `include`,
 `includeIf`, or `alias`, to `push.recurseSubmodules` or `submodule.recurse`, a removed or renamed
 `push` or `submodule` section, `git remote add`, `rename`, `remove`, `rm`, or `set-url`, and `git submodule
 set-url` or `sync`. So is a write to a `session-skills` key, since setting `holdPublicPush` or

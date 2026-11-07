@@ -774,8 +774,8 @@ const joined = (words: Word[]) => words.map(w => (w.literal ? `'${w.text.replace
 // The config keys that can change where a push or a PR goes. One set for a
 // single push makes its remote unknown, and a write to one or to a hold is put
 // to the user.
-const TARGET_KEYS = /^(?:remote|url|branch|include|includeif|lfs)(?:\.|$)/i
-const HELD_KEYS = /^(?:(?:remote|url|branch|include|includeif|lfs|alias|session-skills)(?:\.|$)|push\.recursesubmodules$|submodule\.recurse$)/i
+const TARGET_KEYS = /^(?:remotes?|url|branch|include|includeif|lfs)(?:\.|$)/i
+const HELD_KEYS = /^(?:(?:remotes?|url|branch|include|includeif|lfs|alias|session-skills)(?:\.|$)|push\.recursesubmodules$|submodule\.recurse$)/i
 // Variables that move the config git reads, and those that send gh or glab to another repo.
 const CONFIG_VARS = /^(?:GIT_CONFIG\w*|HOME|XDG_CONFIG_HOME|GIT_COMMON_DIR)$/i
 const REPO_VARS = /^(?:GH_REPO|GITLAB_REPO|GIT_DIR)$/i
@@ -962,8 +962,8 @@ function configKey(args: Word[]): string | undefined {
 const unread = (configs: Word[]) => configs.some(w => !w.literal && !/^[\w.-]+=/.test(w.text))
 
 // Each command in a shell command that can change where a later push or PR
-// goes, run one unseen, or lift a hold: a git config write to a remote, url,
-// branch, include, lfs, alias, or session-skills key, `git remote add`,
+// goes, run one unseen, or lift a hold: a git config write to a remote,
+// remotes, url, branch, include, lfs, alias, or session-skills key, `git remote add`,
 // `rename`, `remove`, `rm`, or `set-url`, `git submodule set-url` or `sync`,
 // and `gh alias set` or `import`. An alias set with -c is read in place.
 // shortcut: an edit to the config file itself, with a file tool or sed, or a write through an alias in git config, is not seen.
