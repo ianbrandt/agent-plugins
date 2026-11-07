@@ -2,7 +2,7 @@
 // run the git work of both skills, and the tool a worktree session calls to edit
 // a file that is only in the primary checkout.
 import type { Register } from 'claude-code'
-import { type HostWrite, hostWrites, pickBase, type Push, pushTargets, refLine, visibility, worktreeName } from './checkouts'
+import { configWrites, type HostWrite, hostWrites, pickBase, type Push, pushTargets, refLine, visibility, worktreeName } from './checkouts'
 import { splice } from './splice'
 
 const NONE = { type: 'object', properties: {} } as const
@@ -395,12 +395,14 @@ async function pruneBranches($: any): Promise<string> {
 
 const setting = ($: any, dir: string, key: string) => out(git($, dir, 'config', '--get', `session-skills.${key}`))
 
+const VIEW = [['gh', ['--json', 'visibility', '-q', '.visibility']], ['glab', ['-F', 'json', '--jq', '.visibility']]] as const
+
 // origin's visibility and where it was read, or '' for both where it is unknown.
 async function originVisibility($: any, dir: string): Promise<[string, string]> {
   const url = (await remoteUrl($, dir, 'origin')) ?? ''
   const vis = visibility(await setting($, dir, 'originVisibility'))
   if (vis) return [vis, 'git config']
-  for (const [from, argv] of [['gh', ['--json', 'visibility', '-q', '.visibility']], ['glab', ['-F', 'json', '--jq', '.visibility']]] as const) {
+  for (const [from, argv] of VIEW) {
     const read = url && visibility(await out(run($, [from, 'repo', 'view', url, ...argv])))
     if (read) return [read, from]
   }
@@ -452,29 +454,103 @@ async function answer(name: string, run: () => Promise<string>) {
   }
 }
 
+// The directory a command in the Bash tool runs in: the tool's working
+// directory, which a cd in an earlier call moves, or a path read against it.
+// In a linked worktree the session's repo is the primary checkout, but the
+// branch checked out is the worktree's.
+async function where($: any, dir: string | undefined): Promise<string> {
+  if (dir !== undefined && /^(?:[A-Za-z]:)?[\\/]/.test(dir)) return dir
+  const cwd = (await $.session.cwd().catch(() => '')) || (await primary($))
+  return dir === undefined ? cwd : `${cwd.replace(/[\\/]+$/, '')}/${dir}`
+}
+
+// The remote a `git push` with none given goes to: the branch's pushRemote,
+// then remote.pushDefault, then the branch's remote, then origin.
+async function pushRemote($: any, dir: string): Promise<string> {
+  const branch = await out(git($, dir, 'symbolic-ref', '--short', '-q', 'HEAD'))
+  for (const key of [branch && `branch.${branch}.pushRemote`, 'remote.pushDefault', branch && `branch.${branch}.remote`]) {
+    const name = key && (await out(git($, dir, 'config', '--get', key)))
+    if (name) return name
+  }
+  return 'origin'
+}
+
+// Every URL a remote pushes to, or null where git has no such remote.
+async function pushUrls($: any, dir: string, name: string): Promise<string[] | null> {
+  const r = await git($, dir, 'remote', 'get-url', '--push', '--all', name)
+  if (r.exitCode === 2) return null
+  if (r.exitCode !== 0) failed(r)
+  return r.stdout.split(/\r?\n/).map(u => u.trim()).filter(Boolean)
+}
+
+// The visibility gh or glab reads for every URL: private only where each one is
+// private, and '' where any one is unknown.
+async function urlsVisibility($: any, urls: string[]): Promise<string> {
+  let worst = urls.length ? 'private' : ''
+  for (const url of urls) {
+    let vis = ''
+    for (const [from, argv] of VIEW) if (!vis) vis = visibility(await out(run($, [from, 'repo', 'view', url, ...argv])))
+    if (!vis) return ''
+    if (vis !== 'private') worst = vis
+  }
+  return worst
+}
+
 // Why a push run in `dir` waits for the user, by the holds in land-and-wrap §1,
-// or '' when nothing holds it.
-async function pushHold($: any, dir: string): Promise<string> {
+// or '' when nothing holds it. The visibility is read for the remote the push
+// goes to: origin's set in git config, else each URL it pushes to.
+async function pushHold($: any, dir: string, remote: string | null | undefined): Promise<string> {
   const lift = (hold: string) => `The user can lift it for this clone with \`git config session-skills.${hold} false\`.`
+  const waits = `so the push waits for the user's go. ${lift('holdPublicPush')}`
   if ((await remoteUrl($, dir, 'upstream')) !== null && (await setting($, dir, 'holdFork')) !== 'false') return `this repo is a fork, and a fork never pushes. ${lift('holdFork')}`
   if ((await setting($, dir, 'holdPublicPush')) === 'false') return ''
-  const [vis] = await originVisibility($, dir)
+  if (remote === null) return `the remote it pushes to could not be read from the command, ${waits}`
+  const name = remote ?? (await pushRemote($, dir))
+  const urls = await pushUrls($, dir, name)
+  if (!urls) return `it pushes to \`${name}\`, which is not a remote of this repo, ${waits}`
+  const origin = await pushUrls($, dir, 'origin')
+  const isOrigin = name === 'origin' || (!!origin && urls.every(u => origin.includes(u)))
+  const vis = (isOrigin && visibility(await setting($, dir, 'originVisibility'))) || (await urlsVisibility($, urls))
   if (vis === 'private') return ''
-  return `${vis ? `origin is ${vis}` : "origin's visibility is unknown"}, so the push waits for the user's go. ${lift('holdPublicPush')}`
+  const what = isOrigin ? 'origin' : `the remote \`${name}\``
+  return `${vis ? `${what} is ${vis}` : isOrigin ? "origin's visibility is unknown" : `the visibility of ${what} is unknown`}, ${waits}`
+}
+
+// Why gh or glab may open a PR or MR in a repo other than origin's, or '' when
+// it opens it there. Both CLIs take the repo from GH_REPO or GITLAB_REPO first,
+// then from a `gh-resolved` or `glab-resolved` key on a remote, which `gh repo
+// set-default` writes, and then prefer a remote named upstream, github, or
+// gitlab to origin. So only a clone with origin alone, resolved to itself, qualifies.
+// shortcut: a GH_REPO set in a shell profile is not seen, since the hook reads Claude Code's own environment.
+async function otherBase($: any, dir: string, what: string): Promise<string> {
+  const glab = what.startsWith('glab')
+  const name = glab ? 'GITLAB_REPO' : 'GH_REPO'
+  const repo = await (glab ? $.env.get('GITLAB_REPO') : $.env.get('GH_REPO')).catch(() => '')
+  if (repo) return `${name} is set to ${repo}`
+  const others = (await must($, dir, 'remote')).split(/\r?\n/).map(r => r.trim()).filter(r => r && r !== 'origin')
+  if (others.length) return `this clone has ${others.map(r => `\`${r}\``).join(', ')} besides origin, and the PR may open there`
+  for (const line of (await out(git($, dir, 'config', '--get-regexp', '^remote\\.origin\\.(gh|glab)-resolved'))).split(/\r?\n/)) {
+    const [key, value] = line.trim().split(/\s+/)
+    if (key && value !== 'base') return `${key} is set to ${value}`
+  }
+  return ''
 }
 
 // Why a host write waits for the user, or '' when it does not. Only a PR or MR
-// opened in this clone's own repo, with holdPrText lifted and past the fork
-// hold, goes unasked.
+// opened in origin's repo, with holdPrText lifted and past the fork hold, goes
+// unasked, and one that may push the branch is held as that push too.
 async function hostHold($: any, w: HostWrite): Promise<string> {
   const write = `\`${w.what}\` writes to the remote host`
   if (!w.prCreate || w.otherRepo) return `${write}.`
   if (w.dir === null) return `${write}, and the repo it runs in could not be read from the command.`
-  const dir = w.dir ?? (await primary($))
+  const dir = await where($, w.dir)
   const lift = (hold: string) => `The user can lift it for this clone with \`git config session-skills.${hold} false\`.`
   if ((await remoteUrl($, dir, 'upstream')) !== null && (await setting($, dir, 'holdFork')) !== 'false') return `${write}, and this repo is a fork, which writes nothing there. ${lift('holdFork')}`
-  if ((await setting($, dir, 'holdPrText')) === 'false') return ''
-  return `${write}, and a PR's text waits for the user's go. ${lift('holdPrText')}`
+  if ((await setting($, dir, 'holdPrText')) !== 'false') return `${write}, and a PR's text waits for the user's go. ${lift('holdPrText')}`
+  const other = await otherBase($, dir, w.what)
+  if (other) return `${write}, and ${other}.`
+  const push = w.pushes ? await pushHold($, dir, 'origin') : ''
+  return push && `${write}, and it may push the branch: ${push}`
 }
 
 // Each push in a command, with a git alias read from config in the directory it
@@ -487,11 +563,11 @@ async function pushesIn($: any, pushes: Push[], depth = 0): Promise<Push[]> {
       found.push(p)
       continue
     }
-    const dir = p.dir === null || depth > 3 ? null : (p.dir ?? (await primary($).catch(() => null)))
+    const dir = p.dir === null || depth > 3 ? null : await where($, p.dir).catch(() => null)
     const r = dir === null ? null : await git($, dir, 'config', '--get', `alias.${p.alias}`)
     if (r?.exitCode === 1) continue
     if (!r || r.exitCode !== 0) {
-      found.push({ dir: p.dir, dryRun: false, force: false })
+      found.push({ dir: p.dir, dryRun: false, force: false, remote: null })
       continue
     }
     const v = r.stdout.trim()
@@ -598,10 +674,12 @@ export const register: Register = on => {
         for (const push of (await pushesIn($, pushTargets(command, tool))).filter(p => !p.dryRun)) {
           const why = push.dir === null
             ? "the repo it runs in could not be read from the command, so the push waits for the user's go."
-            : await pushHold($, push.dir ?? (await primary($))).catch(err => `the push hold could not be checked: ${(err as Error).message}`)
+            : await where($, push.dir).then(dir => pushHold($, dir, push.remote)).catch(err => `the push hold could not be checked: ${(err as Error).message}`)
           if (push.force) add('Force push: this replaces commits on the remote branch that a reviewer may already have read.')
           if (why) add(`Push held: ${why}`)
         }
+        // Each of these can move a later push or PR, which the hold reads before it runs.
+        for (const what of configWrites(command, tool)) add(`Config write held: \`${what}\` can change where a push or a PR goes, or lift a hold, so it waits for the user's go.`)
         for (const w of hostWrites(command, tool)) {
           const why = await hostHold($, w).catch(err => `the hold on \`${w.what}\` could not be checked: ${(err as Error).message}`)
           if (why) add(`Host write held: ${why}`)

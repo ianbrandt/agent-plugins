@@ -2,7 +2,7 @@
 // hold, and the host-write hold against a faked git. The costly errors are a branch opened without commits held on the
 // local default branch, and an unmerged branch deleted by the prune.
 import { expect, test } from 'claude-code/testing'
-import { hostWrites, pickBase, pushTargets, refLine, visibility, worktreeName } from './checkouts'
+import { configWrites, hostWrites, pickBase, pushTargets, refLine, visibility, worktreeName } from './checkouts'
 
 const pushTarget = (cmd: string) => pushTargets(cmd)[0] ?? null
 
@@ -593,8 +593,8 @@ test('landing_facts reads a protected default branch, or a pull-request ruleset,
 
 test('a push is read with the directory it runs in, from -C or the last cd before it, and a dry run is told apart', () => {
   expect(pushTarget('git push')).toEqual({ dir: undefined, dryRun: false, force: false })
-  expect(pushTarget('git -C "/a b" push origin main')).toEqual({ dir: '/a b', dryRun: false, force: false })
-  expect(pushTarget(`cd /x && git fetch && cd '/y' && git push -u origin b`)).toEqual({ dir: '/y', dryRun: false, force: false })
+  expect(pushTarget('git -C "/a b" push origin main')).toEqual({ dir: '/a b', dryRun: false, force: false, remote: 'origin' })
+  expect(pushTarget(`cd /x && git fetch && cd '/y' && git push -u origin b`)).toEqual({ dir: '/y', dryRun: false, force: false, remote: 'origin' })
   expect(pushTarget('cd /x && git -C /z push')?.dir).toBe('/z')
   expect(pushTarget('git push --dry-run')?.dryRun).toBe(true)
   expect(pushTarget('git push -n origin main')?.dryRun).toBe(true)
@@ -648,7 +648,7 @@ test('a push or host write inside a substitution runs in the directory of the la
   // A variable path after a cd cannot be read.
   expect(pushTarget('cd /fork && out="$(cd "$WT" && git push)"')?.dir).toBeNull()
   expect(pushTarget('cd /fork && echo "`git -C /z push`"')?.dir).toBe('/z')
-  expect(hostWrites('cd /fork && url="$(gh pr create --fill)"')).toEqual([{ what: 'gh pr create', dir: '/fork', prCreate: true, otherRepo: false }])
+  expect(hostWrites('cd /fork && url="$(gh pr create --fill)"')).toEqual([{ what: 'gh pr create', dir: '/fork', prCreate: true, otherRepo: false, pushes: true }])
   expect(hostWrites('cd /fork; echo `gh pr merge 3`').map(w => w.dir)).toEqual(['/fork'])
 })
 
@@ -665,10 +665,10 @@ test('a backtick in single quotes or a quoted heredoc is text, and in an unquote
 })
 
 test('a comment or an option value is not read as a dry run', () => {
-  expect(pushTarget('git push --force origin main # --dry-run')).toEqual({ dir: undefined, dryRun: false, force: true })
+  expect(pushTarget('git push --force origin main # --dry-run')).toEqual({ dir: undefined, dryRun: false, force: true, remote: 'origin' })
   expect(pushTarget('git push -o -n origin main')?.dryRun).toBe(false)
   expect(pushTarget('git push -on origin main')?.dryRun).toBe(false)
-  expect(pushTarget('git push -nf origin main')).toEqual({ dir: undefined, dryRun: true, force: true })
+  expect(pushTarget('git push -nf origin main')).toEqual({ dir: undefined, dryRun: true, force: true, remote: 'origin' })
 })
 
 test('a nested substitution, or a parenthesis inside one, is read', () => {
@@ -734,7 +734,7 @@ test('a help flag given as a value, a GraphQL query outside its field, label clo
   expect(hostWrite(`gh api graphql -f query="$Q"`)?.what).toBe('gh api graphql')
   expect(hostWrite('gh label clone o/src')?.what).toBe('gh label clone')
   expect(hostWrite('gh repo clone o/r')).toBeNull()
-  expect(pushTarget('git subtree push --prefix docs origin gh-pages')).toEqual({ dir: undefined, dryRun: false, force: false })
+  expect(pushTarget('git subtree push --prefix docs origin gh-pages')).toEqual({ dir: undefined, dryRun: false, force: false, remote: 'origin' })
   expect(pushTarget('git lfs push --dry-run origin main')?.dryRun).toBe(true)
 })
 
@@ -767,7 +767,7 @@ test('a subcommand that is not written out is a push or write whose repo cannot 
 test('send-pack and http-push are pushes, and a command given to submodule foreach is read', () => {
   expect(pushTarget('git send-pack --force git@github.com:o/r.git main')?.force).toBe(true)
   expect(pushTarget('git http-push --dry-run https://h/r.git main')?.dryRun).toBe(true)
-  expect(pushTarget('git -C /pub submodule foreach --recursive git push origin HEAD')).toEqual({ dir: null, dryRun: false, force: false })
+  expect(pushTarget('git -C /pub submodule foreach --recursive git push origin HEAD')).toEqual({ dir: null, dryRun: false, force: false, remote: 'origin' })
   expect(pushTarget("git submodule foreach 'git push -f'")?.force).toBe(true)
 })
 
@@ -805,7 +805,7 @@ test('a long push option is read as git reads it, by a unique prefix and after -
   expect(pushTarget('git -c remote.origin.push=+HEAD:refs/heads/main push origin')?.force).toBe(true)
   expect(pushTarget('git push -h')?.dryRun).toBe(true)
   expect(pushTarget('git push --help')?.dryRun).toBe(true)
-  expect(pushTarget('git push --no-verify -u origin main')).toEqual({ dir: undefined, dryRun: false, force: false })
+  expect(pushTarget('git push --no-verify -u origin main')).toEqual({ dir: undefined, dryRun: false, force: false, remote: 'origin' })
 })
 
 test('a PowerShell curly quote is read as a straight one', () => {
@@ -837,6 +837,7 @@ function pushWorld(on: any, config: Record<string, string>, upstream = false) {
   return world(on, line => {
     if (line === 'remote get-url origin') return 'https://example.com/a/b.git'
     if (line === 'remote get-url upstream') return upstream ? 'https://example.com/up/b.git' : 2
+    if (line === 'remote') return upstream ? 'origin\nupstream' : 'origin'
     if (line.startsWith('config --get')) return config[line.split('.')[1]] ?? 1
   })
 }
@@ -931,7 +932,7 @@ test('a force push is put to the user whatever the holds, but a dry run is not',
 
 test('every push in a command is read, each in its own directory', async ($: any, on: any) => {
   expect(pushTargets('git push origin a && git -C /fork push --force; git push -n')).toEqual([
-    { dir: undefined, dryRun: false, force: false },
+    { dir: undefined, dryRun: false, force: false, remote: 'origin' },
     { dir: '/fork', dryRun: false, force: true },
     { dir: undefined, dryRun: true, force: false },
   ])
@@ -973,8 +974,8 @@ test('a git alias is read from config in the directory it runs in, and its expan
 
 const hostWrite = (cmd: string) => hostWrites(cmd)[0] ?? null
 test('a host write from gh or glab is read from the command, with its directory and whether it opens a PR', () => {
-  expect(hostWrite('gh pr create --title x --body-file f')).toEqual({ what: 'gh pr create', dir: undefined, prCreate: true, otherRepo: false })
-  expect(hostWrite(`cd '/y' && glab mr create -s b -b main`)).toEqual({ what: 'glab mr create', dir: '/y', prCreate: true, otherRepo: false })
+  expect(hostWrite('gh pr create --title x --body-file f')).toEqual({ what: 'gh pr create', dir: undefined, prCreate: true, otherRepo: false, pushes: true })
+  expect(hostWrite(`cd '/y' && glab mr create -s b -b main`)).toEqual({ what: 'glab mr create', dir: '/y', prCreate: true, otherRepo: false, pushes: true })
   expect(hostWrite('gh pr create -R o/r')?.otherRepo).toBe(true)
   expect(hostWrite('gh pr --repo=o/r create')?.otherRepo).toBe(true)
   expect(hostWrites('gh pr create --fill && gh issue comment 1 -b x').map(w => w.what)).toEqual(['gh pr create', 'gh issue comment'])
@@ -1020,7 +1021,7 @@ test('a host write is put to the user whatever the visibility, in either shell',
   expect((await verdict($, 'gh pr view 3')).decision).toBe('allow')
 })
 
-test('a PR or MR is opened unasked only with holdPrText lifted, in its own repo, and past the fork hold', async ($: any, on: any) => {
+test('a PR or MR in a fork is put to the user, since gh and glab open it in upstream', async ($: any, on: any) => {
   const config: Record<string, string> = { originVisibility: 'private' }
   pushWorld(on, config, true)
   const held = await verdict($, 'gh pr create --title x --body-file b.md')
@@ -1029,8 +1030,8 @@ test('a PR or MR is opened unasked only with holdPrText lifted, in its own repo,
   config.holdFork = 'false'
   expect((await verdict($, 'gh pr create --title x --body-file b.md')).reason).toContain('git config session-skills.holdPrText false')
   config.holdPrText = 'false'
-  expect((await verdict($, 'gh pr create --title x --body-file b.md')).decision).toBe('allow')
-  expect((await verdict($, 'glab mr create -s b -b main')).decision).toBe('allow')
+  expect((await verdict($, 'gh pr create --title x --body-file b.md')).reason).toContain('`upstream` besides origin')
+  expect((await verdict($, 'glab mr create -s b -b main')).reason).toContain('`upstream` besides origin')
   expect((await verdict($, 'gh pr create -R up/b --title x')).decision).toBe('ask')
   expect((await verdict($, 'gh pr create --fill && gh pr comment --body x')).reason).toContain('`gh pr comment`')
 })
@@ -1068,4 +1069,163 @@ test('a gh or glab subcommand is a write unless it reads or acts on this machine
   for (const cmd of ['gh pr create --help', 'glab mr merge -h', 'gh auth status', 'gh extension install o/gh-x', 'gh pr checks 3 --watch', 'glab ci trace', 'gh run watch 9', '# then gh pr merge 3']) {
     expect(hostWrite(cmd)).toBeNull()
   }
+})
+
+// A repo whose remotes push to the URLs in `remotes`, with each git config key
+// read from `config`, the branch checked out, and each URL's visibility as gh
+// reports it where `vis` has it.
+function targetWorld(on: any, config: Record<string, string>, remotes: Record<string, string[]> = { origin: ['https://h/a/b.git'] }, vis: Record<string, string> = {}, branch = 'main') {
+  on('tool.check', () => ({ decision: 'allow' }))
+  return world(on, line => {
+    const url = /^remote get-url (?:--push --all )?(\S+)$/.exec(line)
+    if (url) return remotes[url[1]] ? remotes[url[1]].join('\n') : 2
+    if (line === 'remote') return Object.keys(remotes).join('\n')
+    if (line === 'symbolic-ref --short -q HEAD') return branch || 1
+    const re = /^config --get-regexp (\S+)$/.exec(line)
+    if (re) return Object.entries(config).filter(([k]) => new RegExp(re[1]).test(k)).map(([k, v]) => `${k} ${v}`).join('\n') || 1
+    if (line.startsWith('config --get ')) return config[line.slice(13)] ?? 1
+  }, line => {
+    const m = /^gh repo view (\S+) /.exec(line)
+    if (m && vis[m[1]]) return vis[m[1]]
+  })
+}
+
+test('a push is read with the remote it names, and one that cannot be read from the command is null', () => {
+  for (const [cmd, remote] of [
+    ['git push', undefined], ['git push origin main', 'origin'], ['git push -u pub b', 'pub'], ['git push --repo=pub', 'pub'],
+    ['git push --repo pub main', 'main'], ['git push --repo=pub origin main', 'origin'], ['git push -o ci.skip pub', 'pub'],
+    ['git push https://h/o/p.git main', 'https://h/o/p.git'], ['git push "$R" main', null], ['git push origin "$BRANCH"', 'origin'],
+    ['git lfs push origin main', 'origin'], ['git subtree push -P docs pub gh-pages', 'pub'],
+    ['git -c remote.origin.pushurl=https://h/o/p.git push origin', null], ['git -c url.https://h/o/.pushInsteadOf=https://h/a/ push', null],
+    ['git -c branch.main.pushRemote=pub push', null], ['git --config-env=remote.pushDefault=R push', null], ['git --config-env remote.pushDefault=R push', null],
+    ['GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.pushDefault GIT_CONFIG_VALUE_0=pub git push', null],
+    ['git -c core.sshCommand="ssh -i k" push origin', 'origin'],
+  ] as const) expect(pushTarget(cmd)?.remote, cmd).toBe(remote)
+})
+
+test('a push to a remote other than origin is held by that remote\'s visibility, and one to a URL or an unread remote asks', async ($: any, on: any) => {
+  const remotes = { origin: ['https://h/a/b.git'], pub: ['https://h/o/pub.git'], mirror: ['https://h/a/b.git'] }
+  const vis: Record<string, string> = { 'https://h/o/pub.git': 'public' }
+  targetWorld(on, { 'session-skills.originVisibility': 'private' }, remotes, vis)
+  expect((await verdict($, 'git push origin main')).decision).toBe('allow')
+  const pub = await verdict($, 'git push pub main')
+  expect(pub.decision).toBe('ask')
+  expect(pub.reason).toContain('`pub` is public')
+  expect((await verdict($, 'git push mirror main')).decision).toBe('allow')
+  vis['https://h/o/pub.git'] = 'private'
+  expect((await verdict($, 'git push pub main')).decision).toBe('allow')
+  expect((await verdict($, 'git push https://h/a/b.git main')).reason).toContain('not a remote of this repo')
+  expect((await verdict($, 'git push "$R" main')).reason).toContain('could not be read from the command')
+  expect((await verdict($, 'git -c remote.origin.pushurl=https://h/o/pub.git push origin main')).decision).toBe('ask')
+})
+
+test('a push with no remote goes where git sends it: the branch\'s push remote, then the push default, then its upstream', async ($: any, on: any) => {
+  const config: Record<string, string> = { 'session-skills.originVisibility': 'private' }
+  targetWorld(on, config, { origin: ['https://h/a/b.git'], pub: ['https://h/o/pub.git'] }, { 'https://h/o/pub.git': 'public' }, 'feature')
+  expect((await verdict($, 'git push')).decision).toBe('allow')
+  for (const key of ['branch.feature.pushRemote', 'remote.pushDefault', 'branch.feature.remote']) {
+    config[key] = 'pub'
+    expect((await verdict($, 'git push')).reason, key).toContain('`pub` is public')
+    delete config[key]
+  }
+})
+
+test('origin is read by its push URL where it has no visibility set', async ($: any, on: any) => {
+  const vis = { 'https://h/a/b.git': 'private', 'https://h/o/pub.git': 'public' }
+  targetWorld(on, {}, { origin: ['https://h/a/b.git', 'https://h/o/pub.git'] }, vis)
+  expect((await verdict($, 'git push origin main')).reason).toContain('origin is public')
+})
+
+test('a push with no directory is read in the Bash tool\'s directory, which a cd in an earlier call moves', async ($: any, on: any) => {
+  on('tool.check', () => ({ decision: 'allow' }))
+  on('session.repo', () => ({ value: { root: '/repo', remote: null, internal: false } }))
+  on('session.cwd', () => ({ value: '/repo/wt' }))
+  const dirs: string[] = []
+  on('process.run', (_$: any, e: any) => {
+    dirs.push(e.argv[2])
+    const line = e.argv.slice(3).join(' ')
+    if (/remote get-url (--push --all )?upstream/.test(line)) return { value: { exitCode: 2, stdout: '', stderr: '' } }
+    return { value: { exitCode: 0, stdout: line.includes('originVisibility') ? 'private\n' : line.startsWith('config --get') ? '' : 'https://h/a/b.git\n', stderr: '' } }
+  })
+  expect((await verdict($, 'git push')).decision).toBe('allow')
+  expect(new Set(dirs)).toEqual(new Set(['/repo/wt']))
+  dirs.length = 0
+  await verdict($, 'git -C sub push')
+  expect(new Set(dirs)).toEqual(new Set(['/repo/wt/sub']))
+})
+
+test('a PR or MR that may push the branch is held as a push too', async ($: any, on: any) => {
+  const config: Record<string, string> = { 'session-skills.originVisibility': 'public', 'session-skills.holdPrText': 'false' }
+  targetWorld(on, config)
+  const pushes = await verdict($, 'gh pr create --fill')
+  expect(pushes.decision).toBe('ask')
+  expect(pushes.reason).toContain('holdPublicPush')
+  expect((await verdict($, 'gh pr create --dry-run --fill')).decision).toBe('ask')
+  expect((await verdict($, 'gh pr create --fill --head feature')).decision).toBe('allow')
+  expect((await verdict($, 'gh pr create -dH feature --fill')).decision).toBe('allow')
+  expect((await verdict($, 'glab mr create --fill --yes')).decision).toBe('ask')
+  expect((await verdict($, 'glab mr create --fill --push=false --yes')).decision).toBe('allow')
+  config['session-skills.originVisibility'] = 'private'
+  expect((await verdict($, 'gh pr create --fill')).decision).toBe('allow')
+})
+
+test('a PR is asked about where gh or glab may open it in a repo other than origin\'s', async ($: any, on: any) => {
+  const config: Record<string, string> = { 'session-skills.originVisibility': 'private', 'session-skills.holdPrText': 'false', 'session-skills.holdFork': 'false' }
+  const remotes: Record<string, string[]> = { origin: ['https://h/a/b.git'] }
+  let repoVar: string | undefined
+  on('env.get', (_$: any, e: any) => ({ value: e.name === 'GH_REPO' ? repoVar : undefined }))
+  targetWorld(on, config, remotes)
+  expect((await verdict($, 'gh pr create --fill')).decision).toBe('allow')
+  config['remote.origin.gh-resolved'] = 'base'
+  expect((await verdict($, 'gh pr create --fill')).decision).toBe('allow')
+  config['remote.origin.gh-resolved'] = 'o/other'
+  expect((await verdict($, 'gh pr create --fill')).reason).toContain('o/other')
+  delete config['remote.origin.gh-resolved']
+  for (const name of ['github', 'upstream', 'fork']) {
+    remotes[name] = [`https://h/o/${name}.git`]
+    expect((await verdict($, 'gh pr create --fill')).reason, name).toContain(`\`${name}\``)
+    delete remotes[name]
+  }
+  repoVar = 'o/other'
+  expect((await verdict($, 'gh pr create --fill')).reason).toContain('GH_REPO')
+})
+
+test('a write to a git config key that moves a push or a PR, or lifts a hold, is read from the command', () => {
+  for (const [cmd, what] of [
+    ['git config session-skills.holdPublicPush false', 'git config session-skills.holdPublicPush'],
+    ['git config --local session-skills.originVisibility private', 'git config session-skills.originVisibility'],
+    ['git config set session-skills.landing pr', 'git config session-skills.landing'],
+    ['git -C /x config --unset remote.origin.gh-resolved', 'git config remote.origin.gh-resolved'],
+    ['git config remote.origin.pushurl https://h/o/pub.git', 'git config remote.origin.pushurl'],
+    ['git config --global url.https://h/o/.pushInsteadOf https://h/a/', 'git config url.https://h/o/.pushInsteadOf'],
+    ['git config remote.pushDefault pub', 'git config remote.pushDefault'],
+    ['git config branch.main.pushRemote pub', 'git config branch.main.pushRemote'],
+    ['git config alias.p push', 'git config alias.p'],
+    ['git config --file .git/config include.path x', 'git config include.path'],
+    ['git config --remove-section remote.origin', 'git config remote.origin'],
+    ['git config --rename-section x remote.pub', 'git config remote.pub'],
+    ['git config "$KEY" false', 'git config $KEY'],
+    ['git config -e', 'git config -e'],
+    ['git remote set-url origin https://h/o/pub.git', 'git remote set-url'],
+    ['git remote add pub https://h/o/pub.git', 'git remote add'],
+    ['git remote rename origin old', 'git remote rename'],
+    ['git remote rm pub', 'git remote rm'],
+    ['git remote set-url origin x && git push', 'git remote set-url'],
+  ]) expect(configWrites(cmd), cmd).toEqual([what])
+  for (const cmd of [
+    'git config --get session-skills.originVisibility', 'git config session-skills.landing', 'git config get remote.origin.url',
+    'git config --list', 'git config -l --show-origin', "git config --get-regexp '^remote\\.'", 'git config user.email a@b.c',
+    'git config --type bool --get session-skills.holdFork', 'git remote -v', 'git remote get-url origin', 'git remote show origin',
+    'git -c remote.origin.url=x fetch',
+  ]) expect(configWrites(cmd), cmd).toEqual([])
+})
+
+test('a config write that moves a push or a PR, or lifts a hold, is put to the user', async ($: any, on: any) => {
+  targetWorld(on, { 'session-skills.originVisibility': 'private' })
+  const lift = await verdict($, 'git config session-skills.holdPublicPush false')
+  expect(lift.decision).toBe('ask')
+  expect(lift.reason).toContain('`git config session-skills.holdPublicPush`')
+  expect((await verdict($, 'git remote set-url origin https://h/o/pub.git && git push')).decision).toBe('ask')
+  expect((await verdict($, 'git config --get session-skills.originVisibility')).decision).toBe('allow')
+  expect((await verdict($, 'git config user.email a@b.c')).decision).toBe('allow')
 })
