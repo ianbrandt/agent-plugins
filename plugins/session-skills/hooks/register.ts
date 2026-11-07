@@ -575,7 +575,10 @@ async function otherBase($: any, dir: string, what: string): Promise<string> {
   if (repo) return `${name} is set to ${repo}`
   const others = (await must($, dir, 'remote')).split(/\r?\n/).map(r => r.trim()).filter(r => r && r !== 'origin')
   if (others.length) return `this clone has ${others.map(r => `\`${r}\``).join(', ')} besides origin, and the PR may open there`
-  for (const line of (await out(git($, dir, 'config', '--get-regexp', '^remote\\.origin\\.(gh|glab)-resolved'))).split(/\r?\n/)) {
+  // git config exits 1 where no key matches, and a read that fails holds the PR.
+  const resolved = await git($, dir, 'config', '--get-regexp', '^remote\\.origin\\.(gh|glab)-resolved')
+  if (resolved.exitCode > 1) failed(resolved)
+  for (const line of resolved.stdout.trim().split(/\r?\n/)) {
     const [key, value] = line.trim().split(/\s+/)
     if (key && value !== 'base') return `${key} is set to ${value}`
   }

@@ -1531,3 +1531,16 @@ test('a PR that may push its branch is held by the submodule config a push reads
   expect((await verdict($, 'gh pr create --fill')).reason).toContain('submodules')
   expect((await verdict($, 'gh pr create --fill --head feature')).decision).toBe('allow')
 })
+
+test('a PR is held when the default repo set with gh repo set-default cannot be read', async ($: any, on: any) => {
+  on('tool.check', () => ({ decision: 'allow' }))
+  world(on, line => {
+    if (line === 'remote') return 'origin'
+    if (line.startsWith('config --get-regexp')) return 128
+    if (line.startsWith('config --get session-skills.')) return { 'config --get session-skills.holdPrText': 'false', 'config --get session-skills.holdFork': 'false' }[line] ?? 1
+    if (/^remote get-url (--push --all )?upstream$/.test(line)) return 2
+  })
+  const held = await verdict($, 'gh pr create --fill --head feature')
+  expect(held.decision).toBe('ask')
+  expect(held.reason).toContain('could not be checked')
+})

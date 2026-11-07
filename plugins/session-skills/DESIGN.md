@@ -174,7 +174,8 @@ named `upstream`, `github`, or `gitlab` to origin, so a PR is asked about where 
 apply, as in every fork. A PR aimed at another repo with `-R` is asked about too, and so is one
 whose directory cannot be read. gh pushes the branch unless `--head` is given, and glab unless
 `--push=false` is, so a PR that may push is also held as a push to origin, with the force and
-submodule config that push reads. A `GH_REPO` set in a
+submodule config that push reads. The PR is held when the default repo set with `gh repo set-default`
+cannot be read. A `GH_REPO` set in a
 shell profile is not seen, since the hook reads Claude Code's own environment. Each write in a
 chained command is checked, so a comment added after a PR opened unasked is still asked about. A push or write run through `bash -c`, `eval`,
 `Start-Process`, a `git-<name>` program on the PATH such as git-town, a user's own `gh alias`, a git
