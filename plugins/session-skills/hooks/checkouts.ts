@@ -67,6 +67,7 @@ function union(...lists: Loc[][]): Loc[] {
 const one = (dirs: Dir[]): Dir => (dirs.every(d => d === dirs[0]) ? dirs[0] : null)
 
 const ABSOLUTE = /^(?:[A-Za-z]:)?[\\/]/
+const UP = /(?:^|[\\/])\.\.(?:[\\/]|$)/
 
 // A path word read against the directory it is given in. A relative path where
 // that is the session's repo stays relative, and git reads it there. A path
@@ -78,7 +79,7 @@ function resolve(base: Dir, w: Word | undefined): Dir {
   if (!w) return null
   if (!w.literal) return base === undefined && !/^(?:~|\$\{?HOME\b)/.test(w.text) ? undefined : null
   const p = w.text
-  if (/(?:^|[\\/])\.\.(?:[\\/]|$)/.test(p)) return null
+  if (UP.test(p)) return null
   if (ABSOLUTE.test(p)) return p
   if (base === undefined) return p === '.' ? undefined : p
   if (base === null) return null
@@ -1003,12 +1004,12 @@ export function configWrites(cmd: string, shell = 'Bash', outer?: Dir, inherited
   return unique(found)
 }
 
-// Whether a git command changes the branch a later push in the same command
-// reads its remote from, or that branch's upstream: a switch, checkout, or
-// symbolic-ref that sets HEAD, a rebase given a branch, a rebase that continues,
-// skips, or aborts, or a bisect reset, since HEAD is detached while the hook reads
-// config and is back on the branch when the push runs, or a branch, fetch, pull, or push that
-// sets or unsets an upstream, with a long option given by a unique prefix as git takes it.
+// Whether a git command from the list below still changes the branch a later
+// push reads its remote from, or that branch's upstream: a symbolic-ref that
+// sets HEAD, a rebase given a branch, or one that continues, skips, or aborts,
+// since HEAD is detached while the hook reads config and is back on the branch
+// when the push runs, or a fetch or pull that sets or unsets an upstream, with a
+// long option given by a unique prefix as git takes it.
 const UPSTREAM = ['set-upstream-to', 'set-upstream', 'unset-upstream', 'track']
 const setsUpstream = (w: Word) => {
   const long = /^--([\w-]+)(?:=|$)/.exec(w.text)
@@ -1016,12 +1017,40 @@ const setsUpstream = (w: Word) => {
 }
 const positional = (rest: Word[], valued: RegExp) => rest.filter((w, i) => !w.text.startsWith('-') && !valued.test(rest[i - 1]?.text ?? ''))
 const moves = (sub: string, rest: Word[]) =>
-  sub === 'switch' || sub === 'checkout' || (sub === 'symbolic-ref' && rest.filter(w => !w.text.startsWith('-')).length > 1) ||
+  (sub === 'symbolic-ref' && rest.filter(w => !w.text.startsWith('-')).length > 1) ||
   // `git rebase <upstream> <branch>` and `git rebase --root <branch>` check out the branch first.
   (sub === 'rebase' && (rest.some(w => /^--(?:continue|skip|abort)$/.test(w.text)) ||
     positional(rest, /^(?:--onto|--strategy|--strategy-option|--exec|-[sXx])$/).length > (rest.some(w => w.text === '--root') ? 0 : 1))) ||
-  (sub === 'bisect' && rest[0]?.text === 'reset') ||
-  (/^(?:branch|fetch|pull|push)$/.test(sub) && rest.some(setsUpstream))
+  (/^(?:fetch|pull)$/.test(sub) && rest.some(setsUpstream))
+
+// The commands known to leave the branch, its config, and the directory as
+// they were, so that a later push with no remote is read against the config as
+// it is when the hook runs: a git command below with nothing left to run that
+// does not move the branch, a cd or pushd to a literal path with no `..`, a
+// read such as echo or cat, an assignment, a test runner, and a subshell or
+// script block, whose commands are read on their own. Anything else before such
+// a push, such as `gh pr checkout`, a git alias, or `npm install`, makes its
+// remote unread, and the hold asks.
+const SAFE_GIT = new Set('add blame commit describe diff fetch grep log ls-files merge merge-base pull rebase rev-list rev-parse shortlog show status symbolic-ref'.split(' '))
+const READS = /^(?::|\[|true|test|echo|printf|cat|head|tail|wc|ls|pwd|write-output|write-host|get-content|get-location|get-childitem)$/i
+const RUNNERS = /^(?:(?:\.[\\/])?(?:gradlew(?:\.bat)?|mvnw|test\.sh)|gradle|mvn|pytest|(?:npm|pnpm|yarn|bun|cargo|go) test|claude plugin test)(?: |$)/i
+function harmless(words: Word[], ps: boolean): boolean {
+  const [first, ...args] = words
+  if (words.length === 1 && !first.literal && /^(?:\(\)|\{\})$/.test(first.text)) return true
+  if (!ps && words.every(w => ASSIGNMENT.test(w.text))) return true
+  const git = gitCommands(words)
+  if (git.length) {
+    if (git.length > 1 || git[0].k !== 0 || later(words).length) return false
+    const { j } = gitOptions(git[0].words, 0)
+    const sub = git[0].words[j]
+    return !sub || (sub.literal && SAFE_GIT.has(sub.text) && !moves(sub.text, git[0].words.slice(j + 1)))
+  }
+  if (!first.literal) return false
+  if ((ps ? /^(?:cd|chdir|sl|set-location|pushd|push-location)$/i : /^(?:cd|pushd)$/).test(first.text)) {
+    return args.length > 0 && args.every(w => w.literal && w.text !== '-' && !UP.test(w.text))
+  }
+  return READS.test(first.text) || RUNNERS.test(words.map(w => w.text).join(' '))
+}
 
 // Every push in a shell command, read in `shell`: the repo it runs in, whether
 // it is a dry run, whether it forces, and its remote. `git send-pack`, `git
@@ -1030,15 +1059,17 @@ const moves = (sub: string, rest: Word[]) =>
 // An alias set with -c is read in place, and any other subcommand that is not
 // built in is returned with `alias` set, for the hook to read. A subcommand
 // that is not written out, such as `git $sub`, is a push in a directory that
-// cannot be read, so the hold asks. A push with no remote after a command that
-// moves the branch or its upstream has a remote that cannot be read. A mirror
-// or + refspec set with -c, or any config set in the environment, forces it.
+// cannot be read, so the hold asks. A push with no remote after any command not
+// known to leave the branch and its config as they were (see `harmless`) has a
+// remote that cannot be read. A mirror or + refspec set with -c, or any config
+// set in the environment, forces it.
 export function pushTargets(cmd: string, shell = 'Bash', outer?: Dir, inherited: Word[] = [], depth = 0): Push[] {
   nested(depth)
   const found: Push[] = []
   const cmds = commands(cmd, shell, outer)
   const envConfig = sets(cmds, CONFIG_VARS)
-  let movedBranch = false
+  const ps = /powershell|pwsh/i.test(shell)
+  let afterUnknown = false
   for (const { words: all, at } of cmds) {
     for (const r of later(all)) for (const p of pushTargets(r.text, 'Bash', null, [...inherited, ...r.configs], depth + 1)) found.push({ ...p, dir: null })
     for (const { words, k } of gitCommands(all)) {
@@ -1057,7 +1088,7 @@ export function pushTargets(cmd: string, shell = 'Bash', outer?: Dir, inherited:
       const pushAt = rest.findIndex(w => w.text === 'push')
       const flags = (args: Word[], o?: Options) => {
         const f = pushFlags(args, o)
-        return { ...f, force: f.force || configForce, ...(f.submodules === undefined && recursion && { submodules: !!recurses }), ...((moved || (movedBranch && f.remote === undefined)) && { remote: null }) }
+        return { ...f, force: f.force || configForce, ...(f.submodules === undefined && recursion && { submodules: !!recurses }), ...((moved || (afterUnknown && f.remote === undefined)) && { remote: null }) }
       }
       const alias = sub === undefined ? undefined : aliases.get(sub.toLowerCase())
       if (sub !== undefined && !words[j].literal) found.push({ dir: null, dryRun: false, force: false, remote: null })
@@ -1067,14 +1098,14 @@ export function pushTargets(cmd: string, shell = 'Bash', outer?: Dir, inherited:
       else if ((sub === 'subtree' || sub === 'lfs') && pushAt >= 0) found.push({ dir, ...flags(rest.slice(pushAt + 1), sub === 'subtree' ? SUBTREE : PUSH) })
       else if (typeof alias === 'string') {
         for (const p of pushTargets(`${alias.startsWith('!') ? alias.slice(1) : `git ${alias}`} ${joined(rest)}`, 'Bash', dir, configs, depth + 1)) {
-          found.push({ ...p, force: p.force || configForce, ...((moved || (movedBranch && p.remote === undefined)) && { remote: null }) })
+          found.push({ ...p, force: p.force || configForce, ...((moved || (afterUnknown && p.remote === undefined)) && { remote: null }) })
         }
       } else if (alias === null || (sub !== undefined && unread(configs) && !BUILTIN.has(sub))) found.push({ dir, dryRun: false, force: configForce, remote: null })
       else if (sub !== undefined && !BUILTIN.has(sub) && /^[\w.-]+$/.test(sub)) {
-        found.push({ dir, dryRun: false, force: configForce, alias: sub, rest: joined(rest), ...(configs.length > 0 && { configs }), ...((moved || movedBranch) && { remote: null }) })
+        found.push({ dir, dryRun: false, force: configForce, alias: sub, rest: joined(rest), ...(configs.length > 0 && { configs }), ...((moved || afterUnknown) && { remote: null }) })
       }
-      if (sub !== undefined && (!words[j].literal || moves(sub, rest))) movedBranch = true
     }
+    if (!harmless(all, ps)) afterUnknown = true
   }
   return unique(found)
 }

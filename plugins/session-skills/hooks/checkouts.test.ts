@@ -605,7 +605,7 @@ test('a push is read with the directory it runs in, from -C or the last cd befor
   expect(pushTarget('pushd /x && git push')?.dir).toBe('/x')
   expect(pushTarget('cd "$WT" && git push')?.dir).toBeUndefined()
   expect(pushTarget('echo "git push"')).toBeNull()
-  expect(pushTarget('claude -p "git -C /z push" && git push')).toEqual({ dir: undefined, dryRun: false, force: false })
+  expect(pushTarget('claude -p "git -C /z push" && git push')).toEqual({ dir: undefined, dryRun: false, force: false, remote: null })
   expect(pushTarget(`git commit -F - <<'EOF'\nThen git -C /z push it\nEOF\ncd /y && git push`)?.dir).toBe('/y')
 })
 
@@ -942,8 +942,8 @@ test('a force push is put to the user whatever the holds, but a dry run is not',
 test('every push in a command is read, each in its own directory', async ($: any, on: any) => {
   expect(pushTargets('git push origin a && git -C /fork push --force; git push -n')).toEqual([
     { dir: undefined, dryRun: false, force: false, remote: 'origin' },
-    { dir: '/fork', dryRun: false, force: true },
-    { dir: undefined, dryRun: true, force: false },
+    { dir: '/fork', dryRun: false, force: true, remote: null },
+    { dir: undefined, dryRun: true, force: false, remote: null },
   ])
   on('tool.check', () => ({ decision: 'allow' }))
   on('session.repo', () => ({ value: { root: '/repo', remote: null, internal: false } }))
@@ -1431,11 +1431,32 @@ test('a read with git or push in its arguments is not a push, and a push after i
     expect(pushTargets(cmd), cmd).toEqual([])
   }
   for (const cmd of ['cd "$(git rev-parse --show-toplevel)" && git push', 'git --version && git push', 'git commit -m "Fix GIT_CONFIG handling" && git push']) {
-    expect(pushTarget(cmd), cmd).toEqual({ dir: undefined, dryRun: false, force: false })
+    expect(pushTarget(cmd), cmd).toMatchObject({ dir: undefined, dryRun: false, force: false })
   }
   expect(hostWrite('gh pr create --title "Document GH_REPO" --fill')?.otherRepo).toBe(false)
   expect(pushTarget('xargs git push -f')?.force).toBe(true)
   expect(pushTargets('sudo -u git -g staff git push -f').some(p => p.force)).toBe(true)
+})
+
+// A push with no remote is read against the branch config as it is when the
+// hook runs. In round five `gh pr checkout` got past a list of commands that
+// move the branch, as aliases and rebases had in earlier rounds.
+test('a push with no remote goes unasked only after commands known to leave its branch and config as they were', () => {
+  for (const cmd of [
+    'gh pr checkout 42 && git push', 'glab mr checkout 7 && git push', 'gh co 42 && git push', 'git co feature && git push',
+    'git -c alias.co=checkout co feature && git push', 'npm install && git push', 'cd "$WT" && git push', 'cd sub && cd .. && git push',
+    'git branch -m old && git push', 'git push -u origin feat && git push', 'f() { :; }; git push', 'echo "$(gh pr checkout 1)" && git push',
+    'GIT_EDITOR=true git commit && git push', 'sudo git status && git push',
+  ]) expect(pushTargets(cmd).at(-1)?.remote, cmd).toBeNull()
+  expect(pushTargets('gh pr checkout 1; git push', 'PowerShell')[0]?.remote).toBeNull()
+  for (const cmd of [
+    'git add -A && git commit -m "x" && git push', 'git status; git diff --stat; git log --oneline -3; git push',
+    'git fetch -q && git rebase origin/main && git push', 'git pull --rebase origin feat && git push',
+    'git -C /repo merge --ff-only claude/r1-a && git -C /repo push', './gradlew check && git push', 'claude plugin test && git push',
+    'npm test && git push', 'cd /repo/sub && git push', 'echo done && git push', 'X=1; git push', '(cd /repo && git status) && git push',
+    'if git diff --quiet; then :; else git push; fi', `git commit -m "$(cat <<'EOF'\nSubject\n\nBody.\nEOF\n)" && git push`,
+  ]) expect(pushTargets(cmd).at(-1)?.remote, cmd).toBeUndefined()
+  expect(pushTargets('git add -A; git commit -m x; Set-Location C:\\repo; Write-Output done; git push', 'PowerShell')[0]?.remote).toBeUndefined()
 })
 
 // In a worktree, notes.local links into the primary checkout. bash 3.2's
@@ -1520,7 +1541,8 @@ test('a config write that sends a later push into submodules is held', () => {
 test('a rebase that checks out a branch moves a later push, and one that rebases HEAD does not', () => {
   expect(pushTarget('git rebase main feature && git push')?.remote).toBeNull()
   expect(pushTarget('git rebase --onto main old feature && git push')?.remote).toBeNull()
-  for (const cmd of ['git rebase main && git push', 'git rebase --onto main old && git push', "git rebase -x 'make test' main && git push"]) {
+  expect(pushTarget("git rebase -x 'make test' main && git push")?.remote).toBeNull()
+  for (const cmd of ['git rebase main && git push', 'git rebase --onto main old && git push']) {
     expect(pushTarget(cmd)?.remote, cmd).toBeUndefined()
   }
 })

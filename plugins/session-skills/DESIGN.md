@@ -148,12 +148,22 @@ a wrapper such as `timeout 60s` too, or with PowerShell's `$env:`. A variable in
 remote is not written out, it is read as a force push if any remote has a mirror or a `+` refspec in
 config. A push to a remote group set with `remotes.<name>` is read the same way, since git pushes to
 each member and prefers a group to a remote of the same name. A `send-pack` or `http-push` takes a URL or a path, so its
-remote is not read. It asks too for a push with no remote after a `git switch`, `checkout`, or
-`symbolic-ref` that sets HEAD, a `git rebase` given a branch to check out, with or without `--root`,
-a `git rebase --continue`, `--skip`, or `--abort`, or a `git bisect reset`, since HEAD is detached while the hook reads
-config and is back on the branch when the push runs, or after a command that sets or unsets an upstream with an option
-given by any unique prefix, earlier in the same command, since those change the branch config the
-push reads. `git push .` updates this repo and is not held. An
+remote is not read. `git push .` updates this repo and is not held.
+
+A push with no remote is read against the branch config as it is when the hook runs, so it is asked
+about after any earlier command in the line that is not known to leave the branch, its config, and
+the directory as they were. The known-safe commands are a few git commands (`add`, `commit`,
+`status`, `diff`, `log`, `show`, `fetch`, `pull`, `merge`, `rebase`, and some reads such as
+`rev-parse`), a `cd` or `pushd` to a literal path with no `..`, reads such as `echo` and `cat`, a
+command that only sets variables, and a test runner such as `./gradlew`, `npm test`, or
+`claude plugin test`. A git command on that list still makes the remote unread where it checks out
+a branch, as a `git rebase` given a branch with or without `--root` does, or one that continues,
+skips, or aborts, since HEAD is detached while the hook reads config and is back on the branch when
+the push runs. So does a `fetch` or `pull` that sets or unsets an upstream with an option given by
+any unique prefix, and a `git rebase -x` that runs a command. Anything else asks, such as
+`gh pr checkout`, a git alias, a variable set before git, or `npm install`. A list of commands that
+move the branch was tried first, and each review found commands missing from it, the last of them
+`gh pr checkout`. An
 adversarial pass found 18 commands that got past these checks, among them a PR body that starts with
 `- H` read as `--head`, `git branch -u pub/main && git push`, and an abbreviated `git config --fil`,
 and each has a regression test.
@@ -166,7 +176,7 @@ set-url` or `sync`. So is a write to a `session-skills` key, since setting `hold
 `originVisibility` would lift a hold without the user, and `gh alias set` or `import`, since a gh
 alias can run a push or a host write that the hook does not read. A `git config` command is read as
 git reads it: the form before git 2.46 reads no option after the key, so
-`git config session-skills.holdPublicPush false --get` writes the key. An edit to the config file with a file tool or `sed` is not seen.
+`git config session-skills.holdPublicPush false --get` writes the key. An edit to the config file with a file tool, `sed`, or a redirection such as `echo ... >> .git/config` is not seen.
 
 The same hook puts every write to the host through `gh` or `glab` to the user, such as a comment, a
 merge, a release, or a workflow run. Every subcommand is taken as a write except a short list of
