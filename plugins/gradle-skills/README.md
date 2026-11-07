@@ -2,7 +2,7 @@
 
 A [Claude Code](https://claude.ai/code) plugin providing skills for working with Gradle projects.
 
-Claude Code 2.1.308 is the oldest version supported, as for every plugin in this marketplace. This plugin has no hooks and needs no shell or interpreter beyond the build's Gradle wrapper.
+Claude Code 2.1.308 is the oldest version supported. This plugin has no hooks and needs no shell or interpreter beyond the build's Gradle wrapper.
 
 ## Skills
 

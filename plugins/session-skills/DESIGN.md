@@ -4,9 +4,9 @@ How the plugin is wired, for anyone changing it. The [README](README.md) covers 
 
 ## Tools and session rules
 
-One hooks module, `hooks/register.ts`, which is a Claude Code mod and needs Claude Code 2.1.308 or
-later, the oldest version supported. It registers six tools, named `mcp__session-skills__<tool>`,
-and the skills call them where they once had bash to adapt:
+One hooks module, `hooks/register.ts`, which is a Claude Code mod and needs Claude Code 2.1.314 or
+later, the oldest build checked for `tool.check`. It registers six tools, named
+`mcp__session-skills__<tool>`, and the skills call them where they once had bash to adapt:
 
 - `find_checkouts` fetches, then returns the primary checkout, the default branch, the ref a new
   branch should start from, and every worktree (`work-in-worktree` §1 and §2).
