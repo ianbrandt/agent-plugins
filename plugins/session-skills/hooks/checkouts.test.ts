@@ -619,6 +619,15 @@ test('a push is read after a comment with a quote in it, across a line continuat
   expect(pushTarget('echo "# not a comment" && echo "$x"')).toBeNull()
 })
 
+test('a push or host write inside a substitution runs in the directory of the last cd before it', () => {
+  expect(pushTarget('cd /fork && out="$(git push 2>&1)"')?.dir).toBe('/fork')
+  expect(pushTarget('cd /fork && out="$(cd /z && git push)"')?.dir).toBe('/z')
+  expect(pushTarget('cd /fork && out="$(cd "$WT" && git push)"')?.dir).toBeUndefined()
+  expect(pushTarget('cd /fork && echo "`git -C /z push`"')?.dir).toBe('/z')
+  expect(hostWrites('cd /fork && url="$(gh pr create --fill)"')).toEqual([{ what: 'gh pr create', dir: '/fork', prCreate: true, otherRepo: false }])
+  expect(hostWrites('cd /fork; echo `gh pr merge 3`').map(w => w.dir)).toEqual(['/fork'])
+})
+
 // The engine's own verdict beneath the plugin is an allow.
 const verdict = ($: any, command: string, tool = 'Bash') => $.tool.check({ tool, input: { command } })
 function pushWorld(on: any, config: Record<string, string>, upstream = false) {

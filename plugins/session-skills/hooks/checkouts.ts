@@ -60,23 +60,25 @@ const mask = (cmd: string, unclosed = () => {}) =>
 // so an argument on the next line is read and a quote in a comment opens nothing.
 const unfold = (cmd: string) => cmd.replace(/[\\`]\r?\n/g, m => ' '.repeat(m.length)).replace(/^[ \t]*#.*$/gm, m => ' '.repeat(m.length))
 // Each `$(...)` or backtick substitution, which the shell runs even inside double quotes.
-const substitutions = (src: string) => [...src.matchAll(/\$\(([^()]*)\)|`([^`]*)`/g)].map(m => m[1] ?? m[2])
+const substitutions = (src: string) => [...src.matchAll(/\$\(([^()]*)\)|`([^`]*)`/g)].map(m => ({ text: m[1] ?? m[2], at: m.index! }))
 
 const unquote = (word: string) => word.replace(/^(["'])(.*)\1$/, '$2')
 const readPath = (word: string) => (/[$`~]/.test(unquote(word)) ? undefined : unquote(word))
-// The directory of the last cd before `index`, or nothing where there is none.
-function cdBefore(cmd: string, masked: string, index: number): string | undefined {
+// The directory of the last cd before `index`, or `outer` where there is none:
+// the directory a substitution's enclosing command was in.
+function cdBefore(cmd: string, masked: string, index: number, outer?: string): string | undefined {
   const cd = [...masked.slice(0, index).matchAll(CD)].pop()
-  return cd ? readPath(cmd.slice(cd.index! + cd[0].length - cd[1].length, cd.index! + cd[0].length)) : undefined
+  return cd ? readPath(cmd.slice(cd.index! + cd[0].length - cd[1].length, cd.index! + cd[0].length)) : outer
 }
 
 // The first push in a shell command: the directory it runs in, from its -C or
 // the last cd before it, whether it is a dry run, and whether it forces: a
 // --force option, -f in a short-flag group, or a + refspec. Null for no push.
 // The command is read as hostWrites reads it: unfolded, again unmasked where a
-// quote is left open, and then each substitution on its own.
+// quote is left open, and then each substitution on its own, in the directory
+// of the last cd before it.
 // shortcut: a path with a shell variable or ~ in it is not read, and the push is checked in the session's repo.
-export function pushTarget(cmd: string): { dir: string | undefined; dryRun: boolean; force: boolean } | null {
+export function pushTarget(cmd: string, outer?: string): { dir: string | undefined; dryRun: boolean; force: boolean } | null {
   const src = unfold(cmd)
   let open = false
   let masked = mask(src, () => { open = true })
@@ -84,14 +86,14 @@ export function pushTarget(cmd: string): { dir: string | undefined; dryRun: bool
   if (!push && open) push = PUSH.exec((masked = src))
   if (!push) {
     for (const sub of substitutions(src)) {
-      const found = pushTarget(sub)
+      const found = pushTarget(sub.text, cdBefore(src, masked, sub.at, outer))
       if (found) return found
     }
     return null
   }
   const read = ([start, end]: [number, number]) => readPath(src.slice(start, end))
   const at = push.indices!
-  const dir = at[1] ? read(at[1]) : cdBefore(src, masked, push.index)
+  const dir = at[1] ? read(at[1]) : cdBefore(src, masked, push.index, outer)
   const args = push[2]
   return { dir, dryRun: /(^|\s)(--dry-run|-n)(?=\s|$)/.test(args), force: /(^|\s)(--force|-[a-zA-Z]*f[a-zA-Z]*(?=\s|$)|\+\S)/.test(args) }
 }
@@ -113,19 +115,20 @@ export type HostWrite = { what: string; dir: string | undefined; prCreate: boole
 // query is inline and reads as a query. Line continuations are joined and
 // comment lines dropped first. Where a quote is left open, the command is read
 // again unmasked, and a `$(...)` or backtick substitution is read on its own,
-// quoted or not, since the shell runs both inside double quotes.
+// quoted or not, since the shell runs both inside double quotes, in the
+// directory of the last cd before it.
 // shortcut: a write run as `bash -c '...'` or `eval "..."`, or through a user's own gh alias, is not detected.
-export function hostWrites(cmd: string): HostWrite[] {
+export function hostWrites(cmd: string, outer?: string): HostWrite[] {
   const src = unfold(cmd)
   let open = false
   const masked = mask(src, () => { open = true })
-  const found = [...scan(src, masked), ...(open ? scan(src, src) : [])]
-  for (const sub of substitutions(src)) found.push(...hostWrites(sub))
+  const found = [...scan(src, masked, outer), ...(open ? scan(src, src, outer) : [])]
+  for (const sub of substitutions(src)) found.push(...hostWrites(sub.text, cdBefore(src, masked, sub.at, outer)))
   const seen = new Set<string>()
   return found.filter(w => !seen.has(JSON.stringify(w)) && !!seen.add(JSON.stringify(w)))
 }
 
-function scan(src: string, masked: string): HostWrite[] {
+function scan(src: string, masked: string, outer?: string): HostWrite[] {
   const found: HostWrite[] = []
   const envRepo = /\b(GH_REPO|GITLAB_REPO)\b/.test(src)
   // A parenthesis splits nothing, so an argument such as `repos/$(...)/issues`
@@ -167,7 +170,7 @@ function scan(src: string, masked: string): HostWrite[] {
       const m = method || (fields ? 'POST' : 'GET')
       if (m !== 'GET' && m !== 'HEAD') what = `${cli} api ${m}`
     } else if (noun && verb && !LOCAL_NOUNS.has(noun) && !READ_VERBS.has(verb)) what = `${cli} ${noun} ${verb}`
-    if (what) found.push({ what, dir: cdBefore(src, masked, seg.index!), prCreate: noun === PR_CREATE[cli] && (verb === 'create' || verb === 'new'), otherRepo })
+    if (what) found.push({ what, dir: cdBefore(src, masked, seg.index!, outer), prCreate: noun === PR_CREATE[cli] && (verb === 'create' || verb === 'new'), otherRepo })
   }
   return found
 }

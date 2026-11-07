@@ -86,7 +86,8 @@ pass found 101 of 120 probes it missed, among them `gh pr new`, `glab mr new`, a
 recent release. An `api` call is read by its method instead: with a field and no method it is a
 POST, as both CLIs send it, and a GraphQL call is a write unless its query is inline and starts with
 `query` or `{`. Line continuations are joined and comment lines dropped before the command is read,
-a `$(...)` or backtick substitution is read on its own even inside double quotes, and a command
+a `$(...)` or backtick substitution is read on its own even inside double quotes, in the directory of
+the last `cd` before it unless it has a `cd` of its own, and a command
 with a quote left open is read again unmasked.
 
 These asks hold whatever `origin`'s visibility, since a comment or a merge cannot be pulled back the
