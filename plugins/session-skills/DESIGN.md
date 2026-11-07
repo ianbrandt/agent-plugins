@@ -83,15 +83,17 @@ outright, because it is a normal step after a rebase. A push that may recurse in
 `--recurse-submodules=on-demand` or `only`, `push.recurseSubmodules`, or `submodule.recurse`, is
 held too, since the submodules' remotes are not checked. A hook's ask reaches a person in every
 permission mode, and where nobody can be asked, as under `claude -p`, the push is refused. Every
-push but a dry run or a call for help is held, a subagent's included. The hook asks when it cannot
+push but a dry run or a call for help is checked, a subagent's included. The hook asks when it cannot
 read a command at all: the engine skips a hook that throws, and the command would run unasked.
 
 A command is read by one lexer, in `hooks/checkouts.ts`, with the rules of the shell that runs it.
-It resolves quotes, backslash or PowerShell backtick escapes, bash's `$'...'` escapes, comments,
+It resolves quotes, a backslash or a PowerShell backtick before one character, bash's `$'...'` escapes, comments,
 line continuations, redirections, `$((...))` and `$[...]` arithmetic, and quoted and unquoted
 heredocs and PowerShell here-strings, and reads each `$(...)`, backtick, `<(...)`, bash 5.3
-`${ ...; }`, subshell, and script block as commands of its own. git is read only as the command of a
-simple command, so `git grep -e git -e push` is no push, and a substitution is read as git only
+`${ ...; }`, subshell, and script block as commands of its own. git is read in any word of a simple
+command, so `sudo -u x git push` is read, and so are `man git-push`, a URL that ends in `/git-push`,
+and a path that ends in `/git`, which are asked about as pushes. The arguments of a git subcommand
+are not read, so `git grep -e git -e push` is no push, and a substitution is read as git only
 where it looks git up, as `$(which git)` does. Regexes were used before,
 one pass at a time, and a review with live probes found commands they misread, among them a
 backtick span in a quoted commit message read as a command, a `# --dry-run` comment read as a dry
@@ -182,6 +184,29 @@ chained command is checked, so a comment added after a PR opened unasked is stil
 alias to `gh` set in git config, or brace expansion is not seen, and neither is a force option held
 in a variable, as in `git push $FORCE`. A PowerShell command with `--%` in it is asked about, since
 the rest of its line is passed on unread.
+
+The gate is built for commands a session might plausibly write while landing a branch, opening a PR,
+or fixing a remote. It does not guard against a command written to get past the lexer. A third
+review found 26 commands that got past it, most of them sibling forms of fixes from the second review, and
+only those a session might write were fixed. These forms are not seen:
+
+- a NUL in `$'...'`, bash's `$"..."`, an unquoted glob in a command word, and PowerShell's
+  `` `u{...} `` escape
+- an option value of `git` or `gh` before the real command, as in `env -u git git push`
+- a git 2.54 subsection alias that differs from another only in letter case, or has a space in
+  its name
+- `NAME+=value`, a `GIT_DIR` cleared by a second `env`, and bash 5.3's `${ cd /x; }` in an
+  assignment
+- a command git or the shell runs from a value: `--receive-pack`, `--upload-pack`, an editor such
+  as `GIT_EDITOR` or `core.editor`, a filter-branch filter, and `builtin trap`
+- a `pushInsteadOf` that rewrites a relative path, and a push refspec in config that deletes
+- an upstream set with an attached value, as in `git branch -upub/main`
+- PowerShell's `$null=Set-Location` with no spaces, a module-qualified `Set-Location`, `Set-Item
+  env:`, and `& (Get-Command git)`
+- `"${GIT:-git}"`, a `-c` alias to gh, and a shell alias that runs a relative path, which git runs
+  from the repo's top level
+- `-c` aliases nested so that each runs several more, which can take minutes to read, since each
+  level is read with a work cap of its own
 
 A follow-up prompt after the reply used to do this. It showed in the transcript as a message from the
 plugin, it took a fenced block as the only sign of a next step, so it fired after "This session
