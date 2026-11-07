@@ -633,6 +633,14 @@ test('a push is read after git options, and its directory from the last -C, --gi
   expect(pushTarget('git log --oneline push')).toBeNull()
 })
 
+test('a cd inside a subshell or substitution that has closed does not move a later push or host write', () => {
+  expect(pushTarget('(cd /other && make) && git push')?.dir).toBeUndefined()
+  expect(pushTarget('cd /y && (cd /other && make) && git push')?.dir).toBe('/y')
+  expect(pushTarget('x=$(cd /a; pwd) && git push')?.dir).toBeUndefined()
+  expect(pushTarget('(cd /x && git push)')?.dir).toBe('/x')
+  expect(hostWrite('(cd /other && make) && gh pr create --fill')?.dir).toBeUndefined()
+})
+
 test('a push or host write inside a substitution runs in the directory of the last cd before it', () => {
   expect(pushTarget('cd /fork && out="$(git push 2>&1)"')?.dir).toBe('/fork')
   expect(pushTarget('cd /fork && out="$(cd /z && git push)"')?.dir).toBe('/z')

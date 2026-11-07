@@ -67,9 +67,13 @@ const substitutions = (src: string) => [...src.matchAll(/\$\(([^()]*)\)|`([^`]*)
 const unquote = (word: string) => word.replace(/^(["'])(.*)\1$/, '$2')
 const readPath = (word: string) => (/[$`~]/.test(unquote(word)) ? undefined : unquote(word))
 // The directory of the last cd before `index`, or `outer` where there is none:
-// the directory a substitution's enclosing command was in.
+// the directory a substitution's enclosing command was in. A cd inside a
+// subshell or substitution that has closed by `index` is blanked, since it does
+// not apply outside.
 function cdBefore(cmd: string, masked: string, index: number, outer?: string): string | undefined {
-  const cd = [...masked.slice(0, index).matchAll(CD)].pop()
+  let before = masked.slice(0, index)
+  for (let last = ''; last !== before; ) [last, before] = [before, before.replace(/\([^()]*\)/g, m => ' '.repeat(m.length))]
+  const cd = [...before.matchAll(CD)].pop()
   return cd ? readPath(cmd.slice(cd.index! + cd[0].length - cd[1].length, cd.index! + cd[0].length)) : outer
 }
 
