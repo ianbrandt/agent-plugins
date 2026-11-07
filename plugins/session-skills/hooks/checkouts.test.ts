@@ -1450,7 +1450,7 @@ test('a stack of pushd or a run of parentheses is put to the user, quickly', asy
   }
 })
 
-test('a push held for its submodules, its config, or a failed read is put to the user, and one to a path here is not', async ($: any, on: any) => {
+test('a push held for its submodules or its config is put to the user, and one to a path here is not', async ($: any, on: any) => {
   const config: Record<string, string> = { 'session-skills.originVisibility': 'private' }
   targetWorld(on, config)
   expect((await verdict($, 'git push ../backup.git main')).decision).toBe('allow')
