@@ -69,64 +69,86 @@ The holds in `land-and-wrap` are read from the skill text, so a session that pus
 skill pushes anyway: on 2026-11-06 a session pushed a cleared TODO to this public repo. A
 `tool.check` hook on `Bash` and `PowerShell` reads the holds for the repo each push in a command
 runs in, and puts a held push to the user in the permission prompt with the `git config` line that
-lifts the hold. `git send-pack`, `git http-push`, `git subtree push`, `git lfs push`, and a push in
-the command given to `git submodule foreach` are pushes too. A subcommand git does not build in is
-read as an alias from `git config` in the push's directory, and its expansion is checked in its
-place. A force push (a unique prefix of `--force`, `--force-with-lease`, `--mirror`, `--delete`, or
+lifts the hold. `git send-pack`, `git http-push`, `git subtree push`, and `git lfs push` are pushes
+too, and so is `git-push` run directly. A push in a command left to run later is read in a directory
+that cannot be read: the command given to `git submodule foreach`, `git bisect run`, `git rebase -x`,
+`git difftool -x`, or `git for-each-repo`, and a `trap` action. A subcommand git does not build in
+is read as an alias from `git config` in the push's directory, as `alias.<name>` and git 2.54's
+`alias.<name>.command`, and its expansion is checked in its place with the `-c` values given with
+it. A force push (a unique prefix of `--force`, `--force-with-lease`, `--mirror`, `--delete`, or
 `--prune`, `-f` or `-d` in a short-flag group, a refspec that starts with `+` or deletes with a
-leading `:`, or a `+` refspec or a mirror set with `-c`) is put to the user
-whatever the holds, because it replaces commits a reviewer may have read, and it is never refused
-outright, because it is a normal step after a rebase. A hook's ask reaches a person in every
+leading `:`, a `+` refspec or a mirror set with `-c` or in the remote's config, or any config set in
+the environment) is put to the user whatever the holds, because it replaces commits a reviewer may have read, and it is never refused
+outright, because it is a normal step after a rebase. A push that may recurse into submodules, by
+`--recurse-submodules=on-demand` or `only`, `push.recurseSubmodules`, or `submodule.recurse`, is
+held too, since the submodules' remotes are not checked. A hook's ask reaches a person in every
 permission mode, and where nobody can be asked, as under `claude -p`, the push is refused. Every
 push but a dry run or a call for help is held, a subagent's included. The hook asks when it cannot
 read a command at all: the engine skips a hook that throws, and the command would run unasked.
 
 A command is read by one lexer, in `hooks/checkouts.ts`, with the rules of the shell that runs it.
-It resolves quotes, backslash or PowerShell backtick escapes, comments, line continuations,
-redirections, and quoted and unquoted heredocs and PowerShell here-strings, and reads each `$(...)`,
-backtick, `<(...)`, subshell, and script block as commands of its own. Regexes were used before,
+It resolves quotes, backslash or PowerShell backtick escapes, bash's `$'...'` escapes, comments,
+line continuations, redirections, `$((...))` and `$[...]` arithmetic, and quoted and unquoted
+heredocs and PowerShell here-strings, and reads each `$(...)`, backtick, `<(...)`, bash 5.3
+`${ ...; }`, subshell, and script block as commands of its own. git is read only as the command of a
+simple command, so `git grep -e git -e push` is no push, and a substitution is read as git only
+where it looks git up, as `$(which git)` does. Regexes were used before,
 one pass at a time, and a review with live probes found commands they misread, among them a
 backtick span in a quoted commit message read as a command, a `# --dry-run` comment read as a dry
 run, and a quote in one command paired with a quote in the next. An adversarial pass on the lexer
 found more, among them a heredoc closed as `EOF)` and `<<` in arithmetic read as a heredoc, and
-each has a regression test. Work on one command is capped, so a crafted nest of heredocs is asked
-about in milliseconds rather than read for a minute.
+each has a regression test. A second review with live probes found 25 commands that got past the
+gate or were asked about as pushes, among them `git config -- session-skills.holdPublicPush false`,
+`git $'\x70ush'`, and `git diff "$(git merge-base main HEAD)"`, and each has a regression test too.
+Work on one command is capped, counting each rescan of arithmetic and each directory copied onto a
+`pushd` stack, so a crafted nest of heredocs or a long run of `pushd` is asked about in milliseconds
+rather than read for a minute.
 
 The repo a push runs in is its `--git-dir` or an exported `GIT_DIR`, else its directory after an
-`env -C`, each `-C`, and every `cd`, `pushd`, and `popd` before it. A `--work-tree` does not change
-the repo. A `cd` after `&&` from the start of its list has run by the time the push runs, but one
+`env -C`, each `-C`, and every `cd`, `pushd`, and `popd` before it. An `env -i` or `env -u GIT_DIR`
+clears a `GIT_DIR` set before it, and a `--work-tree` does not change the repo. A `cd` after `&&` from the start of its list has run by the time the push runs, but one
 after `||`, inside an `if` or a loop, or after a command that may have failed may not have, and
 where the push may run in more than one directory the hold asks. It asks too after `popd` or `cd -`,
-a call to a function the command defines, a `GIT_DIR` set without `export` or with a relative path,
+a call to a function the command defines, a body in braces after a command's first word, as in
+zsh's `() { ... }` or `repeat 1 { ... }`, a `GIT_DIR` set without `export` or with a relative path,
 a path that starts with `~` or `$HOME`, a path with a variable in it after a `cd`, and a git subcommand that is not
 written out, such as `git $sub`. A branch that ends in `exit` reaches nothing after it, so
-`cd /x || exit 1; git push` is read in `/x`. The Bash tool runs bash or zsh, which differ on two
+`cd /x || exit 1; git push` is read in `/x`, unless the command defines a function named `exit`.
+A `return` outside a function fails in bash, which runs on, so it is read as running on. The Bash tool runs bash or zsh, which differ on two
 points: zsh runs the last command of a pipeline in the current shell, and it sends only the last
 pipeline of a list to the background. Where the two readings differ, the hold asks. A PowerShell
-pipeline or subexpression runs in the current runspace and can move the location. A variable path
+pipeline or subexpression, or the command after `$x =`, runs in the current runspace and can move
+the location. A variable path
 in the session's own directory, as in `cd "$WT"`, is read as the session's repo.
 
 A push with no directory runs in the Bash tool's working directory, which a `cd` in an earlier call
 moves, and a relative path is read against it. In a linked worktree the session's repo is the
 primary checkout, but the branch checked out is the worktree's. The visibility is read for the remote
 the push goes to: the one given in the command, else the one git picks from the branch's
-`pushRemote`, `remote.pushDefault`, and the branch's remote, in that order, with origin last. origin,
+`pushRemote`, `remote.pushDefault`, and the branch's remote, in that order, with origin last, and a
+read of that config that fails holds the push. origin,
 or a remote with the same push URLs, takes the visibility set in git config, and any other remote is
 looked up with gh or glab by each of its push URLs, except a path on this machine, which is private.
-The hold asks for a push to a URL that is not a remote, and for one whose remote is not written out
-or is changed for that push with `-c`, `--config-env`, or a `GIT_CONFIG`, `HOME`, `XDG_CONFIG_HOME`,
-or `GIT_COMMON_DIR` variable. It asks too for a push with no remote after a `git switch` or
-`checkout`, or after a command that sets or unsets an upstream, earlier in the same command, since
-those change the branch config the push reads. `git push .` updates this repo and is not held. An
+The hold asks for a push to a URL that is not a remote, but not for one to a path on this machine.
+It asks for a push whose remote is not written out or is changed for that push with `-c`,
+`--config-env`, or a `GIT_CONFIG`, `HOME`, `XDG_CONFIG_HOME`, or `GIT_COMMON_DIR` variable set in
+the command, PowerShell's `$env:` included. A `send-pack` or `http-push` takes a URL or a path, so its
+remote is not read. It asks too for a push with no remote after a `git switch`, `checkout`, or
+`symbolic-ref` that sets HEAD, or after a command that sets or unsets an upstream with an option
+given by any unique prefix, earlier in the same command, since those change the branch config the
+push reads. `git push .` updates this repo and is not held. An
 adversarial pass found 18 commands that got past these checks, among them a PR body that starts with
 `- H` read as `--head`, `git branch -u pub/main && git push`, and an abbreviated `git config --fil`,
 and each has a regression test.
 
 The hold reads git config before the command runs, so a write that changes where a later push goes
 is put to the user too: a `git config` write to a key under `remote`, `url`, `branch`, `include`,
-`includeIf`, or `alias`, and `git remote add`, `rename`, `remove`, `rm`, or `set-url`. So is a write
-to a `session-skills` key, since setting `holdPublicPush` or `originVisibility` would lift a hold
-without the user. An edit to the config file with a file tool or `sed` is not seen.
+`includeIf`, or `alias`, `git remote add`, `rename`, `remove`, `rm`, or `set-url`, and `git submodule
+set-url` or `sync`. So is a write to a `session-skills` key, since setting `holdPublicPush` or
+`originVisibility` would lift a hold without the user, and `gh alias set` or `import`, since a gh
+alias can run a push or a host write that the hook does not read. A `git config` command is read as
+git reads it: the form before git 2.46 reads no option after the key, so
+`git config session-skills.holdPublicPush false --get` writes the key. An edit to the config file with a file tool or `sed` is not seen.
 
 The same hook puts every write to the host through `gh` or `glab` to the user, such as a comment, a
 merge, a release, or a workflow run. Every subcommand is taken as a write except a short list of
@@ -136,7 +158,10 @@ option, whose value it may be. A list of writes was tried first, and an adversar
 120 probes it missed, among them `gh pr new`, `glab mr new`, and a verb new in a recent release. An
 `api` call is read by its method instead: with a field and no method it is a POST, as both CLIs send
 it, and a GraphQL call is a write unless its `query` field is written out and starts with `query` or
-`{`. The command is read by the same lexer as a push.
+`{`. The command is read by the same lexer as a push, with gh and glab found as `=gh` or a path
+lookup such as `$(which gh)`. An option before the verb other than `-R` may take the verb as its
+value, as cobra reads it, so the command is held. A PR is held as a push unless its last `--head`
+is given a branch that is written out in the command.
 
 These asks hold whatever `origin`'s visibility, since a comment or a merge cannot be pulled back the
 way a private push can. The one exception is a `gh pr create` or `glab mr create` with `holdPrText`
