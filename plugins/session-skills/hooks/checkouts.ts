@@ -70,11 +70,11 @@ const ABSOLUTE = /^(?:[A-Za-z]:)?[\\/]/
 
 // A path word read against the directory it is given in. A relative path where
 // that is the session's repo stays relative, and git reads it there. A path
-// with ~ in it, or with a variable after a cd, cannot be read.
-// shortcut: a path with a shell variable in it, given in the session's repo, is read as that repo.
+// with ~ or $HOME in it, or with a variable after a cd, cannot be read.
+// shortcut: a path with any other shell variable in it, given in the session's repo, is read as that repo.
 function resolve(base: Dir, w: Word | undefined): Dir {
   if (!w) return null
-  if (!w.literal) return base === undefined && !w.text.startsWith('~') ? undefined : null
+  if (!w.literal) return base === undefined && !/^(?:~|\$\{?HOME\b)/.test(w.text) ? undefined : null
   const p = w.text
   if (ABSOLUTE.test(p)) return p
   if (base === undefined) return p === '.' ? undefined : p
@@ -574,6 +574,8 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
 function commands(cmd: string, shell: string, outer: Dir): Command[] {
   const ps = /powershell|pwsh/i.test(shell)
   const text = cmd.replace(/\r\n/g, '\n')
+  // After --% PowerShell passes the rest of the line as it is, comments included.
+  if (ps && /(?:^|\s)--%(?:\s|$)/.test(text)) throw new Error('a PowerShell --% is not read')
   budget.left = 200_000 + 50 * text.length
   return lexAll(ps ? text.replace(/[\u2018\u2019\u201A\u201B]/g, "'").replace(/[\u201C\u201D\u201E]/g, '"') : text, ps, [{ dir: outer, stack: [], gitDir: undefined }])
 }
@@ -617,12 +619,36 @@ update-index update-ref var verify-commit verify-pack verify-tag version whatcha
 // null where it cannot be read from the command.
 export type Push = { dir: Dir; dryRun: boolean; force: boolean; remote?: string | null; alias?: string; rest?: string }
 
+// The long options of a command, the ones that take a value, and its short
+// options that take one.
+type Options = { names: string[]; valued: RegExp; short: string }
+const PUSH: Options = {
+  names: `all branches mirror delete tags follow-tags signed atomic push-option receive-pack exec force-with-lease force-if-includes
+force repo set-upstream thin quiet verbose progress prune no-verify verify dry-run porcelain recurse-submodules ipv4 ipv6 help`.split(/\s+/),
+  valued: /^(?:push-option|receive-pack|exec|recurse-submodules|repo)$/,
+  short: 'o',
+}
+const SUBTREE: Options = {
+  names: 'annotate branch onto message prefix squash no-squash rejoin ignore-joins quiet debug help'.split(' '),
+  valued: /^(?:annotate|branch|onto|message|prefix)$/,
+  short: 'bmP',
+}
+
+// A long option as git reads it: a unique prefix, and --no- before most. '' for
+// an option the command does not have.
+function longOption(given: string, o: Options): { option: string; negated: boolean } {
+  const negated = given.startsWith('no-') && !o.names.includes(given)
+  const name = negated ? given.slice(3) : given
+  const matches = o.names.filter(n => n === name || n.startsWith(name))
+  return { option: matches.includes(name) ? name : matches.length === 1 ? matches[0] : '', negated }
+}
+
 // Whether a push is a dry run, whether it forces, and its remote. --force*,
 // --mirror, --delete, or --prune, an f or d in a short-flag group, or a refspec
-// that starts with + or deletes with a leading colon forces it. -o takes the
-// rest of its group, or the next word, and so does `git subtree`'s -P or --prefix. The
-// first word that is not an option is the remote, else the value of --repo.
-function pushFlags(args: Word[]): { dryRun: boolean; force: boolean; remote?: string | null } {
+// that starts with + or deletes with a leading colon forces it. An option that
+// takes a value takes the rest of its group, or the next word. The first word
+// that is not an option is the remote, else the value of --repo.
+function pushFlags(args: Word[], o = PUSH): { dryRun: boolean; force: boolean; remote?: string | null } {
   let dryRun = false
   let force = false
   let options = true
@@ -633,25 +659,22 @@ function pushFlags(args: Word[]): { dryRun: boolean; force: boolean; remote?: st
     const long = options && /^--([^=]+)(=?)/.exec(a)
     if (options && a === '--') options = false
     else if (long) {
-      // git takes a unique prefix of a long option, and --no- before most.
       const [, given, eq] = long
-      const negated = given.startsWith('no-') && !PUSH_OPTIONS.includes(given)
-      const name = negated ? given.slice(3) : given
-      const matches = PUSH_OPTIONS.filter(o => o === name || o.startsWith(name))
-      const option = matches.includes(name) ? name : matches.length === 1 ? matches[0] : ''
-      if (option === 'repo' && !negated) repo = eq ? { ...args[j], text: a.slice(a.indexOf('=') + 1) } : args[++j]
-      else if (/^(?:push-option|receive-pack|exec|prefix)$/.test(option) && !eq && !negated) j++
+      const { option, negated } = longOption(given, o)
+      const value = () => (eq ? { ...args[j], text: a.slice(a.indexOf('=') + 1) } : args[++j])
+      if (option === 'repo' && !negated) repo = value()
+      else if (o.valued.test(option) && !negated) value()
       else if (/^(?:force|force-with-lease|mirror|delete|prune)$/.test(option) && !negated) force = true
       else if (option === 'dry-run' || option === 'help') dryRun = !negated
     } else if (options && /^-[^-]/.test(a)) {
       for (let x = 1; x < a.length; x++) {
-        if (a[x] === 'o' || a[x] === 'P') {
+        if (o.short.includes(a[x])) {
           if (x === a.length - 1) j++
           break
         }
         // -h prints usage, and pushes nothing.
         if (a[x] === 'n' || a[x] === 'h') dryRun = true
-        if (a[x] === 'f' || a[x] === 'd') force = true
+        if (o === PUSH && (a[x] === 'f' || a[x] === 'd')) force = true
       }
     } else {
       named ??= args[j]
@@ -662,51 +685,88 @@ function pushFlags(args: Word[]): { dryRun: boolean; force: boolean; remote?: st
   return { dryRun, force, ...(remote && { remote: remote.literal ? remote.text : null }) }
 }
 
-const PUSH_OPTIONS = `all branches mirror delete tags follow-tags signed atomic push-option receive-pack exec force-with-lease
-force-if-includes force repo set-upstream thin quiet verbose progress prune no-verify verify dry-run porcelain recurse-submodules
-ipv4 ipv6 help prefix`.split(/\s+/)
-
-const GIT = /^(?:.*[\/\\])?git(?:\.exe)?$/i
-const joined = (words: Word[]) => words.map(w => w.text).join(' ')
+// zsh runs `=git` as the git on the PATH, and `$(which git)` runs git too.
+const GIT = /^=?(?:.*[\/\\])?git(?:\.exe)?$/i
+const isGit = (w: Word) => GIT.test(w.text) || (!w.literal && /(?:^|[\s\/(`])git(?:\.exe)?(?:[\s)`]|$)/i.test(w.text))
+// Words joined back into a command with their quoting, so that a `#` or `;` in
+// one is not read as a comment or an operator.
+const joined = (words: Word[]) => words.map(w => (w.literal ? `'${w.text.replace(/'/g, `'\\''`)}'` : `"${w.text}"`)).join(' ')
 
 // The config keys that can change where a push or a PR goes. One set for a
 // single push makes its remote unknown, and a write to one or to a hold is put
 // to the user.
-const TARGET_KEYS = /^(?:remote|url|branch|include|includeif)(?:\.|$)/i
-const HELD_KEYS = /^(?:remote|url|branch|include|includeif|alias|session-skills)(?:\.|$)/i
+const TARGET_KEYS = /^(?:remote|url|branch|include|includeif|lfs)(?:\.|$)/i
+const HELD_KEYS = /^(?:remote|url|branch|include|includeif|lfs|alias|session-skills)(?:\.|$)/i
+// Variables that move the config git reads, set in front of a command.
+const CONFIG_VARS = /\bGIT_CONFIG|\b(?:HOME|XDG_CONFIG_HOME|GIT_COMMON_DIR)=/
 
 // git's options before its subcommand, read from the word after `git` at k:
-// where the subcommand is, each -C, each -c or --config-env value, and a --git-dir.
-function gitOptions(words: Word[], k: number): { j: number; cs: (Word | undefined)[]; configs: string[]; gitDir?: Word } {
+// where the subcommand is, each -C, each -c or --config-env value, and a
+// --git-dir. A --config-env value is read from a variable, so it is not literal.
+function gitOptions(words: Word[], k: number): { j: number; cs: (Word | undefined)[]; configs: Word[]; gitDir?: Word } {
   const cs: (Word | undefined)[] = []
-  const configs: string[] = []
+  const configs: Word[] = []
   let gitDir: Word | undefined
   let j = k + 1
   for (; j < words.length; j++) {
     const a = words[j].text
+    const env = (text: string) => configs.push({ text: text.slice(0, text.indexOf('=') + 1), literal: false, quoted: false })
     if (a === '-C') cs.push(words[++j])
-    else if (a === '-c' || a === '--config-env') configs.push(words[++j]?.text ?? '')
-    else if (a.startsWith('--config-env=')) configs.push(a.slice(13))
+    else if (a === '-c') configs.push(words[++j] ?? { text: '', literal: false, quoted: false })
+    else if (a === '--config-env') env(words[++j]?.text ?? '')
+    else if (a.startsWith('--config-env=')) env(a.slice(13))
     else if (a === '--git-dir') gitDir = words[++j] ?? { text: '', literal: false, quoted: false }
     else if (a.startsWith('--git-dir=')) gitDir = { ...words[j], text: a.slice(10) }
-    else if (/^--(?:work-tree|namespace|attr-source|super-prefix)$/.test(a)) j++
+    else if (/^--(?:work-tree|namespace|attr-source|super-prefix|shallow-file)$/.test(a)) j++
     else if (!a.startsWith('-')) break
   }
   return { j, cs, configs, gitDir }
 }
 
+// The aliases set with -c, by their lowercased name, as git reads them. An
+// alias whose text is read from a variable is set to null.
+function configAliases(configs: Word[]): Map<string, string | null> {
+  const aliases = new Map<string, string | null>()
+  for (const w of configs) {
+    const m = /^alias\.([^=]+)=(.*)$/is.exec(w.text)
+    if (m) aliases.set(m[1].toLowerCase(), w.literal ? m[2] : null)
+  }
+  return aliases
+}
+
+const CONFIG: Options = {
+  names: `global system local worktree file blob get get-all get-regexp get-urlmatch replace-all add unset unset-all rename-section
+remove-section list edit get-color get-colorbool null name-only show-origin show-scope show-names type bool int bool-or-int bool-or-str
+path expiry-date default comment fixed-value includes all regexp value url append`.split(/\s+/),
+  valued: /^(?:file|blob|type|default|comment|value|url)$/,
+  short: 'ft',
+}
+
 // The held key a `git config` command writes, or undefined for a read or a key
-// that is not held. A key that is not written out is held.
+// that is not held. A key that is not written out is held. git reads a quoted
+// option as an option, and takes a unique prefix of a long one.
 function configKey(args: Word[]): string | undefined {
   const pos: Word[] = []
   let mode = ''
   for (let i = 0; i < args.length; i++) {
     const a = args[i].text
-    if (args[i].quoted || !a.startsWith('-')) pos.push(args[i])
-    else if (/^(?:-f|--file|--blob|--type|--default|--comment|--value|--url)$/.test(a)) i++
-    else if (/^(?:--get(?:-all|-regexp|-urlmatch|-color|-colorbool)?|-l|--list)$/.test(a)) return undefined
-    else if (/^(?:-e|--edit)$/.test(a)) return a
-    else if (/^--(?:add|replace-all|unset|unset-all|rename-section|remove-section)$/.test(a)) mode = a
+    const long = /^--([^=]+)(=?)/.exec(a)
+    if (long) {
+      const { option, negated } = longOption(long[1], CONFIG)
+      if (CONFIG.valued.test(option) && !negated && !long[2]) i++
+      else if (/^(?:get|get-all|get-regexp|get-urlmatch|get-color|get-colorbool|list)$/.test(option)) return undefined
+      else if (option === 'edit') return a
+      else if (/^(?:add|replace-all|unset|unset-all|rename-section|remove-section)$/.test(option)) mode = option
+    } else if (/^-[^-]/.test(a)) {
+      for (let x = 1; x < a.length; x++) {
+        if (a[x] === 'l') return undefined
+        if (a[x] === 'e') return a
+        if (CONFIG.short.includes(a[x])) {
+          if (x === a.length - 1) i++
+          break
+        }
+      }
+    } else pos.push(args[i])
   }
   // The subcommands added in git 2.46. A key always has a dot in it.
   const verb = pos[0]?.literal ? pos[0].text : ''
@@ -720,72 +780,93 @@ function configKey(args: Word[]): string | undefined {
   return pos.slice(0, mode.includes('rename') ? 2 : 1).find(w => !w.literal || HELD_KEYS.test(w.text))?.text
 }
 
+// A -c whose key is read from a variable, which may set any key, an alias included.
+const unread = (configs: Word[]) => configs.some(w => !w.literal && !/^[\w.-]+=/.test(w.text))
+
 // Each git command in a shell command that can change where a later push or PR
-// goes, or lift a hold: a write to a remote, url, branch, include, alias, or
-// session-skills key, and `git remote add`, `rename`, `remove`, `rm`, or `set-url`.
-// shortcut: an edit to the config file itself, with a file tool or sed, is not seen.
+// goes, or lift a hold: a write to a remote, url, branch, include, lfs, alias,
+// or session-skills key, and `git remote add`, `rename`, `remove`, `rm`, or
+// `set-url`. An alias set with -c is read in place.
+// shortcut: an edit to the config file itself, with a file tool or sed, or a write through an alias in git config, is not seen.
 export function configWrites(cmd: string, shell = 'Bash', outer?: Dir): string[] {
   const found: string[] = []
   for (const { words } of commands(cmd, shell, outer)) {
     for (let k = 0; k < words.length; k++) {
-      if (!GIT.test(words[k].text)) continue
-      const { j } = gitOptions(words, k)
+      if (!isGit(words[k])) continue
+      const { j, configs } = gitOptions(words, k)
+      const sub = words[j]
       const rest = words.slice(j + 1)
-      if (words[j]?.text === 'remote') {
+      const aliases = configAliases(configs)
+      const alias = sub && aliases.get(sub.text.toLowerCase())
+      if (sub?.text === 'remote') {
         const verb = rest.find(w => !w.text.startsWith('-'))
         if (verb && (!verb.literal || /^(?:add|rename|remove|rm|set-url)$/.test(verb.text))) found.push(`git remote ${verb.text}`)
-      } else if (words[j]?.text === 'config') {
+      } else if (sub?.text === 'config') {
         const key = configKey(rest)
         if (key !== undefined) found.push(`git config ${key}`)
-      }
+      } else if (typeof alias === 'string') {
+        for (const w of configWrites(`${alias.startsWith('!') ? alias.slice(1) : `git ${alias}`} ${joined(rest)}`)) found.push(w)
+      } else if (sub && (alias === null || (unread(configs) && !BUILTIN.has(sub.text)))) found.push(`git ${sub.text}`)
     }
   }
   return unique(found)
 }
 
+// Whether a git command changes the branch a later push in the same command
+// reads its remote from, or that branch's upstream: a switch or checkout, or a
+// branch, fetch, pull, or push that sets or unsets an upstream.
+const UPSTREAM = /^(?:--set-upstream(?:-to)?(?:=.*)?|--unset-upstream|--track(?:=.*)?|-[A-Za-z]*[ut][A-Za-z]*)$/
+const moves = (sub: string, rest: Word[]) =>
+  sub === 'switch' || sub === 'checkout' || (/^(?:branch|fetch|pull|push)$/.test(sub) && rest.some(w => UPSTREAM.test(w.text)))
+
 // Every push in a shell command, read in `shell`: the repo it runs in, whether
-// it is a dry run, and whether it forces. `git send-pack`, `git http-push`,
-// `git subtree push`, and `git lfs push` are pushes, and the command given to
-// `git submodule foreach` is read as one, in a directory that cannot be read.
-// An alias set with -c is read in place, and any other subcommand that is not
-// built in is returned with `alias` set, for the hook to read. A subcommand
+// it is a dry run, whether it forces, and its remote. `git send-pack`, `git
+// http-push`, `git subtree push`, and `git lfs push` are pushes, and the command
+// given to `git submodule foreach` is read as one, in a directory that cannot be
+// read. An alias set with -c is read in place, and any other subcommand that is
+// not built in is returned with `alias` set, for the hook to read. A subcommand
 // that is not written out, such as `git $sub`, is a push in a directory that
-// cannot be read, so the hold asks.
+// cannot be read, so the hold asks. A push with no remote after a command that
+// moves the branch or its upstream has a remote that cannot be read.
 export function pushTargets(cmd: string, shell = 'Bash', outer?: Dir): Push[] {
   const found: Push[] = []
-  const envConfig = /\bGIT_CONFIG/.test(cmd)
+  const envConfig = CONFIG_VARS.test(cmd)
+  let movedBranch = false
   for (const { words, at } of commands(cmd, shell, outer)) {
     for (let k = 0; k < words.length; k++) {
-      if (!GIT.test(words[k].text)) continue
+      if (!isGit(words[k])) continue
       const { j, cs, configs, gitDir } = gitOptions(words, k)
-      const aliases = new Map<string, string>()
-      for (const v of configs) {
-        const m = /^alias\.([^=]+)=(.*)$/s.exec(v)
-        if (m) aliases.set(m[1], m[2])
-      }
+      const aliases = configAliases(configs)
       // A refspec or mirror set with -c can force the push, and a remote, url,
-      // branch, or include key set for it can send it to another remote.
-      const configForce = configs.some(v => /^remote\..*\.(?:push=\+|mirror=)/is.test(v))
-      const moved = envConfig || configs.some(v => TARGET_KEYS.test(v))
+      // branch, include, or lfs key set for it can send it to another remote.
+      const configForce = configs.some(w => !w.literal || /^remote\..*\.(?:push=\+|mirror=)/is.test(w.text))
+      const moved = envConfig || configs.some(w => !w.literal || TARGET_KEYS.test(w.text))
       const sub = words[j]?.text
       const rest = words.slice(j + 1)
       const dir = repoDir(at, words.slice(0, k), cs as Word[], gitDir)
       const pushAt = rest.findIndex(w => w.text === 'push')
-      const flags = (args: Word[]) => {
-        const f = pushFlags(args)
-        return { ...f, force: f.force || configForce, ...(moved && { remote: null }) }
+      const flags = (args: Word[], o?: Options) => {
+        const f = pushFlags(args, o)
+        return { ...f, force: f.force || configForce, ...((moved || (movedBranch && f.remote === undefined)) && { remote: null }) }
       }
+      const alias = sub === undefined ? undefined : aliases.get(sub.toLowerCase())
       if (sub !== undefined && !words[j].literal) found.push({ dir: null, dryRun: false, force: false, remote: null })
       else if (sub === 'push' || sub === 'send-pack' || sub === 'http-push') found.push({ dir, ...flags(rest) })
-      else if ((sub === 'subtree' || sub === 'lfs') && pushAt >= 0) found.push({ dir, ...flags(rest.slice(pushAt + 1)) })
+      else if ((sub === 'subtree' || sub === 'lfs') && pushAt >= 0) found.push({ dir, ...flags(rest.slice(pushAt + 1), sub === 'subtree' ? SUBTREE : PUSH) })
       else if (sub === 'submodule' && rest.some(w => w.text === 'foreach')) {
         const inner = rest.slice(rest.findIndex(w => w.text === 'foreach') + 1).filter((w, x, all) => !all.slice(0, x + 1).every(v => v.text.startsWith('-')))
-        for (const p of pushTargets(joined(inner), 'Bash', null)) found.push({ ...p, dir: null })
+        // foreach runs its arguments as one shell command, so they are read again unquoted.
+        for (const p of pushTargets(inner.map(w => w.text).join(' '), 'Bash', null)) found.push({ ...p, dir: null })
         break
-      } else if (sub !== undefined && aliases.has(sub)) {
-        const v = aliases.get(sub)!
-        for (const p of pushTargets(`${v.startsWith('!') ? v.slice(1) : `git ${v}`} ${joined(rest)}`, 'Bash', dir)) found.push(moved ? { ...p, remote: null } : p)
-      } else if (sub !== undefined && !BUILTIN.has(sub) && /^[\w.-]+$/.test(sub)) found.push({ dir, dryRun: false, force: false, alias: sub, rest: joined(rest) })
+      } else if (typeof alias === 'string') {
+        for (const p of pushTargets(`${alias.startsWith('!') ? alias.slice(1) : `git ${alias}`} ${joined(rest)}`, 'Bash', dir)) {
+          found.push({ ...p, force: p.force || configForce, ...((moved || (movedBranch && p.remote === undefined)) && { remote: null }) })
+        }
+      } else if (alias === null || (sub !== undefined && unread(configs) && !BUILTIN.has(sub))) found.push({ dir, dryRun: false, force: configForce, remote: null })
+      else if (sub !== undefined && !BUILTIN.has(sub) && /^[\w.-]+$/.test(sub)) {
+        found.push({ dir, dryRun: false, force: configForce, alias: sub, rest: joined(rest), ...((moved || movedBranch) && { remote: null }) })
+      }
+      if (sub === undefined || !words[j].literal || moves(sub, rest)) movedBranch = true
     }
   }
   return unique(found)
@@ -804,6 +885,42 @@ const CLI = /^(?:.*[\/\\])?(gh|glab)(?:\.exe)?$/i
 // --head is given, and glab unless --push=false is.
 export type HostWrite = { what: string; dir: Dir; prCreate: boolean; otherRepo: boolean; pushes: boolean }
 
+// The switches of `gh pr create` and `glab mr create`. Every other option takes
+// a value, so a value such as a body that starts with "-" is not read as one.
+const PR_SWITCHES: Record<string, [Set<string>, string]> = {
+  gh: [new Set('draft dry-run editor fill fill-first fill-verbose no-maintainer-edit web help'.split(' ')), 'defwh'],
+  glab: [new Set(`allow-collaboration auto-merge copy-issue-labels create-source-branch draft fill fill-commit-body help no-editor push
+recover remove-source-branch signoff squash-before-merge web wip yes`.split(/\s+/)), 'fhwy'],
+}
+
+// Whether a PR or MR may push the branch: gh pushes unless a branch is given
+// with --head, and glab unless --push=false is given. An option missing from
+// the switches above is read as taking a value, so a --head after it is
+// missed, and the push is held.
+function prPushes(cli: string, args: Word[]): boolean {
+  const [switches, short] = PR_SWITCHES[cli]
+  const given = (w: Word | undefined) => !!w && (!w.literal || w.text !== '')
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i].text
+    if (a === '--') break
+    const long = /^--([\w-]+)(?:=(.*))?$/s.exec(a)
+    if (long) {
+      const [, name, eq] = long
+      if (cli === 'gh' && name === 'head' && given(eq !== undefined ? { ...args[i], text: eq } : args[i + 1])) return false
+      if (cli === 'glab' && name === 'push' && eq === 'false') return false
+      if (eq === undefined && !switches.has(name)) i++
+    } else if (/^-[^-]/.test(a)) {
+      for (let x = 1; x < a.length; x++) {
+        if (short.includes(a[x])) continue
+        if (cli === 'gh' && a[x] === 'H' && given(x + 1 < a.length ? { ...args[i], text: a.slice(x + 1) } : args[i + 1])) return false
+        if (x === a.length - 1) i++
+        break
+      }
+    }
+  }
+  return true
+}
+
 // Every host write in a shell command, read in `shell`: what it is, the repo it
 // runs in, whether it opens a PR or MR, and whether -R, GH_REPO, or GITLAB_REPO
 // sends it to another repo. An api call with a field and no method is a POST,
@@ -813,7 +930,8 @@ export type HostWrite = { what: string; dir: Dir; prCreate: boolean; otherRepo: 
 // shortcut: a write through a user's own gh alias is not detected.
 export function hostWrites(cmd: string, shell = 'Bash', outer?: Dir): HostWrite[] {
   const found: HostWrite[] = []
-  const envRepo = /\b(GH_REPO|GITLAB_REPO)\b/.test(cmd)
+  // A variable that moves the config gh reads can send the PR to another repo too.
+  const envRepo = /\b(GH_REPO|GITLAB_REPO|GIT_DIR)\b/.test(cmd) || CONFIG_VARS.test(cmd)
   for (const { words, at } of commands(cmd, shell, outer)) {
     const k = words.findIndex(w => CLI.test(w.text))
     if (k < 0) continue
@@ -826,8 +944,6 @@ export function hostWrites(cmd: string, shell = 'Bash', outer?: Dir): HostWrite[
     let input = false
     let unread = false
     let otherRepo = envRepo
-    let head = false
-    let noPush = false
     for (let i = 0; i < args.length; i++) {
       const a = args[i].text
       const api = pos[0] === 'api'
@@ -839,11 +955,7 @@ export function hostWrites(cmd: string, shell = 'Bash', outer?: Dir): HostWrite[
         if (name === 'repo') {
           otherRepo = true
           value()
-        } else if (!api && name === 'head') {
-          head = true
-          value()
-        } else if (!api && name === 'push') noPush = eq === 'false'
-        else if (api && name === 'method') method = value().text.toUpperCase()
+        } else if (api && name === 'method') method = value().text.toUpperCase()
         else if (api && /^(?:field|raw-field|form)$/.test(name)) fields.push(value())
         else if (api && name === 'input') {
           input = true
@@ -852,10 +964,9 @@ export function hostWrites(cmd: string, shell = 'Bash', outer?: Dir): HostWrite[
       } else if (/^-[^-]/.test(a)) {
         for (let x = 1; x < a.length; x++) {
           const f = a[x]
-          if (f !== 'R' && !(api ? 'XfFHqtp' : 'H').includes(f)) continue
+          if (f !== 'R' && !(api && 'XfFHqtp'.includes(f))) continue
           const v = x + 1 < a.length ? { ...args[i], text: a.slice(x + 1) } : next()
           if (f === 'R') otherRepo = true
-          else if (!api) head = true
           else if (f === 'X') method = v.text.toUpperCase()
           else if (f === 'f' || f === 'F') fields.push(v)
           break
@@ -879,7 +990,7 @@ export function hostWrites(cmd: string, shell = 'Bash', outer?: Dir): HostWrite[
       if (m !== 'GET' && m !== 'HEAD') what = `${cli} api ${m}`
     } else if (noun && verb && !LOCAL_NOUNS.has(noun) && !READ_VERBS.has(verb) && !(verb === 'clone' && (noun === 'repo' || noun === 'gist'))) what = `${cli} ${noun} ${verb}`
     const prCreate = noun === PR_CREATE[cli] && (verb === 'create' || verb === 'new')
-    if (what) found.push({ what, dir: repoDir(at, words.slice(0, k)), prCreate, otherRepo, pushes: prCreate && (cli === 'gh' ? !head : !noPush) })
+    if (what) found.push({ what, dir: repoDir(at, words.slice(0, k)), prCreate, otherRepo, pushes: prCreate && prPushes(cli, args) })
   }
   return unique(found)
 }

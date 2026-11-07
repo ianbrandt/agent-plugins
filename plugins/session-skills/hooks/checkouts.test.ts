@@ -739,7 +739,7 @@ test('a help flag given as a value, a GraphQL query outside its field, label clo
 })
 
 test('a git subcommand that is not built in is returned as a possible alias, and an inline alias is read', () => {
-  expect(pushTargets('git p -f origin main')).toEqual([{ dir: undefined, dryRun: false, force: false, alias: 'p', rest: '-f origin main' }])
+  expect(pushTargets('git p -f origin main')).toEqual([{ dir: undefined, dryRun: false, force: false, alias: 'p', rest: "'-f' 'origin' 'main'" }])
   expect(pushTargets('git status && git log -1')).toEqual([])
   expect(pushTarget(`git -c alias.p='push -f' p origin main`)?.force).toBe(true)
 })
@@ -1228,4 +1228,80 @@ test('a config write that moves a push or a PR, or lifts a hold, is put to the u
   expect((await verdict($, 'git remote set-url origin https://h/o/pub.git && git push')).decision).toBe('ask')
   expect((await verdict($, 'git config --get session-skills.originVisibility')).decision).toBe('allow')
   expect((await verdict($, 'git config user.email a@b.c')).decision).toBe('allow')
+})
+
+// Each command here got a push or a config write past the gate unasked, in an
+// adversarial pass with live probes against real git and gh.
+const REMOTES = { origin: ['https://h/a/b.git'], pub: ['https://h/o/pub.git'] }
+const PUBLIC = { 'https://h/o/pub.git': 'public' }
+test('a push whose remote is moved or hidden in the command is put to the user', async ($: any, on: any) => {
+  targetWorld(on, { 'session-skills.originVisibility': 'private', 'alias.p': 'push' }, { ...REMOTES, check: ['https://h/a/b.git'] }, PUBLIC)
+  for (const cmd of [
+    'git -c "$CFG" push origin main',
+    "git -c Alias.x='push pub' x main",
+    "git -c alias.X='push pub' x main",
+    "V='push pub' git --config-env=alias.x=V x main",
+    'git subtree push -P docs --annotate origin pub main',
+    'git subtree push --prefix=docs -b x pub main',
+    'git push --recurse-submodules check pub main',
+    "git p --repo '#' pub main",
+    "git -c alias.q=push q --repo '#' pub main",
+    'git branch -u pub/main && git push',
+    'git branch --set-upstream-to=pub/main && git push',
+    'git fetch --set-upstream pub main && git push',
+    'git switch feature && git push',
+    'GIT_COMMON_DIR=/pub/.git git push origin main',
+    'HOME=/h git push origin main',
+    'git -c lfs.url=https://h/o/pub.git/info/lfs lfs push origin main',
+    'git --shallow-file x push --force pub main',
+    '=git push --force pub main',
+    '$(which git) push pub main',
+    'cd "$HOME/pub" && git push',
+    'git -c remote.origin.pushurl=https://h/o/pub.git p origin main',
+  ]) expect((await verdict($, cmd)).decision, cmd).toBe('ask')
+  const forced = await verdict($, 'git -c remote.origin.push=+HEAD:refs/heads/main p origin')
+  expect(forced.reason).toContain('Force push')
+  expect((await verdict($, 'git push --% --repo # --force origin main', 'PowerShell')).decision).toBe('ask')
+})
+
+test('a push to this repo or to a path on this machine is not held, and the usual pushes in a private repo are not either', async ($: any, on: any) => {
+  targetWorld(on, { 'session-skills.originVisibility': 'private' }, { ...REMOTES, backup: ['/Volumes/b/r.git'] }, PUBLIC, 'feat')
+  for (const cmd of [
+    'git push . HEAD:main', 'git push backup main', 'git push', 'git push -u origin feat', 'git add -A && git commit -m "x" && git push',
+    'git push origin HEAD', 'git push --set-upstream origin feat', 'git subtree push --prefix=docs origin gh-pages',
+  ]) expect((await verdict($, cmd)).decision, cmd).toBe('allow')
+})
+
+test('a git config write is read with an abbreviated or quoted option, a -c alias, or an unknown global option', () => {
+  for (const cmd of [
+    'git config --fil .git/config session-skills.holdPublicPush false',
+    'git config --typ bool session-skills.holdPublicPush false',
+    'git config --comm why session-skills.holdPublicPush false',
+    'git config set --va x session-skills.holdPublicPush false',
+    'git config "--local" session-skills.holdPublicPush false',
+    'git config -fx session-skills.holdPublicPush false',
+    'git config --rem remote.upstream',
+    'git -c alias.x=config x session-skills.holdPublicPush false',
+    "git -c alias.ra='remote add' ra pub https://h/o/pub.git",
+    'git -c "$CFG" x pub',
+    'git --shallow-file x config session-skills.holdPublicPush false',
+    'git config lfs.url https://h/o/pub.git/info/lfs',
+  ]) expect(configWrites(cmd).length, cmd).toBeGreaterThan(0)
+  for (const cmd of ['git config --get-r "^remote"', 'git config --typ bool --get session-skills.holdFork', 'git config -l', 'git -c alias.x=log x -1']) {
+    expect(configWrites(cmd), cmd).toEqual([])
+  }
+})
+
+test('a PR body, title, or label with an H in it is not read as --head, and a variable that moves config sends the PR elsewhere', async ($: any, on: any) => {
+  const config: Record<string, string> = { 'session-skills.originVisibility': 'public', 'session-skills.holdPrText': 'false' }
+  targetWorld(on, config)
+  for (const cmd of [
+    'gh pr create --title Fix --body "- Handles the case where the remote is unset"',
+    'gh pr create -tHotfix -b x',
+    'gh pr create -lHacktoberfest --fill',
+    'gh pr create --head "" --fill',
+    'glab mr create --description "--push=false" --fill',
+  ]) expect((await verdict($, cmd)).reason, cmd).toContain('may push the branch')
+  config['session-skills.originVisibility'] = 'private'
+  expect((await verdict($, 'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.gh-resolved GIT_CONFIG_VALUE_0=o/pub gh pr create --fill')).decision).toBe('ask')
 })

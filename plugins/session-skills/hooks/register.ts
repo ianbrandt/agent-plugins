@@ -484,11 +484,11 @@ async function pushUrls($: any, dir: string, name: string): Promise<string[] | n
 }
 
 // The visibility gh or glab reads for every URL: private only where each one is
-// private, and '' where any one is unknown.
+// private, and '' where any one is unknown. A path on this machine is private.
 async function urlsVisibility($: any, urls: string[]): Promise<string> {
   let worst = urls.length ? 'private' : ''
   for (const url of urls) {
-    let vis = ''
+    let vis = /^(?:file:\/\/|\/|\.{1,2}[\\/]|[A-Za-z]:[\\/])/.test(url) ? 'private' : ''
     for (const [from, argv] of VIEW) if (!vis) vis = visibility(await out(run($, [from, 'repo', 'view', url, ...argv])))
     if (!vis) return ''
     if (vis !== 'private') worst = vis
@@ -506,6 +506,8 @@ async function pushHold($: any, dir: string, remote: string | null | undefined):
   if ((await setting($, dir, 'holdPublicPush')) === 'false') return ''
   if (remote === null) return `the remote it pushes to could not be read from the command, ${waits}`
   const name = remote ?? (await pushRemote($, dir))
+  // `git push .` updates a branch in this repo.
+  if (name === '.') return ''
   const urls = await pushUrls($, dir, name)
   if (!urls) return `it pushes to \`${name}\`, which is not a remote of this repo, ${waits}`
   const origin = await pushUrls($, dir, 'origin')
@@ -567,11 +569,14 @@ async function pushesIn($: any, pushes: Push[], depth = 0): Promise<Push[]> {
     const r = dir === null ? null : await git($, dir, 'config', '--get', `alias.${p.alias}`)
     if (r?.exitCode === 1) continue
     if (!r || r.exitCode !== 0) {
-      found.push({ dir: p.dir, dryRun: false, force: false, remote: null })
+      found.push({ dir: p.dir, dryRun: false, force: p.force, remote: null })
       continue
     }
     const v = r.stdout.trim()
-    found.push(...(await pushesIn($, pushTargets(`${v.startsWith('!') ? v.slice(1) : `git ${v}`} ${p.rest ?? ''}`, 'Bash', p.dir), depth + 1)))
+    // A -c given with the alias that forces or moves the push holds for its expansion.
+    for (const e of await pushesIn($, pushTargets(`${v.startsWith('!') ? v.slice(1) : `git ${v}`} ${p.rest ?? ''}`, 'Bash', p.dir), depth + 1)) {
+      found.push({ ...e, force: e.force || p.force, ...(p.remote === null && { remote: null }) })
+    }
   }
   return found
 }
