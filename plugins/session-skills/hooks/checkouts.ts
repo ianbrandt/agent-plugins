@@ -70,12 +70,15 @@ const ABSOLUTE = /^(?:[A-Za-z]:)?[\\/]/
 
 // A path word read against the directory it is given in. A relative path where
 // that is the session's repo stays relative, and git reads it there. A path
-// with ~ or $HOME in it, or with a variable after a cd, cannot be read.
+// with ~ or $HOME in it, or with a variable after a cd, cannot be read. Nor can
+// a path with `..` in it: bash folds `..` into the path as written and git into
+// the path on disk, and the two differ after a link, as a worktree's notes.local is.
 // shortcut: a path with any other shell variable in it, given in the session's repo, is read as that repo.
 function resolve(base: Dir, w: Word | undefined): Dir {
   if (!w) return null
   if (!w.literal) return base === undefined && !/^(?:~|\$\{?HOME\b)/.test(w.text) ? undefined : null
   const p = w.text
+  if (/(?:^|[\\/])\.\.(?:[\\/]|$)/.test(p)) return null
   if (ABSOLUTE.test(p)) return p
   if (base === undefined) return p === '.' ? undefined : p
   if (base === null) return null

@@ -1438,6 +1438,18 @@ test('a read with git or push in its arguments is not a push, and a push after i
   expect(pushTargets('sudo -u git -g staff git push -f').some(p => p.force)).toBe(true)
 })
 
+// In a worktree, notes.local links into the primary checkout. bash 3.2's
+// `cd notes.local && cd ..` went back to the worktree, while git 2.56.0 read
+// `-C notes.local/..` as the primary checkout's parent.
+test('a path with .. in it is a directory that cannot be read', () => {
+  for (const cmd of ['cd notes.local && cat x && cd .. && git push origin main', 'cd /repo/notes.local/.. && git push origin main', 'git -C ../pub push origin main', 'cd .. && git push origin main']) {
+    expect(pushTarget(cmd)?.dir, cmd).toBeNull()
+  }
+  expect(pushTargets('Set-Location C:\\repo\\notes.local\\..; git push origin main', 'PowerShell')[0]?.dir).toBeNull()
+  expect(pushTarget('cd /repo/notes.local && git push origin main')?.dir).toBe('/repo/notes.local')
+  expect(pushTarget('git -C sub/..x push origin main')?.dir).toBe('sub/..x')
+})
+
 test('env -u GIT_DIR and env -i clear a GIT_DIR', () => {
   expect(pushTarget('GIT_DIR=/priv/.git env -u GIT_DIR git push origin main')?.dir).toBeUndefined()
   expect(pushTarget('export GIT_DIR=/priv/.git; env -i git push')?.dir).toBeUndefined()

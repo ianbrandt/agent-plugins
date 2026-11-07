@@ -120,8 +120,10 @@ after `||`, inside an `if` or a loop, or after a command that may have failed ma
 where the push may run in more than one directory the hold asks. It asks too after `popd` or `cd -`,
 a call to a function the command defines, a body in braces after a command's first word, as in
 zsh's `() { ... }` or `repeat 1 { ... }`, a `GIT_DIR` set without `export` or with a relative path,
-a path that starts with `~` or `$HOME`, a path with a variable in it after a `cd`, and a git subcommand that is not
-written out, such as `git $sub`. A branch that ends in `exit` reaches nothing after it, so
+a path that starts with `~` or `$HOME`, a path with a variable in it after a `cd`, a path with `..` in
+it, and a git subcommand that is not written out, such as `git $sub`. bash folds a `..` into the path
+as written and git into the path on disk, and the two differ after a link, as a worktree's
+`notes.local` is. A branch that ends in `exit` reaches nothing after it, so
 `cd /x || exit 1; git push` is read in `/x`, unless the command defines a function named `exit`.
 A `return` outside a function fails in bash, which runs on, so it is read as running on. The Bash tool runs bash or zsh, which differ on two
 points: zsh runs the last command of a pipeline in the current shell, and it sends only the last
