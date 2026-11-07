@@ -154,7 +154,7 @@ function scan(src: string, masked: string, outer?: string): HostWrite[] {
     for (let i = 0; i < args.length; i++) {
       const a = args[i]
       const api = pos[0] === 'api'
-      const m = api && /^(?:-X|--method)(?:=?(.+))?$/.exec(a)
+      const m = api && /^(?:-[a-zA-Z]*X|--method)(?:=?(.+))?$/.exec(a)
       if (m) method = (m[1] ?? args[++i] ?? '').toUpperCase()
       else if (/^(-R|--repo)$/.test(a)) {
         otherRepo = true

@@ -785,6 +785,8 @@ test('a host write from gh or glab is read from the command, with its directory 
     ['gh api --input body.json repos/o/r/issues', 'gh api POST'],
     ['gh api --method=DELETE repos/o/r/labels/x', 'gh api DELETE'],
     ['gh api -XPUT repos/o/r/subscription', 'gh api PUT'],
+    ['gh api -iX DELETE repos/o/r/labels/x', 'gh api DELETE'],
+    ['gh api -iXPOST repos/o/r/issues', 'gh api POST'],
     [`gh api -X 'post' repos/o/r/issues`, 'gh api POST'],
     ['glab api projects/1/issues -F title=x', 'glab api POST'],
     [`gh api graphql -f query='mutation { addComment(input: {}) { clientMutationId } }'`, 'gh api graphql'],
@@ -793,7 +795,7 @@ test('a host write from gh or glab is read from the command, with its directory 
   for (const [cmd, what] of writes) expect(hostWrite(cmd)?.what).toBe(what)
   for (const cmd of [
     'gh pr view 3', 'gh pr list --state open', 'gh repo view --json visibility', 'glab mr view 3', 'gh run view 9 --log',
-    'gh api repos/o/r', 'gh api -X GET search/issues -f q=x', `gh api graphql -f query='query { viewer { login } }'`,
+    'gh api repos/o/r', 'gh api -i repos/o/r', 'gh api -X GET search/issues -f q=x', `gh api graphql -f query='query { viewer { login } }'`,
     'echo "gh pr create"', `git commit -m 'run gh pr merge later'`, 'ghx pr create', 'gh issue list --search "gh pr merge"',
     `git commit -F - <<'EOF'\ngh pr merge 3\nEOF`, 'gh', 'gh pr',
   ]) expect(hostWrite(cmd)).toBeNull()
