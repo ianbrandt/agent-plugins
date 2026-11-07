@@ -1607,3 +1607,10 @@ test('a variable set with env after a wrapper such as timeout is read', () => {
   }
   expect(pushTarget('timeout 60s env HOME=/tmp git push origin main')).toMatchObject({ remote: null, force: true })
 })
+
+test('a rebase of the root, one that continues, skips, or aborts, or a bisect reset moves a later push', () => {
+  for (const cmd of ['git rebase --root feature && git push', 'git rebase --onto main --root feature && git push', 'git rebase --continue && git push', 'git rebase --skip && git push', 'git rebase --abort && git push', 'git bisect reset && git push']) {
+    expect(pushTarget(cmd)?.remote, cmd).toBeNull()
+  }
+  for (const cmd of ['git rebase --root && git push', 'git rebase -i --root && git push']) expect(pushTarget(cmd)?.remote, cmd).toBeUndefined()
+})

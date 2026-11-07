@@ -142,7 +142,9 @@ a wrapper such as `timeout 60s` too, or with PowerShell's `$env:`. A variable in
 remote is not written out, it is read as a force push if any remote has a mirror or a `+` refspec in
 config. A `send-pack` or `http-push` takes a URL or a path, so its
 remote is not read. It asks too for a push with no remote after a `git switch`, `checkout`, or
-`symbolic-ref` that sets HEAD, a `git rebase` given a branch to check out, or after a command that sets or unsets an upstream with an option
+`symbolic-ref` that sets HEAD, a `git rebase` given a branch to check out, with or without `--root`,
+a `git rebase --continue`, `--skip`, or `--abort`, or a `git bisect reset`, since HEAD is detached while the hook reads
+config and is back on the branch when the push runs, or after a command that sets or unsets an upstream with an option
 given by any unique prefix, earlier in the same command, since those change the branch config the
 push reads. `git push .` updates this repo and is not held. An
 adversarial pass found 18 commands that got past these checks, among them a PR body that starts with

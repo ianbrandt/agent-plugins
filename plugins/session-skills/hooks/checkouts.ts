@@ -998,9 +998,10 @@ export function configWrites(cmd: string, shell = 'Bash', outer?: Dir, inherited
 
 // Whether a git command changes the branch a later push in the same command
 // reads its remote from, or that branch's upstream: a switch, checkout, or
-// symbolic-ref that sets HEAD, a rebase given a branch, or a branch, fetch,
-// pull, or push that sets or unsets an upstream, with a long option given by a
-// unique prefix as git takes it.
+// symbolic-ref that sets HEAD, a rebase given a branch, a rebase that continues,
+// skips, or aborts, or a bisect reset, since HEAD is detached while the hook reads
+// config and is back on the branch when the push runs, or a branch, fetch, pull, or push that
+// sets or unsets an upstream, with a long option given by a unique prefix as git takes it.
 const UPSTREAM = ['set-upstream-to', 'set-upstream', 'unset-upstream', 'track']
 const setsUpstream = (w: Word) => {
   const long = /^--([\w-]+)(?:=|$)/.exec(w.text)
@@ -1009,8 +1010,10 @@ const setsUpstream = (w: Word) => {
 const positional = (rest: Word[], valued: RegExp) => rest.filter((w, i) => !w.text.startsWith('-') && !valued.test(rest[i - 1]?.text ?? ''))
 const moves = (sub: string, rest: Word[]) =>
   sub === 'switch' || sub === 'checkout' || (sub === 'symbolic-ref' && rest.filter(w => !w.text.startsWith('-')).length > 1) ||
-  // `git rebase <upstream> <branch>` checks out the branch first.
-  (sub === 'rebase' && positional(rest, /^(?:--onto|--strategy|--strategy-option|--exec|-[sXx])$/).length > 1) ||
+  // `git rebase <upstream> <branch>` and `git rebase --root <branch>` check out the branch first.
+  (sub === 'rebase' && (rest.some(w => /^--(?:continue|skip|abort)$/.test(w.text)) ||
+    positional(rest, /^(?:--onto|--strategy|--strategy-option|--exec|-[sXx])$/).length > (rest.some(w => w.text === '--root') ? 0 : 1))) ||
+  (sub === 'bisect' && rest[0]?.text === 'reset') ||
   (/^(?:branch|fetch|pull|push)$/.test(sub) && rest.some(setsUpstream))
 
 // Every push in a shell command, read in `shell`: the repo it runs in, whether
