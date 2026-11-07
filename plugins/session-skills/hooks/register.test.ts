@@ -213,6 +213,7 @@ test('the next step is requested in the result of a push, in either shell', asyn
 test('no request comes with a command that pushed nothing, a failed push, or a subagent\'s push', async ($: any, on: any) => {
   const w = pushes(on)
   expect(await bash($, 'git log --oneline origin/main..main && echo push')).toEqual([])
+  for (const command of ['git push -n origin main', 'git --no-pager push --dry-run origin main', 'git push --help']) expect(await bash($, command), command).toEqual([])
   expect(await bash($, `claude -p "run git push"`)).toEqual([])
   expect(await bash($, 'git push', { agentId: 'a1' })).toEqual([])
   w.result = { result: 'rejected', isError: true }

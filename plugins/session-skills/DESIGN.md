@@ -60,8 +60,8 @@ two more calls and closed with a pointer to it, so the block now goes after the 
 The turn that runs `git push` is the last turn of a landing. In a census of October 2026 transcripts
 from the four owned repos, 13 of the 16 turns that pushed held work ended with no next step, often
 after a landing turn that had asked for the push and deferred the hand-off to it. A `tool.call` hook
-adds the request for the next step to the result of a push, for a call on the main loop that was not
-denied and did not fail. A command that a settings hook rewrote into a push is not seen. In four
+adds the request for the next step to the result of a push, but not of a dry run or a call for help,
+for a call on the main loop that was not denied and did not fail. A command that a settings hook rewrote into a push is not seen. In four
 runs of each arm on Sonnet 5.5, the first reply stated a next step 4 of 4 times with the request and
 0 of 4 without it. Opus 5.5 stated one 2 of 2 times either way.
 

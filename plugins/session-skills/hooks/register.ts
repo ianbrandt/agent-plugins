@@ -710,7 +710,7 @@ export const register: Register = on => {
       if (e.agentId || ran.deny !== undefined || (ran as any).isError) return ran
       let pushed = false
       try {
-        pushed = pushTargets(String(e.command ?? ''), tool).some(p => !p.alias)
+        pushed = pushTargets(String(e.command ?? ''), tool).some(p => !p.alias && !p.dryRun)
       } catch {}
       if (!pushed) return ran
       return { ...ran, context: [...(ran.context ?? []), NEXT_STEP] }
