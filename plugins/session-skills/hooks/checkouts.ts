@@ -1035,14 +1035,16 @@ export function pushTargets(cmd: string, shell = 'Bash', outer?: Dir, inherited:
       const aliases = configAliases(configs)
       const configForce = envConfig || configs.some(w => !w.literal || /^remote\..*\.(?:push=\+|mirror(?:=|$))/is.test(w.text))
       const moved = envConfig || configs.some(w => !w.literal || TARGET_KEYS.test(w.text))
-      const recurses = configs.some(w => /^(?:push\.recursesubmodules|submodule\.recurse)(?:=|$)/i.test(w.text))
+      // Recursion into submodules is set by the last -c for either key, read as git reads its value.
+      const recursion = configs.filter(w => /^(?:push\.recursesubmodules|submodule\.recurse)(?:=|$)/i.test(w.text)).at(-1)
+      const recurses = recursion && (!recursion.literal || /^push\.\w+=(?:on-demand|only)$|^submodule\.recurse(?:=(?:true|yes|on|-?[1-9]\d*))?$/i.test(recursion.text))
       const sub = words[j]?.text
       const rest = words.slice(j + 1)
       const dir = repoDir(at, words.slice(0, k), cs as Word[], gitDir)
       const pushAt = rest.findIndex(w => w.text === 'push')
       const flags = (args: Word[], o?: Options) => {
         const f = pushFlags(args, o)
-        return { ...f, force: f.force || configForce, ...(f.submodules === undefined && recurses && { submodules: true }), ...((moved || (movedBranch && f.remote === undefined)) && { remote: null }) }
+        return { ...f, force: f.force || configForce, ...(f.submodules === undefined && recursion && { submodules: !!recurses }), ...((moved || (movedBranch && f.remote === undefined)) && { remote: null }) }
       }
       const alias = sub === undefined ? undefined : aliases.get(sub.toLowerCase())
       if (sub !== undefined && !words[j].literal) found.push({ dir: null, dryRun: false, force: false, remote: null })

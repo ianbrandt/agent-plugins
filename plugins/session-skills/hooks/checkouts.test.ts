@@ -1452,9 +1452,10 @@ test('a stack of pushd or a run of parentheses is put to the user, quickly', asy
   }
 })
 
+const GITLINK = '160000 85700c611af13d4d4ea3ce2642b4163fec5b4d2d 0\tlib'
 test('a push held for its submodules or its config is put to the user, and one to a path here is not', async ($: any, on: any) => {
   const config: Record<string, string> = { 'session-skills.originVisibility': 'private' }
-  targetWorld(on, config)
+  targetWorld(on, config, undefined, undefined, 'main', GITLINK)
   expect((await verdict($, 'git push ../backup.git main')).decision).toBe('allow')
   expect((await verdict($, 'git push --recurse-submodules=on-demand origin main')).reason).toContain('submodules')
   expect((await verdict($, 'git push origin main')).decision).toBe('allow')
@@ -1532,7 +1533,7 @@ test('a mirror or + refspec in config forces a push whose remote is not written 
 
 test('a PR that may push its branch is held by the submodule config a push reads', async ($: any, on: any) => {
   const config: Record<string, string> = { 'session-skills.originVisibility': 'private', 'session-skills.holdPrText': 'false', 'session-skills.holdFork': 'false' }
-  targetWorld(on, config)
+  targetWorld(on, config, undefined, undefined, 'main', GITLINK)
   expect((await verdict($, 'gh pr create --fill')).decision).toBe('allow')
   config['submodule.recurse'] = 'true'
   expect((await verdict($, 'gh pr create --fill')).reason).toContain('submodules')
@@ -1565,4 +1566,36 @@ test('the push remote is read for a branch that has a tag of the same name', asy
     if (line.startsWith('remote get-url')) return 'https://h/a/b.git'
   }, line => (line.startsWith('gh repo view https://h/o/pub.git ') ? 'public' : undefined))
   expect((await verdict($, 'git push')).reason).toContain('`pub` is public')
+})
+
+test('a push or a PR that may push is not held for submodules in a repo with no gitlink', async ($: any, on: any) => {
+  targetWorld(on, { 'session-skills.originVisibility': 'private', 'session-skills.holdPrText': 'false', 'session-skills.holdFork': 'false', 'submodule.recurse': 'true' })
+  for (const cmd of ['git push origin main', 'git push --recurse-submodules=on-demand origin main', 'gh pr create --fill']) {
+    expect((await verdict($, cmd)).decision, cmd).toBe('allow')
+  }
+})
+
+test('a read of the index that fails holds a push that may recurse into submodules', async ($: any, on: any) => {
+  const config: Record<string, string> = { 'session-skills.originVisibility': 'private' }
+  targetWorld(on, config, undefined, undefined, 'main', 1)
+  expect((await verdict($, 'git push origin main')).decision).toBe('allow')
+  config['submodule.recurse'] = 'true'
+  expect((await verdict($, 'git push origin main')).reason).toContain('could not be checked')
+})
+
+test('the last recursion or mirror setting is read, from config and from -c', async ($: any, on: any) => {
+  for (const [cmd, submodules] of [
+    ['git -c push.recurseSubmodules=no push origin main', false],
+    ['git -c submodule.recurse=false push origin main', false],
+    ['git -c submodule.recurse push origin main', true],
+    ['git -c submodule.recurse=true -c push.recurseSubmodules=check push origin main', false],
+    ['git -c push.recurseSubmodules=on-demand -c submodule.recurse=0 push origin main', false],
+    ['git -c "submodule.recurse=$R" push origin main', true],
+  ] as const) expect(pushTarget(cmd)?.submodules, cmd).toBe(submodules)
+  const config: Record<string, string | string[]> = { 'session-skills.holdPublicPush': 'false', 'submodule.recurse': ['true', 'false'], 'remote.origin.mirror': ['true', 'false'] }
+  targetWorld(on, config, undefined, undefined, 'main', GITLINK)
+  expect((await verdict($, 'git push origin main')).decision).toBe('allow')
+  expect((await verdict($, 'R=origin; git push "$R"')).decision).toBe('allow')
+  config['remote.pub.mirror'] = 'true'
+  expect((await verdict($, 'R=origin; git push "$R"')).reason).toContain('Force push')
 })

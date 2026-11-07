@@ -506,17 +506,19 @@ const TRUE = /^(?:true|yes|on|-?[1-9]\d*)$/i
 
 // What config set before the command adds to a push: a force where the
 // remote mirrors or has a + refspec, and submodules where push.recurseSubmodules
-// or submodule.recurse sends the push into them. A remote that is not written
-// out may be any of them.
+// or submodule.recurse sends the push into them and the index has a gitlink,
+// with or without a .gitmodules. A remote that is not written out may be any of
+// them. A setting is read from its last value, the one git uses.
 async function pushConfig($: any, dir: string, p: Push): Promise<{ force: boolean; submodules: boolean }> {
   const config = await configList($, dir)
   const name = p.remote === undefined ? await pushRemote($, dir) : p.remote
-  const get = (key: string) => config.get(key) ?? []
-  const of = (field: string) => (name === null ? [...config].filter(([k]) => k.startsWith('remote.') && k.endsWith(`.${field}`)).flatMap(([, v]) => v) : get(`remote.${name}.${field}`))
-  const force = of('mirror').some(v => TRUE.test(v)) || of('push').some(v => v.startsWith('+'))
-  const mode = get('push.recursesubmodules').at(-1)
-  const submodules = p.submodules ?? (mode !== undefined ? /^(?:on-demand|only)$/i.test(mode) : get('submodule.recurse').some(v => TRUE.test(v)))
-  return { force, submodules }
+  const remotes = (field: string) => [...config].filter(([k]) => (name === null ? k.startsWith('remote.') && k.endsWith(`.${field}`) : k === `remote.${name}.${field}`)).map(([, v]) => v)
+  const force = remotes('mirror').some(v => TRUE.test(v.at(-1) ?? '')) || remotes('push').flat().some(v => v.startsWith('+'))
+  const mode = config.get('push.recursesubmodules')?.at(-1)
+  const recurses = p.submodules ?? (mode !== undefined ? /^(?:on-demand|only)$/i.test(mode) : TRUE.test(config.get('submodule.recurse')?.at(-1) ?? ''))
+  // `:/` lists the whole index from a subdirectory too.
+  // shortcut: the whole index is printed to find one gitlink, read only where recursion is set; filter in git if a large repo slows the hook.
+  return { force, submodules: recurses && /^160000 /m.test(await must($, dir, 'ls-files', '-s', ':/')) }
 }
 
 // Every URL a remote pushes to, or null where git has no such remote.
