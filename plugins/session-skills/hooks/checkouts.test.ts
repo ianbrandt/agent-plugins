@@ -601,7 +601,7 @@ test('a push is read with the directory it runs in, from -C or the last cd befor
   expect(pushTarget('git push origin main && git log -n 1')?.dryRun).toBe(false)
   // A path with a shell variable in it cannot be read, so the session's repo is checked.
   expect(pushTarget('cd /x; git push')?.dir).toBe('/x')
-  expect(pushTarget('Set-Location /x; git push')?.dir).toBe('/x')
+  expect(pushTargets('Set-Location /x; git push', 'PowerShell')[0]?.dir).toBe('/x')
   expect(pushTarget('pushd /x && git push')?.dir).toBe('/x')
   expect(pushTarget('cd "$WT" && git push')?.dir).toBeUndefined()
   expect(pushTarget('echo "git push"')).toBeNull()
@@ -615,7 +615,7 @@ test('a push is read after a comment with a quote in it, across a line continuat
   expect(pushTarget(`tr -d '"' < a; git push`)).not.toBeNull()
   expect(pushTarget('echo \\"done\\" && git -C /z push')?.dir).toBe('/z')
   expect(pushTarget('git push origin \\\n  --force')?.force).toBe(true)
-  expect(pushTarget('git -C /z `\n  push origin main')?.dir).toBe('/z')
+  expect(pushTargets('git -C /z `\n  push origin main', 'PowerShell')[0]?.dir).toBe('/z')
   expect(pushTarget('out="$(git push -f origin main 2>&1)"')?.force).toBe(true)
   expect(pushTarget('echo "`git push --dry-run`"')?.dryRun).toBe(true)
   expect(pushTarget('echo "# not a comment" && echo "$x"')).toBeNull()
@@ -628,7 +628,8 @@ test('a push is read after git options, and its directory from the last -C, --gi
   expect(pushTarget('git -C /a -c x=y push')?.dir).toBe('/a')
   expect(pushTarget('cd /x && git -c x=y -C "/b c" push')?.dir).toBe('/b c')
   expect(pushTarget('git --git-dir=/fork/.git push')?.dir).toBe('/fork/.git')
-  expect(pushTarget('git --work-tree /fork push')?.dir).toBe('/fork')
+  // A work tree does not change the repo, which git finds from its directory.
+  expect(pushTarget('git --work-tree /fork push')?.dir).toBeUndefined()
   expect(pushTarget('git -c push.default=current status')).toBeNull()
   expect(pushTarget('git log --oneline push')).toBeNull()
 })
@@ -648,6 +649,98 @@ test('a push or host write inside a substitution runs in the directory of the la
   expect(pushTarget('cd /fork && echo "`git -C /z push`"')?.dir).toBe('/z')
   expect(hostWrites('cd /fork && url="$(gh pr create --fill)"')).toEqual([{ what: 'gh pr create', dir: '/fork', prCreate: true, otherRepo: false }])
   expect(hostWrites('cd /fork; echo `gh pr merge 3`').map(w => w.dir)).toEqual(['/fork'])
+})
+
+// Each case below was missed or misread by the regexes the lexer replaced, in a review with live probes.
+test('a backtick in single quotes or a quoted heredoc is text, and in an unquoted heredoc it runs', () => {
+  expect(pushTargets("git commit -m 'fix `git push -f` docs'")).toEqual([])
+  expect(pushTargets("git commit -F - <<'EOF'\nRun `git push -f` after\nEOF")).toEqual([])
+  expect(hostWrites("git commit -F - <<'EOF'\nRun `gh issue comment 1 -b x` after\nEOF")).toEqual([])
+  expect(hostWrites("gh pr create --title x --body 'see `gh pr merge 3`'").map(w => w.what)).toEqual(['gh pr create'])
+  expect(pushTargets('cat <<EOF\n$(git push -f)\nEOF\ncd /y && git push').map(p => [p.dir, p.force])).toEqual([[undefined, true], ['/y', false]])
+  expect(pushTargets("$m = 'see `git push -f`'; git commit -m $m", 'PowerShell')).toEqual([])
+  expect(pushTargets("$m = @'\ngit push -f\n'@\ngit commit -m $m", 'PowerShell')).toEqual([])
+  expect(hostWrites("$body = @'\nIt's done\n'@\ngh pr comment 3 --body $body", 'PowerShell').map(w => w.what)).toEqual(['gh pr comment'])
+})
+
+test('a comment or an option value is not read as a dry run', () => {
+  expect(pushTarget('git push --force origin main # --dry-run')).toEqual({ dir: undefined, dryRun: false, force: true })
+  expect(pushTarget('git push -o -n origin main')?.dryRun).toBe(false)
+  expect(pushTarget('git push -on origin main')?.dryRun).toBe(false)
+  expect(pushTarget('git push -nf origin main')).toEqual({ dir: undefined, dryRun: true, force: true })
+})
+
+test('a nested substitution, or a parenthesis inside one, is read', () => {
+  expect(hostWrites("url=$(gh pr create --title 'feat(api): x' --body-file b.md)").map(w => w.what)).toEqual(['gh pr create'])
+  expect(hostWrites('out="$(gh issue comment 1 --body "on $(git branch --show-current)")"').map(w => w.what)).toEqual(['gh issue comment'])
+  expect(pushTarget('x="$(git push -f origin "$(git branch --show-current)")"')?.force).toBe(true)
+  expect(hostWrites('cat <(gh pr merge 3 --squash)').map(w => w.what)).toEqual(['gh pr merge'])
+})
+
+test('a quote in one command is not paired with a quote in the next', () => {
+  expect(pushTargets(`echo 'say "hi' && git push && echo 'bye" now'`)).toHaveLength(1)
+  expect(pushTargets(`echo "it's" && git push && echo "that's"`)).toHaveLength(1)
+  expect(pushTargets("git 'push' origin main")).toHaveLength(1)
+})
+
+test('a force push is read through quotes, after a redirection, and from --mirror, --delete, or a deleting refspec', () => {
+  for (const cmd of [`git push "--force" origin b`, `git push origin '+main'`, 'git push origin main 2>&1 -f', 'git push --mirror', 'git push --delete origin old', 'git push -d origin old', 'git push origin :old']) {
+    expect(pushTarget(cmd)?.force).toBe(true)
+  }
+  expect(pushTarget('git push origin main 2>&1')?.force).toBe(false)
+})
+
+test('a quoted git or gh executable is read, in either shell', () => {
+  for (const shell of ['Bash', 'PowerShell']) {
+    expect(pushTargets('& "C:\\Program Files\\Git\\cmd\\git.exe" push origin main', shell)).toHaveLength(1)
+    expect(hostWrites('& "C:\\Program Files\\GitHub CLI\\gh.exe" pr merge 3', shell).map(w => w.what)).toEqual(['gh pr merge'])
+  }
+})
+
+test('a short-flag group is read for -R in any gh command, and for -f or -F in gh api', () => {
+  expect(hostWrite('gh pr create -dR up/r --fill')?.otherRepo).toBe(true)
+  expect(hostWrite('gh api repos/o/r/issues -if title=x')?.what).toBe('gh api POST')
+  expect(hostWrite('gh api repos/o/r/issues -iF title=x')?.what).toBe('gh api POST')
+})
+
+test('a directory is read from a relative -C, a git dir, and a cd that may not have run', () => {
+  expect(pushTarget('cd /x && git -C . push')?.dir).toBe('/x')
+  expect(pushTarget('git -C /a -C b push')?.dir).toBe('/a/b')
+  expect(pushTarget('git --work-tree /w --git-dir /g/.git push')?.dir).toBe('/g/.git')
+  expect(pushTarget('git --git-dir /g/.git --work-tree /w push')?.dir).toBe('/g/.git')
+  expect(pushTarget('GIT_DIR=/pub/.git git push')?.dir).toBe('/pub/.git')
+  expect(pushTarget('export GIT_DIR=/pub/.git; git push')?.dir).toBe('/pub/.git')
+  expect(pushTargets("$env:GIT_DIR = 'C:\\pub\\.git'; git push", 'PowerShell')[0]?.dir).toBe('C:\\pub\\.git')
+  // Where the directory cannot be read it is null, and the hold asks.
+  expect(pushTarget('false && cd /a; git push')?.dir).toBeNull()
+  expect(pushTarget('cd /a 2>/dev/null || cd /b; git push')?.dir).toBeNull()
+  expect(pushTarget('if true; then cd /x; fi; git push')?.dir).toBeNull()
+  expect(pushTarget('if true; then cd /x && git push; fi')?.dir).toBe('/x')
+  expect(pushTarget('pushd /private && make && popd && git push')?.dir).toBeUndefined()
+  expect(pushTarget('pushd /a; pushd /b; popd; git push')?.dir).toBe('/a')
+  expect(pushTarget('popd; git push')?.dir).toBeNull()
+  expect(pushTarget('cd - && git push')?.dir).toBeNull()
+  expect(pushTarget('cd /a | git push')?.dir).toBeUndefined()
+  expect(pushTarget('cd /a & git push')?.dir).toBeUndefined()
+  for (const cmd of ['set-location /x; git push', 'sl /x; git push', 'Set-Location -Path /x; git push']) expect(pushTargets(cmd, 'PowerShell')[0]?.dir).toBe('/x')
+  expect(pushTargets('if ($x) { Set-Location /x }; git push', 'PowerShell')[0]?.dir).toBeNull()
+})
+
+test('a help flag given as a value, a GraphQL query outside its field, label clone, and subtree or LFS pushes are read as writes', () => {
+  expect(hostWrite("gh issue comment 1 --body '--help'")?.what).toBe('gh issue comment')
+  expect(hostWrite('gh pr edit 3 --add-label $(grep -h l x)')?.what).toBe('gh pr edit')
+  expect(hostWrite("gh api graphql --input payload.json -H 'X-Note: query={viewer{login}}'")?.what).toBe('gh api graphql')
+  expect(hostWrite(`gh api graphql -f query="$Q"`)?.what).toBe('gh api graphql')
+  expect(hostWrite('gh label clone o/src')?.what).toBe('gh label clone')
+  expect(hostWrite('gh repo clone o/r')).toBeNull()
+  expect(pushTarget('git subtree push --prefix docs origin gh-pages')).toEqual({ dir: undefined, dryRun: false, force: false })
+  expect(pushTarget('git lfs push --dry-run origin main')?.dryRun).toBe(true)
+})
+
+test('a git subcommand that is not built in is returned as a possible alias, and an inline alias is read', () => {
+  expect(pushTargets('git p -f origin main')).toEqual([{ dir: undefined, dryRun: false, force: false, alias: 'p', rest: '-f origin main' }])
+  expect(pushTargets('git status && git log -1')).toEqual([])
+  expect(pushTarget(`git -c alias.p='push -f' p origin main`)?.force).toBe(true)
 })
 
 // The engine's own verdict beneath the plugin is an allow.
@@ -771,6 +864,26 @@ test('every push in a command is read, each in its own directory', async ($: any
   expect(new Set(dirs)).toEqual(new Set(['/repo', '/public']))
 })
 
+test('a push or PR in a directory that cannot be read is put to the user', async ($: any, on: any) => {
+  pushWorld(on, { originVisibility: 'private', holdPrText: 'false' })
+  expect((await verdict($, 'cd /a && git push')).decision).toBe('allow')
+  const push = await verdict($, 'false && cd /a; git push')
+  expect(push.decision).toBe('ask')
+  expect(push.reason).toContain('could not be read')
+  expect((await verdict($, 'gh pr create --fill')).decision).toBe('allow')
+  expect((await verdict($, 'false && cd /a; gh pr create --fill')).reason).toContain('could not be read')
+})
+
+test('a git alias is read from config in the directory it runs in, and its expansion is checked', async ($: any, on: any) => {
+  const config: Record<string, string> = { originVisibility: 'private', p: 'push -f', sh: '!git push --force-with-lease' }
+  pushWorld(on, config)
+  expect((await verdict($, 'git p origin main')).reason).toContain('Force push')
+  expect((await verdict($, 'git sh')).reason).toContain('Force push')
+  expect((await verdict($, 'git lg -5')).decision).toBe('allow')
+  config.originVisibility = 'public'
+  expect((await verdict($, 'git lg -5')).decision).toBe('allow')
+})
+
 const hostWrite = (cmd: string) => hostWrites(cmd)[0] ?? null
 test('a host write from gh or glab is read from the command, with its directory and whether it opens a PR', () => {
   expect(hostWrite('gh pr create --title x --body-file f')).toEqual({ what: 'gh pr create', dir: undefined, prCreate: true, otherRepo: false })
@@ -863,7 +976,7 @@ test('a gh or glab subcommand is a write unless it reads or acts on this machine
     expect(hostWrite(cmd)?.otherRepo).toBe(true)
   }
   expect(hostWrite('gh pr new --fill')?.prCreate).toBe(true)
-  expect(hostWrite('Set-Location /fork; gh pr create --fill')?.dir).toBe('/fork')
+  expect(hostWrites('Set-Location /fork; gh pr create --fill', 'PowerShell')[0]?.dir).toBe('/fork')
   expect(hostWrite('{ cd /fork; gh pr create --fill; }')?.dir).toBe('/fork')
   for (const cmd of ['gh pr create --help', 'glab mr merge -h', 'gh auth status', 'gh extension install o/gh-x', 'gh pr checks 3 --watch', 'glab ci trace', 'gh run watch 9', '# then gh pr merge 3']) {
     expect(hostWrite(cmd)).toBeNull()

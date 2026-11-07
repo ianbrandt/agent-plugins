@@ -34,47 +34,436 @@ export function visibility(text: string): string {
 
 export const worktreeName = (name: string, id = '') => (id ? `${id.toLowerCase()}-${name}` : name)
 
-// A push is read from the call as it reached this plugin, so a command a
-// settings hook rewrote into a push is not seen.
-// git's own options may come before push, such as -c, --no-pager, or -C.
-const PUSH = /\bgit(?:\.exe)?((?:\s+(?:-[Cc]\s+\S+|-[pP]|--(?:git-dir|work-tree|namespace)\s+\S+|--[\w-]+(?:=\S+)?))*)\s+push\b([^;&|\n]*)/dgi
-const GIT_DIR = /(?:-C\s+|--(?:git-dir|work-tree)(?:=|\s+))(\S+)/dg
-const CD = /(?:^|[;&|({\n])\s*(?:cd|pushd|Set-Location|Push-Location)\s+([^\s;&|)}]+)/g
-// Each quoted argument is masked with X so the regex matches only text the
-// shell executes: a mention of git push inside a quoted argument, such as
-// `claude -p "...git push..."`, no longer counts. The body of a heredoc whose
-// delimiter is quoted goes first, since a quote in it closes nothing. The
-// length is kept, so a match is read back from the command at its position.
-// shortcut: a push run as `bash -c 'git push'` is no longer detected, and an unquoted heredoc delimiter is not parsed.
-// A quote left open masks the rest of the command, and is reported to `unclosed`.
-const mask = (cmd: string, unclosed = () => {}) =>
-  cmd.replace(/(<<-?[ \t]*(["'])([^"'\s]+)\2[^\n]*\n)([\s\S]*?)^([ \t]*\3)$/gm, (_m, open, _q, _d, body, close) => open + body.replace(/[^\n]/g, ' ') + close)
-    .replace(/"(?:[^"\\]|\\.)*"?/g, m => {
-      if (!/^"(?:[^"\\]|\\.)*"$/.test(m)) unclosed()
-      return 'X'.repeat(m.length)
-    })
-    .replace(/'[^']*'?/g, m => {
-      if (!/^'[^']*'$/.test(m)) unclosed()
-      return 'X'.repeat(m.length)
-    })
 
-// Line continuations are joined and comment lines blanked, keeping the length,
-// so an argument on the next line is read and a quote in a comment opens nothing.
-const unfold = (cmd: string) => cmd.replace(/[\\`]\r?\n/g, m => ' '.repeat(m.length)).replace(/^[ \t]*#.*$/gm, m => ' '.repeat(m.length))
-// Each `$(...)` or backtick substitution, which the shell runs even inside double quotes.
-const substitutions = (src: string) => [...src.matchAll(/\$\(([^()]*)\)|`([^`]*)`/g)].map(m => ({ text: m[1] ?? m[2], at: m.index! }))
+// A shell command is read by one left-to-right lexer, for Bash or for
+// PowerShell, into simple commands: the words of each, with quotes, escapes,
+// and comments resolved, and every directory it may run in. Substitutions,
+// subshells, script blocks, and unquoted heredoc bodies are read as commands of
+// their own. The push and host-write gates read those words. A command that a
+// settings hook rewrote is not seen.
+// shortcut: a command run as `bash -c '...'`, `eval "..."`, or a quoted argument such as `git submodule foreach 'git push'` is not read.
 
-const unquote = (word: string) => word.replace(/^(["'])(.*)\1$/, '$2')
-const readPath = (word: string) => (/[$`~]/.test(unquote(word)) ? undefined : unquote(word))
-// The directory of the last cd before `index`, or `outer` where there is none:
-// the directory a substitution's enclosing command was in. A cd inside a
-// subshell or substitution that has closed by `index` is blanked, since it does
-// not apply outside.
-function cdBefore(cmd: string, masked: string, index: number, outer?: string): string | undefined {
-  let before = masked.slice(0, index)
-  for (let last = ''; last !== before; ) [last, before] = [before, before.replace(/\([^()]*\)/g, m => ' '.repeat(m.length))]
-  const cd = [...before.matchAll(CD)].pop()
-  return cd ? readPath(cmd.slice(cd.index! + cd[0].length - cd[1].length, cd.index! + cd[0].length)) : outer
+// The directory a command runs in: a path, undefined for the session's repo,
+// or null where it cannot be read, and the hold then asks.
+export type Dir = string | null | undefined
+type Loc = { dir: Dir; stack: Dir[]; gitDir: Dir }
+type Word = { text: string; literal: boolean; quoted: boolean }
+type Command = { words: Word[]; at: Loc[] }
+
+// Bash's compound commands. A cd inside one may not have run after it ends.
+const OPEN = new Set(['if', 'while', 'until', 'for', 'case', 'select'])
+const SKIP = new Set(['then', 'do', '!', 'time'])
+const ELSE = new Set(['else', 'elif'])
+const CLOSE = new Set(['fi', 'done', 'esac'])
+
+// Every place a command may be, from the branches that lead to it.
+function union(...lists: Loc[][]): Loc[] {
+  const seen = new Map<string, Loc>()
+  for (const l of lists.flat()) seen.set(JSON.stringify(l), l)
+  // shortcut: past 16 possible directories the directory is unknown, and the hold asks.
+  return seen.size > 16 ? [{ dir: null, stack: [], gitDir: null }] : [...seen.values()]
+}
+
+const one = (dirs: Dir[]): Dir => (dirs.every(d => d === dirs[0]) ? dirs[0] : null)
+
+// A path word read against the directory it is given in. A relative path where
+// that is the session's repo stays relative, and git reads it there.
+// shortcut: a path with a shell variable or ~ in it is read as the session's repo.
+function resolve(base: Dir, w: Word | undefined): Dir {
+  if (!w) return null
+  if (!w.literal) return undefined
+  const p = w.text
+  if (/^(?:[A-Za-z]:)?[\\/]/.test(p)) return p
+  if (base === undefined) return p === '.' ? undefined : p
+  if (base === null) return null
+  if (p === '.') return base
+  const sep = base.includes('\\') && !base.includes('/') ? '\\' : '/'
+  return base.replace(/[\\/]+$/, '') + sep + p.replace(/^\.[\\/]/, '')
+}
+
+const valueOf = (w: Word): Word => ({ ...w, text: w.text.slice(w.text.indexOf('=') + 1) })
+const lastGitDir = (words: Word[]) => words.filter(w => /^GIT_DIR=/.test(w.text)).map(valueOf).pop()
+
+// Where each command leaves the shell: a cd, pushd, or popd, or a GIT_DIR
+// that later git commands read.
+function effect(words: Word[], locs: Loc[], ps: boolean): Loc[] {
+  const setGitDir = (w: Word | undefined) => locs.map(l => ({ ...l, gitDir: resolve(l.dir, w) }))
+  let k = 0
+  while (!ps && k < words.length && /^[A-Za-z_]\w*=/.test(words[k].text)) k++
+  if (k === words.length) {
+    const g = lastGitDir(words)
+    return g ? setGitDir(g) : locs
+  }
+  const name = ps ? words[k].text.toLowerCase() : words[k].text
+  const args = words.slice(k + 1)
+  if (ps) {
+    const m = /^\$env:GIT_DIR(?:=(.*))?$/is.exec(words[0].text)
+    if (m) return setGitDir(m[1] !== undefined ? { text: m[1], literal: !/[$`]/.test(m[1]), quoted: false } : words[1]?.text === '=' ? words[2] : undefined)
+  } else if (['export', 'declare', 'typeset'].includes(name)) {
+    const g = lastGitDir(args)
+    return g ? setGitDir(g) : locs
+  } else if (name === 'unset' && args.some(w => w.text === 'GIT_DIR')) return locs.map(l => ({ ...l, gitDir: undefined }))
+  const cd = ps ? /^(?:cd|chdir|sl|set-location)$/.test(name) : name === 'cd'
+  const pushd = ps ? /^(?:pushd|push-location)$/.test(name) : name === 'pushd'
+  if (ps ? /^(?:popd|pop-location)$/.test(name) : name === 'popd') return locs.map(l => (l.stack.length ? { ...l, dir: l.stack[0], stack: l.stack.slice(1) } : { ...l, dir: null }))
+  if (!cd && !pushd) return locs
+  // No directory, or `cd -`, leaves it unknown.
+  let target: Word | undefined
+  for (let j = 0; j < args.length; j++) {
+    const t = args[j].text
+    if (t === '-') break
+    if (t === '--') {
+      target = args[j + 1]
+      break
+    }
+    if (t.startsWith('-') && !args[j].quoted) {
+      if (ps && /^-(?:path|literalpath|lp|pspath)$/i.test(t)) {
+        target = args[j + 1]
+        break
+      }
+      continue
+    }
+    target = args[j]
+    break
+  }
+  return locs.map(l => {
+    const dir = resolve(l.dir, target)
+    return pushd ? { ...l, dir, stack: [l.dir, ...l.stack] } : { ...l, dir }
+  })
+}
+
+// Every simple command in `s`, with any text after a quote left open read again
+// as commands: the quote is taken as a literal character, which reads more.
+function lexAll(s: string, ps: boolean, start: Loc[], quoted = false): Command[] {
+  const found: Command[] = []
+  for (let n = 0; n < 8; n++) {
+    const { commands, open } = lex(s, ps, start, quoted)
+    found.push(...commands)
+    if (open < 0) break
+    s = `${s.slice(0, open)} ${s.slice(open + 1)}`
+  }
+  return found
+}
+
+// One pass over `s`. Where `quoted` is set, the text is read as it is inside
+// double quotes, as the body of an unquoted heredoc is.
+function lex(s: string, ps: boolean, start: Loc[], quoted: boolean): { commands: Command[]; open: number } {
+  const commands: Command[] = []
+  const heredocs: { delim: string; quoted: boolean; strip: boolean; at: Loc[] }[] = []
+  const escape = ps ? '`' : '\\'
+  const meta = ps ? /[\s;&|(){}<>]/ : /[\s;&|()<>]/
+  let i = 0
+  let open = -1
+  const unclosed = (at: number) => {
+    if (open < 0) open = at
+  }
+
+  // A `$` expansion at i: a substitution, read as commands, or a variable.
+  // False where the `$` is a literal character.
+  function dollar(at: Loc[]): boolean {
+    const n = s[i + 1]
+    if (n === '(') {
+      i += 2
+      list(at, ')')
+    } else if (n === '{') {
+      i += 2
+      dq(at, '}')
+    } else if (n !== undefined && /[\w@*#?$!-]/.test(n)) {
+      i += 2
+      if (/\w/.test(n)) while (i < s.length && (/\w/.test(s[i]) || (ps && s[i] === ':'))) i++
+    } else return false
+    return true
+  }
+
+  // A Bash backtick substitution, unescaped and read on its own.
+  function backtick(at: Loc[]) {
+    const from = i
+    let inner = ''
+    for (i++; i < s.length && s[i] !== '`'; i++) {
+      if (s[i] === '\\' && '$`\\'.includes(s[i + 1] ?? '')) i++
+      inner += s[i]
+    }
+    if (i >= s.length) unclosed(from)
+    i++
+    commands.push(...lexAll(inner, false, at))
+  }
+
+  // A double-quoted span from i to `end`, or to the end of the text where `end` is ''.
+  function dq(at: Loc[], end: string): Word {
+    const from = i - 1
+    let text = ''
+    let literal = true
+    for (;;) {
+      if (i >= s.length) {
+        if (end) unclosed(from)
+        break
+      }
+      const c = s[i]
+      const st = i
+      if (c === end) {
+        if (ps && end === '"' && s[i + 1] === '"') {
+          text += '"'
+          i += 2
+          continue
+        }
+        i++
+        break
+      }
+      if (c === escape && i + 1 < s.length) {
+        const n = s[i + 1]
+        if (n !== '\n') text += ps || '$`"\\'.includes(n) ? n : c + n
+        i += 2
+      } else if ((c === '$' && dollar(at)) || (!ps && c === '`' && (backtick(at), true))) {
+        text += s.slice(st, i)
+        literal = false
+      } else {
+        text += c
+        i++
+      }
+    }
+    return { text, literal, quoted: true }
+  }
+
+  // One word from i, up to an unquoted blank or operator.
+  function word(at: Loc[]): Word {
+    let text = ''
+    let literal = true
+    let wordQuoted = false
+    // A single-quoted span after `skip` opening characters: '...' in either
+    // shell, with '' for a quote in PowerShell, or Bash's $'...' with escapes.
+    const single = (skip: number, backslash: boolean) => {
+      const from = i
+      wordQuoted = true
+      for (i += skip; ; i++) {
+        if (i >= s.length) return unclosed(from)
+        if (backslash && s[i] === '\\') text += s[++i] ?? ''
+        else if (s[i] === "'" && ps && s[i + 1] === "'") text += s[++i]
+        else if (s[i] === "'") return void i++
+        else text += s[i]
+      }
+    }
+    while (i < s.length) {
+      const c = s[i]
+      const st = i
+      if (c === escape) {
+        if (s[i + 1] !== '\n' && i + 1 < s.length) text += s[i + 1]
+        wordQuoted = true
+        i += 2
+      } else if (c === "'") single(1, false)
+      else if (!ps && c === '$' && s[i + 1] === "'") single(2, true)
+      else if (c === '"') {
+        i++
+        const w = dq(at, '"')
+        text += w.text
+        literal &&= w.literal
+        wordQuoted = true
+      } else if ((c === '$' && dollar(at)) || (!ps && c === '`' && (backtick(at), true))) {
+        text += s.slice(st, i)
+        literal = false
+      } else if (s[i + 1] === '(' && (ps ? c === '@' : c === '<' || c === '>')) {
+        // A PowerShell array subexpression, or a Bash process substitution.
+        i += 2
+        list(at, ')')
+        text += s.slice(st, i)
+        literal = false
+      } else if (meta.test(c)) break
+      else {
+        if (c === '~' && !text && !wordQuoted) literal = false
+        text += c
+        i++
+      }
+    }
+    return { text, literal, quoted: wordQuoted }
+  }
+
+  // Each heredoc body after the newline that ends its command. An unquoted
+  // body is read as double-quoted text, so a substitution in it runs.
+  function bodies() {
+    for (const h of heredocs.splice(0)) {
+      const from = i
+      let to = s.length
+      let next = s.length
+      for (let p = i; p < s.length; ) {
+        const nl = s.indexOf('\n', p) < 0 ? s.length : s.indexOf('\n', p)
+        const line = s.slice(p, nl)
+        if ((h.strip ? line.replace(/^\t+/, '') : line) === h.delim) {
+          to = p
+          next = Math.min(nl + 1, s.length)
+          break
+        }
+        p = nl + 1
+      }
+      if (!h.quoted) commands.push(...lexAll(s.slice(from, to), false, h.at, true))
+      i = next
+    }
+  }
+
+  // The commands from i up to `end`, or the end of the text, starting from
+  // `from`; returns every place the shell may be after them.
+  function list(from: Loc[], end: string): Loc[] {
+    let before = from
+    let cur = from
+    let ends: Loc[][] = []
+    let allAnd = true
+    let pipe: Loc[] | null = null
+    let words: Word[] = []
+    let after: Loc[] | null = null
+    const blocks: Loc[][] = []
+
+    // A cd after `&&` from the start of an and-or list has run when the next
+    // command runs. One that may not have run leaves either directory. A
+    // pipeline's commands, and a background list, run in subshells.
+    const finish = (op: string) => {
+      const base = after ?? cur
+      const ran = words.length ? effect(words, base, ps) : base
+      if (words.length) commands.push({ words, at: base })
+      words = []
+      after = null
+      if (op === '|' || op === '|&') {
+        pipe ??= cur
+        cur = pipe
+        return
+      }
+      const r = pipe ?? ran
+      pipe = null
+      ends.push(r)
+      if (op === '&&') cur = allAnd ? r : union(base, r)
+      else if (op === '||') {
+        allAnd = false
+        cur = union(base, r)
+      } else {
+        cur = op === '&' ? before : union(...ends)
+        before = cur
+        ends = []
+        allAnd = true
+      }
+    }
+
+    while (i < s.length) {
+      const c = s[i]
+      const at = after ?? cur
+      if (c === ' ' || c === '\t' || c === '\r' || (c === escape && s[i + 1] === '\n')) {
+        i += c === escape ? 2 : 1
+        continue
+      }
+      if (c === '#') {
+        while (i < s.length && s[i] !== '\n') i++
+        continue
+      }
+      if (ps && s.startsWith('<#', i)) {
+        const close = s.indexOf('#>', i + 2)
+        i = close < 0 ? s.length : close + 2
+        continue
+      }
+      if (c === end && (ps || end !== '}')) {
+        i++
+        finish(';')
+        return cur
+      }
+      // One left unmatched, as after a case pattern, ends a command.
+      if (c === ')' || (ps && c === '}')) {
+        i++
+        finish(';')
+        continue
+      }
+      const redirect = (ps ? /([\d*])?(>>?)(&\d)?/y : /(\d+|\{\w+\})?(&>>?|>>|>&|>\||<<<|<<-|<<|<&|<>|>|<)()/y)
+      redirect.lastIndex = i
+      const r = redirect.exec(s)
+      if (r && !(!ps && !r[1] && (r[2] === '<' || r[2] === '>') && s[i + 1] === '(')) {
+        i += r[0].length
+        if (r[3]) continue
+        while (s[i] === ' ' || s[i] === '\t') i++
+        const target = word(at)
+        if (r[2] === '<<' || r[2] === '<<-') heredocs.push({ delim: target.text, quoted: target.quoted, strip: r[2] === '<<-', at })
+        continue
+      }
+      const operator = /&&|\|\||;;&?|;&|\|&|[;&|\n]/y
+      operator.lastIndex = i
+      const o = operator.exec(s)
+      if (o) {
+        i += o[0].length
+        // PowerShell's call operator.
+        if (ps && o[0] === '&' && !words.length && !after) continue
+        finish(o[0] === '\n' || o[0].startsWith(';') ? ';' : o[0])
+        if (o[0] === '\n') bodies()
+        continue
+      }
+      // A Bash subshell, which leaves the directory as it was, or a PowerShell
+      // group or script block, which may change it.
+      if (c === '(' || (ps && c === '{')) {
+        i++
+        const inner = list(at, c === '(' ? ')' : '}')
+        if (ps) after = union(at, inner)
+        words.push({ text: c === '(' ? '()' : '{}', literal: false, quoted: false })
+        continue
+      }
+      const here = ps ? /@(['"])[ \t]*\n/y : null
+      if (here) {
+        here.lastIndex = i
+        const h = here.exec(s)
+        if (h) {
+          const body = i + h[0].length
+          const close = s.indexOf(`\n${h[1]}@`, body - 1)
+          if (close < 0) unclosed(i)
+          const text = s.slice(body, close < 0 ? s.length : Math.max(body, close))
+          if (h[1] === '"') commands.push(...lexAll(text, true, at, true))
+          words.push({ text, literal: h[1] === "'", quoted: true })
+          i = close < 0 ? s.length : close + 3
+          continue
+        }
+      }
+      const st = i
+      const w = word(at)
+      if (i === st) {
+        i++
+        continue
+      }
+      if (!ps && !w.quoted && !words.length && !after) {
+        if (w.text === '}' && end === '}') {
+          finish(';')
+          return cur
+        }
+        if (w.text === '{') {
+          after = list(cur, '}')
+          continue
+        }
+        if (OPEN.has(w.text)) {
+          blocks.push(cur)
+          continue
+        }
+        if (SKIP.has(w.text)) continue
+        if (ELSE.has(w.text)) {
+          cur = union(cur, blocks.at(-1) ?? [])
+          continue
+        }
+        if (CLOSE.has(w.text)) {
+          cur = union(cur, blocks.pop() ?? [])
+          continue
+        }
+      }
+      words.push(w)
+    }
+    finish(';')
+    return cur
+  }
+
+  if (quoted) dq(start, '')
+  else list(start, '')
+  return { commands, open }
+}
+
+const commands = (cmd: string, shell: string, outer: Dir) =>
+  lexAll(cmd.replace(/\r\n/g, '\n'), /powershell|pwsh/i.test(shell), [{ dir: outer, stack: [], gitDir: undefined }])
+
+// The repo a git command reads: its --git-dir, else a GIT_DIR, else its
+// directory after each -C. A --work-tree does not change the repo.
+function repoDir(at: Loc[], before: Word[], cs: Word[] = [], gitDir?: Word): Dir {
+  const env = gitDir ?? lastGitDir(before)
+  return one(at.map(l => {
+    let d = l.dir
+    for (const c of cs) d = resolve(d, c)
+    return env ? resolve(d, env) : l.gitDir !== undefined ? l.gitDir : d
+  }))
 }
 
 const unique = <T>(found: T[]) => {
@@ -82,105 +471,161 @@ const unique = <T>(found: T[]) => {
   return found.filter(w => !seen.has(JSON.stringify(w)) && !!seen.add(JSON.stringify(w)))
 }
 
-export type Push = { dir: string | undefined; dryRun: boolean; force: boolean }
+// git's built-in commands. Any other subcommand may be an alias, which the
+// hook reads from config.
+const BUILTIN = new Set(`add am annotate apply archive backfill bisect blame branch bugreport bundle cat-file check-attr check-ignore
+check-mailmap check-ref-format checkout checkout-index cherry cherry-pick citool clean clone column commit commit-graph commit-tree
+config count-objects credential describe diagnose diff diff-files diff-index diff-tree difftool fast-export fast-import fetch fetch-pack
+filter-branch fmt-merge-msg for-each-ref for-each-repo format-patch fsck gc get-tar-commit-id grep gui hash-object help init init-db
+instaweb interpret-trailers last-modified log ls-files ls-remote ls-tree mailinfo mailsplit maintenance merge merge-base merge-file
+merge-tree mergetool mktag mktree multi-pack-index mv name-rev notes pack-objects pack-refs prune prune-packed pull range-diff read-tree
+rebase reflog refs remote repack replace replay repo request-pull rerere reset restore rev-list rev-parse revert rm send-email
+shortlog show show-branch show-ref sparse-checkout stage stash status stripspace submodule switch symbolic-ref tag unpack-objects
+update-index update-ref var verify-commit verify-pack verify-tag version whatchanged worktree write-tree`.split(/\s+/))
 
-// Every push in a shell command: the directory it runs in, from its -C or the
-// last cd before it, whether it is a dry run, and whether it forces: a --force
-// option, -f in a short-flag group, or a + refspec. The command is read as
-// hostWrites reads it: unfolded, again unmasked where a quote is left open, and
-// then each substitution on its own, in the directory of the last cd before it.
-// shortcut: a path with a shell variable or ~ in it is not read, and the push is checked in the session's repo.
-export function pushTargets(cmd: string, outer?: string): Push[] {
-  const src = unfold(cmd)
-  let open = false
-  const masked = mask(src, () => { open = true })
-  const found = [...scanPushes(src, masked, outer), ...(open ? scanPushes(src, src, outer) : [])]
-  for (const sub of substitutions(src)) found.push(...pushTargets(sub.text, cdBefore(src, masked, sub.at, outer)))
-  return unique(found)
+export type Push = { dir: Dir; dryRun: boolean; force: boolean; alias?: string; rest?: string }
+
+// Whether a push is a dry run, and whether it forces: --force*, --mirror,
+// --delete, or --prune, an f or d in a short-flag group, or a refspec that
+// starts with + or deletes with a leading colon. -o takes the rest of its group,
+// or the next word.
+function pushFlags(args: Word[]): { dryRun: boolean; force: boolean } {
+  let dryRun = false
+  let force = false
+  let options = true
+  for (let j = 0; j < args.length; j++) {
+    const a = args[j].text
+    if (options && a === '--') options = false
+    else if (options && /^--(?:push-option|repo|receive-pack|exec)$/.test(a)) j++
+    else if (options && /^--(?:force|force-with-lease|mirror|delete|prune)(?:=|$)/.test(a)) force = true
+    else if (options && a === '--dry-run') dryRun = true
+    else if (options && /^-[^-]/.test(a)) {
+      for (let x = 1; x < a.length; x++) {
+        if (a[x] === 'o') {
+          if (x === a.length - 1) j++
+          break
+        }
+        if (a[x] === 'n') dryRun = true
+        if (a[x] === 'f' || a[x] === 'd') force = true
+      }
+    } else if (/^(?:\+|:.)/.test(a)) force = true
+  }
+  return { dryRun, force }
 }
 
-function scanPushes(src: string, masked: string, outer?: string): Push[] {
-  return [...masked.matchAll(PUSH)].map(push => {
-    const [start] = push.indices![1]
-    const own = [...push[1].matchAll(GIT_DIR)].pop()
-    const dir = own ? readPath(src.slice(start + own.indices![1][0], start + own.indices![1][1])) : cdBefore(src, masked, push.index!, outer)
-    const args = push[2]
-    return { dir, dryRun: /(^|\s)(--dry-run|-n)(?=\s|$)/.test(args), force: /(^|\s)(--force|-[a-zA-Z]*f[a-zA-Z]*(?=\s|$)|\+\S)/.test(args) }
-  })
+const GIT = /^(?:.*[\/\\])?git(?:\.exe)?$/i
+
+// Every push in a shell command, read in `shell`: the repo it runs in, whether
+// it is a dry run, and whether it forces. A `git subtree push` or `git lfs push`
+// is a push, an alias set with -c is read in place, and any other subcommand
+// that is not built in is returned with `alias` set, for the hook to read.
+export function pushTargets(cmd: string, shell = 'Bash', outer?: Dir): Push[] {
+  const found: Push[] = []
+  for (const { words, at } of commands(cmd, shell, outer)) {
+    for (let k = 0; k < words.length; k++) {
+      if (!GIT.test(words[k].text)) continue
+      const cs: (Word | undefined)[] = []
+      const aliases = new Map<string, string>()
+      let gitDir: Word | undefined
+      let j = k + 1
+      for (; j < words.length; j++) {
+        const a = words[j].text
+        if (a === '-C') cs.push(words[++j])
+        else if (a === '-c') {
+          const m = /^alias\.([^=]+)=(.*)$/s.exec(words[++j]?.text ?? '')
+          if (m) aliases.set(m[1], m[2])
+        } else if (a === '--git-dir') gitDir = words[++j] ?? { text: '', literal: false, quoted: false }
+        else if (a.startsWith('--git-dir=')) gitDir = { ...words[j], text: a.slice(10) }
+        else if (/^--(?:work-tree|namespace|config-env|attr-source|super-prefix)$/.test(a)) j++
+        else if (!a.startsWith('-')) break
+      }
+      const sub = words[j]?.text
+      const rest = words.slice(j + 1)
+      const dir = repoDir(at, words.slice(0, k), cs as Word[], gitDir)
+      const pushAt = rest.findIndex(w => w.text === 'push')
+      if (sub === 'push') found.push({ dir, ...pushFlags(rest) })
+      else if ((sub === 'subtree' || sub === 'lfs') && pushAt >= 0) found.push({ dir, ...pushFlags(rest.slice(pushAt + 1)) })
+      else if (sub !== undefined && aliases.has(sub)) {
+        const v = aliases.get(sub)!
+        found.push(...pushTargets(`${v.startsWith('!') ? v.slice(1) : `git ${v}`} ${rest.map(w => w.text).join(' ')}`, 'Bash', dir))
+      } else if (sub !== undefined && !BUILTIN.has(sub) && /^[\w.-]+$/.test(sub)) found.push({ dir, dryRun: false, force: false, alias: sub, rest: rest.map(w => w.text).join(' ') })
+    }
+  }
+  return unique(found)
 }
 
 // The gh and glab subcommands that only read from the host or act on this
 // machine. Every other subcommand is taken as a write, so a verb added in a
-// later release, or an alias such as `gh pr new`, is put to the user.
+// later release, or an alias such as `gh pr new`, is put to the user. `clone`
+// reads only for a repo or a gist: `gh label clone` writes labels.
 const LOCAL_NOUNS = new Set(['auth', 'config', 'extension', 'ext', 'alias', 'completion', 'help', 'version', 'browse', 'search', 'status', 'check-update', 'changelog'])
-const READ_VERBS = new Set(['view', 'list', 'ls', 'status', 'diff', 'checks', 'checkout', 'co', 'download', 'watch', 'clone', 'browse', 'get', 'search', 'verify', 'trace', 'lint', 'contributors', 'issues', 'field-list', 'item-list'])
+const READ_VERBS = new Set(['view', 'list', 'ls', 'status', 'diff', 'checks', 'checkout', 'co', 'download', 'watch', 'browse', 'get', 'search', 'verify', 'trace', 'lint', 'contributors', 'issues', 'field-list', 'item-list'])
 const PR_CREATE: Record<string, string> = { gh: 'pr', glab: 'mr' }
 const CLI = /^(?:.*[\/\\])?(gh|glab)(?:\.exe)?$/i
 
-export type HostWrite = { what: string; dir: string | undefined; prCreate: boolean; otherRepo: boolean }
+export type HostWrite = { what: string; dir: Dir; prCreate: boolean; otherRepo: boolean }
 
-// Every host write in a shell command: what it is, the directory of the last cd
-// before it, whether it opens a PR or MR, and whether -R, GH_REPO, or
-// GITLAB_REPO sends it to another repo. An api call with a field and no method
-// is a POST, as both CLIs send it, and a GraphQL call is a write unless its
-// query is inline and reads as a query. Line continuations are joined and
-// comment lines dropped first. Where a quote is left open, the command is read
-// again unmasked, and a `$(...)` or backtick substitution is read on its own,
-// quoted or not, since the shell runs both inside double quotes, in the
-// directory of the last cd before it.
-// shortcut: a write run as `bash -c '...'` or `eval "..."`, or through a user's own gh alias, is not detected.
-export function hostWrites(cmd: string, outer?: string): HostWrite[] {
-  const src = unfold(cmd)
-  let open = false
-  const masked = mask(src, () => { open = true })
-  const found = [...scan(src, masked, outer), ...(open ? scan(src, src, outer) : [])]
-  for (const sub of substitutions(src)) found.push(...hostWrites(sub.text, cdBefore(src, masked, sub.at, outer)))
-  return unique(found)
-}
-
-function scan(src: string, masked: string, outer?: string): HostWrite[] {
+// Every host write in a shell command, read in `shell`: what it is, the repo it
+// runs in, whether it opens a PR or MR, and whether -R, GH_REPO, or GITLAB_REPO
+// sends it to another repo. An api call with a field and no method is a POST,
+// as both CLIs send it, and a GraphQL call is a write unless its query field is
+// literal and reads as a query. A help flag skips the command unless it follows
+// an option, whose value it may be.
+// shortcut: a write through a user's own gh alias is not detected.
+export function hostWrites(cmd: string, shell = 'Bash', outer?: Dir): HostWrite[] {
   const found: HostWrite[] = []
-  const envRepo = /\b(GH_REPO|GITLAB_REPO)\b/.test(src)
-  // A parenthesis splits nothing, so an argument such as `repos/$(...)/issues`
-  // or PowerShell's `(Get-Content b.md)` keeps the flags after it. A subshell's
-  // parentheses are stripped from the words at its ends.
-  for (const seg of masked.matchAll(/[^;&|\n`]+/g)) {
-    const words = [...seg[0].matchAll(/\S+/g)].map(w => unquote(src.slice(seg.index! + w.index!, seg.index! + w.index! + w[0].length).replace(/^\$?[({]+|[)}]+$/g, '')))
-    const at = words.findIndex(w => CLI.test(w))
-    if (at < 0) continue
-    const cli = CLI.exec(words[at])![1].toLowerCase()
-    const args = words.slice(at + 1)
-    if (args.includes('-h') || args.includes('--help')) continue
+  const envRepo = /\b(GH_REPO|GITLAB_REPO)\b/.test(cmd)
+  for (const { words, at } of commands(cmd, shell, outer)) {
+    const k = words.findIndex(w => CLI.test(w.text))
+    if (k < 0) continue
+    const cli = CLI.exec(words[k].text)![1].toLowerCase()
+    const args = words.slice(k + 1)
+    if (args.some((w, j) => w.literal && /^(?:-h|--help)$/.test(w.text) && !args[j - 1]?.text.startsWith('-'))) continue
     const pos: string[] = []
+    const fields: Word[] = []
     let method = ''
-    let fields = false
+    let input = false
     let otherRepo = envRepo
     for (let i = 0; i < args.length; i++) {
-      const a = args[i]
+      const a = args[i].text
       const api = pos[0] === 'api'
-      const m = api && /^(?:-[a-zA-Z]*X|--method)(?:=?(.+))?$/.exec(a)
-      if (m) method = (m[1] ?? args[++i] ?? '').toUpperCase()
-      else if (/^(-R|--repo)$/.test(a)) {
-        otherRepo = true
-        i++
-      } else if (/^(-R.|--repo=)/.test(a)) otherRepo = true
-      else if (api && /^(-f|-F|--field|--raw-field|--input|--form)$/.test(a)) {
-        fields = true
-        i++
-      } else if (api && /^(--field|--raw-field|--input|--form)=|^-[fF]./.test(a)) fields = true
-      else if (api && /^(-H|--header|-q|--jq|-t|--template|--hostname|-p|--preview|--cache)$/.test(a)) i++
-      else if (!a.startsWith('-')) pos.push(a)
+      const next = (): Word => args[++i] ?? { text: '', literal: true, quoted: false }
+      const long = /^--([\w-]+)(?:=(.*))?$/s.exec(a)
+      if (long) {
+        const [, name, eq] = long
+        const value = (): Word => (eq !== undefined ? { ...args[i], text: eq } : next())
+        if (name === 'repo') {
+          otherRepo = true
+          value()
+        } else if (api && name === 'method') method = value().text.toUpperCase()
+        else if (api && /^(?:field|raw-field|form)$/.test(name)) fields.push(value())
+        else if (api && name === 'input') {
+          input = true
+          value()
+        } else if (api && /^(?:header|jq|template|hostname|preview|cache)$/.test(name)) value()
+      } else if (/^-[^-]/.test(a)) {
+        for (let x = 1; x < a.length; x++) {
+          const f = a[x]
+          if (f !== 'R' && !(api && 'XfFHqtp'.includes(f))) continue
+          const v = x + 1 < a.length ? { ...args[i], text: a.slice(x + 1) } : next()
+          if (f === 'R') otherRepo = true
+          else if (f === 'X') method = v.text.toUpperCase()
+          else if (f === 'f' || f === 'F') fields.push(v)
+          break
+        }
+      } else pos.push(a)
     }
     const [noun, verb] = pos
     let what = ''
     if (noun === 'api' && verb === 'graphql') {
-      const text = src.slice(seg.index!, seg.index! + seg[0].length)
-      if (/\bmutation\b/.test(text) || !/\bquery=(["']?)\s*(query\b|\{)/.test(text)) what = `${cli} api graphql`
+      const query = fields.find(f => f.text.startsWith('query='))
+      const text = query?.text.slice(6).trim() ?? ''
+      if (input || !query?.literal || !/^(?:query\b|\{)/.test(text) || /\bmutation\b/.test(text)) what = `${cli} api graphql`
     } else if (noun === 'api') {
-      const m = method || (fields ? 'POST' : 'GET')
+      const m = method || (fields.length || input ? 'POST' : 'GET')
       if (m !== 'GET' && m !== 'HEAD') what = `${cli} api ${m}`
-    } else if (noun && verb && !LOCAL_NOUNS.has(noun) && !READ_VERBS.has(verb)) what = `${cli} ${noun} ${verb}`
-    if (what) found.push({ what, dir: cdBefore(src, masked, seg.index!, outer), prCreate: noun === PR_CREATE[cli] && (verb === 'create' || verb === 'new'), otherRepo })
+    } else if (noun && verb && !LOCAL_NOUNS.has(noun) && !READ_VERBS.has(verb) && !(verb === 'clone' && (noun === 'repo' || noun === 'gist'))) what = `${cli} ${noun} ${verb}`
+    if (what) found.push({ what, dir: repoDir(at, words.slice(0, k)), prCreate: noun === PR_CREATE[cli] && (verb === 'create' || verb === 'new'), otherRepo })
   }
-  return found
+  return unique(found)
 }

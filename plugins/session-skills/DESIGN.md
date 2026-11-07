@@ -67,38 +67,49 @@ runs of each arm on Sonnet 5.5, the first reply stated a next step 4 of 4 times 
 
 The holds in `land-and-wrap` are read from the skill text, so a session that pushes without the
 skill pushes anyway: on 2026-11-06 a session pushed a cleared TODO to this public repo. A
-`tool.check` hook on `Bash` and `PowerShell` reads the holds for the directory each push in a
-command runs in, from its `-C`, `--git-dir`, or `--work-tree`, or else the last `cd` before it that
-is not inside a closed subshell, and puts a held push to the user in the permission prompt with
-the `git config` line that lifts the hold. A force push (a `--force` option, `-f` in a short-flag
-group, or a `+` refspec) is put to the user whatever the holds, because it replaces commits a reviewer
-may have read, and it is never refused outright, because it is a normal step after a rebase. A
-hook's ask reaches a person in every permission mode,
-and where nobody can be asked, as under `claude -p`, the push is refused. A dry run is not held,
-and a subagent's push is held like any other. A path with a shell variable in it is not read, so
-that push is checked in the session's repo. The command is read the way a host write is read below,
-so a push after a comment line, across a line continuation, or inside a `$(...)` is held too.
+`tool.check` hook on `Bash` and `PowerShell` reads the holds for the repo each push in a command
+runs in, and puts a held push to the user in the permission prompt with the `git config` line that
+lifts the hold. A `git subtree push` or `git lfs push` is a push too. A subcommand git does not
+build in is read as an alias from `git config` in the push's directory, and its expansion is checked
+in its place. A force push (`--force*`, `--mirror`, `--delete`, or `--prune`, `-f` or `-d` in a
+short-flag group, or a refspec that starts with `+` or deletes with a leading `:`) is put to the user
+whatever the holds, because it replaces commits a reviewer may have read, and it is never refused
+outright, because it is a normal step after a rebase. A hook's ask reaches a person in every
+permission mode, and where nobody can be asked, as under `claude -p`, the push is refused. Every
+push but a dry run is held, a subagent's included.
+
+A command is read by one lexer, in `hooks/checkouts.ts`, with the rules of the shell that runs it.
+It resolves quotes, backslash or PowerShell backtick escapes, comments, line continuations,
+redirections, and quoted and unquoted heredocs and PowerShell here-strings, and reads each `$(...)`,
+backtick, `<(...)`, subshell, and script block as commands of its own. Regexes were used before,
+one pass at a time, and a review with live probes found commands they misread, among them a
+backtick span in a quoted commit message read as a command, a `# --dry-run` comment read as a dry
+run, and a quote in one command paired with a quote in the next. The repo a push runs in is its
+`--git-dir` or `GIT_DIR`, else its directory after each `-C` and every `cd`, `pushd`, and `popd`
+before it. A `--work-tree` does not change the repo. A `cd` after `&&` from the start of its list
+has run by the time the push runs, but one after `||`, inside an `if` or a loop, or after a command
+that may have failed may not have, and where the push may run in more than one directory, or after
+`popd` or `cd -`, the hold asks. A `cd` in a subshell, a pipeline, or a background list does not
+move a later command. A path with a shell variable in it is not read, so that push is checked in the
+session's repo.
 
 The same hook puts every write to the host through `gh` or `glab` to the user, such as a comment, a
 merge, a release, or a workflow run. Every subcommand is taken as a write except a short list of
 reads (`view`, `list`, `diff`, `checks`, and the like), nouns that act on this machine only (`auth`,
-`config`, `extension`), and a call for help. A list of writes was tried first, and an adversarial
-pass found 101 of 120 probes it missed, among them `gh pr new`, `glab mr new`, and a verb new in a
-recent release. An `api` call is read by its method instead: with a field and no method it is a
-POST, as both CLIs send it, and a GraphQL call is a write unless its query is inline and starts with
-`query` or `{`. Line continuations are joined and comment lines dropped before the command is read,
-a `$(...)` or backtick substitution is read on its own even inside double quotes, in the directory of
-the last `cd` before it unless it has a `cd` of its own, and a command
-with a quote left open is read again unmasked.
+`config`, `extension`), `clone` for a repo or a gist, and a call for help that does not follow an
+option, whose value it may be. A list of writes was tried first, and an adversarial pass found 101 of
+120 probes it missed, among them `gh pr new`, `glab mr new`, and a verb new in a recent release. An
+`api` call is read by its method instead: with a field and no method it is a POST, as both CLIs send
+it, and a GraphQL call is a write unless its `query` field is written out and starts with `query` or
+`{`. The command is read by the same lexer as a push.
 
 These asks hold whatever `origin`'s visibility, since a comment or a merge cannot be pulled back the
 way a private push can. The one exception is a `gh pr create` or `glab mr create` in this clone's
 own repo, with `holdPrText` lifted and past the fork hold. A PR aimed at another repo with `-R`, or
-with `GH_REPO` or `GITLAB_REPO` anywhere in the command, is still asked about. Each write in a
-chained command is checked, so a comment added after a PR opened unasked is still asked about. A write run
-through `bash -c`, `eval`, or a user's own `gh alias` is not seen. In PowerShell, a quote escaped
-with a backtick in a title hides a `-R` after it. A backtick is not read as an escape, because in
-bash that would hide a push after two backtick substitutions in double quotes.
+with `GH_REPO` or `GITLAB_REPO` anywhere in the command, is still asked about, and so is one whose
+directory cannot be read. Each write in a chained command is checked, so a comment added after a PR
+opened unasked is still asked about. A push or write run through `bash -c`, `eval`, a quoted
+argument such as `git submodule foreach 'git push'`, or a user's own `gh alias` is not seen.
 
 A follow-up prompt after the reply used to do this. It showed in the transcript as a message from the
 plugin, it took a fenced block as the only sign of a next step, so it fired after "This session
