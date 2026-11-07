@@ -898,13 +898,21 @@ test('the hold is read in the directory the push runs in, and a failed read hold
   expect(failed.reason).toContain('could not be checked')
 })
 
-test('a held push never reaches the shell when nobody can allow it, and a refusal underneath stands', async ($: any, on: any) => {
+test('a held push never reaches the shell when nobody can allow it', async ($: any, on: any) => {
   pushWorld(on, { originVisibility: 'public' })
   let ran = 0
   on('tool.call', { tool: 'Bash' }, () => { ran++; return { result: {} } })
   const refused = await $.tool.call({ tool: 'Bash', command: 'git push' })
   expect(refused.deny ?? refused.isError).toBeTruthy()
   expect(ran).toBe(0)
+})
+
+test('a refusal underneath a held push stands', async ($: any, on: any) => {
+  on('tool.check', () => ({ decision: 'deny', reason: 'refused by a rule' }))
+  world(on, () => 1)
+  const refused = await verdict($, 'git push')
+  expect(refused.decision).toBe('deny')
+  expect(refused.reason).toBe('refused by a rule')
 })
 
 test('a force push is told apart by --force*, a -f in a short-flag group, or a + refspec', () => {
