@@ -1522,3 +1522,12 @@ test('a mirror or + refspec in config forces a push whose remote is not written 
   config['remote.pub.push'] = '+refs/heads/*:refs/heads/*'
   expect((await verdict($, 'R=origin; git push "$R"')).reason).toContain('Force push')
 })
+
+test('a PR that may push its branch is held by the submodule config a push reads', async ($: any, on: any) => {
+  const config: Record<string, string> = { 'session-skills.originVisibility': 'private', 'session-skills.holdPrText': 'false', 'session-skills.holdFork': 'false' }
+  targetWorld(on, config)
+  expect((await verdict($, 'gh pr create --fill')).decision).toBe('allow')
+  config['submodule.recurse'] = 'true'
+  expect((await verdict($, 'gh pr create --fill')).reason).toContain('submodules')
+  expect((await verdict($, 'gh pr create --fill --head feature')).decision).toBe('allow')
+})

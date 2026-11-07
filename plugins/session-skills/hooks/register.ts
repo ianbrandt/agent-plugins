@@ -595,7 +595,10 @@ async function hostHold($: any, w: HostWrite): Promise<string> {
   if ((await setting($, dir, 'holdPrText')) !== 'false') return `${write}, and a PR's text waits for the user's go. ${lift('holdPrText')}`
   const other = await otherBase($, dir, w.what)
   if (other) return `${write}, and ${other}.`
-  const push = w.pushes ? await pushHold($, dir, 'origin') : ''
+  if (!w.pushes) return ''
+  const config = await pushConfig($, dir, { dir, dryRun: false, force: false, remote: 'origin' })
+  if (config.force || config.submodules) return `${write}, and it may push the branch with ${config.force ? 'a force' : 'its submodules'} set in config for the push.`
+  const push = await pushHold($, dir, 'origin')
   return push && `${write}, and it may push the branch: ${push}`
 }
 
