@@ -779,13 +779,19 @@ const HELD_KEYS = /^(?:(?:remote|url|branch|include|includeif|lfs|alias|session-
 // Variables that move the config git reads, and those that send gh or glab to another repo.
 const CONFIG_VARS = /^(?:GIT_CONFIG\w*|HOME|XDG_CONFIG_HOME|GIT_COMMON_DIR)$/i
 const REPO_VARS = /^(?:GH_REPO|GITLAB_REPO|GIT_DIR)$/i
-// Whether a command sets one of `names`: an assignment, one given to env or
-// export, or PowerShell's $env:NAME.
+// Whether a command sets one of `names`: an assignment before its first word,
+// one given to env, export, or another command that takes assignments, or
+// PowerShell's $env:NAME. An argument such as `-m 'HOME=/tmp'` sets nothing.
+const SETTERS = /^(?:(?:.*\/)?env|export|declare|typeset|local|readonly|sudo)$/
 const sets = (cmds: Command[], names: RegExp) =>
-  cmds.some(c => c.words.some(w => {
-    const m = /^(?:\$\{?env:)?([A-Za-z_]\w*)\}?(?:=|$)/i.exec(w.text)
-    return !!m && names.test(m[1]) && (w.text.includes('=') || w.text.startsWith('$'))
-  }))
+  cmds.some(c => {
+    const first = c.words.findIndex(w => !ASSIGNMENT.test(w.text) && !/^\$\{?env:/i.test(w.text))
+    const scan = first < 0 || SETTERS.test(c.words[first].text) ? c.words : c.words.slice(0, first)
+    return scan.some(w => {
+      const m = /^(?:\$\{?env:)?([A-Za-z_]\w*)\}?(?:=|$)/i.exec(w.text)
+      return !!m && names.test(m[1]) && (w.text.includes('=') || w.text.startsWith('$'))
+    })
+  })
 
 // git's options before its subcommand, read from the word after `git` at k:
 // where the subcommand is, each -C, each -c or --config-env value, and a

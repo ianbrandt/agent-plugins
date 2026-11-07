@@ -132,7 +132,8 @@ looked up with gh or glab by each of its push URLs, except a path on this machin
 The hold asks for a push to a URL that is not a remote, but not for one to a path on this machine.
 It asks for a push whose remote is not written out or is changed for that push with `-c`,
 `--config-env`, or a `GIT_CONFIG`, `HOME`, `XDG_CONFIG_HOME`, or `GIT_COMMON_DIR` variable set in
-the command, PowerShell's `$env:` included. A `send-pack` or `http-push` takes a URL or a path, so its
+the command, as an assignment before a command's first word, with `env`, `export`, or `sudo`, or
+with PowerShell's `$env:`. A variable in an argument, as in `git commit -m 'HOME=/tmp'`, is not set. A `send-pack` or `http-push` takes a URL or a path, so its
 remote is not read. It asks too for a push with no remote after a `git switch`, `checkout`, or
 `symbolic-ref` that sets HEAD, a `git rebase` given a branch to check out, or after a command that sets or unsets an upstream with an option
 given by any unique prefix, earlier in the same command, since those change the branch config the

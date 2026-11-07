@@ -1501,3 +1501,13 @@ test('a rebase that checks out a branch moves a later push, and one that rebases
     expect(pushTarget(cmd)?.remote, cmd).toBeUndefined()
   }
 })
+
+test('a variable is set for git only before a command or by env, export, or PowerShell, not in an argument', () => {
+  for (const cmd of ['echo "HOME=$HOME"; git push origin main', "git commit -m 'HOME=/tmp' && git push origin main", 'grep GIT_CONFIG_GLOBAL= x && git push origin main']) {
+    expect(pushTarget(cmd), cmd).toMatchObject({ remote: 'origin', force: false })
+  }
+  for (const cmd of ['HOME=/tmp git push origin main', 'env HOME=/tmp git push origin main', 'export GIT_CONFIG_GLOBAL=x; git push origin main', 'sudo HOME=/tmp git push origin main']) {
+    expect(pushTarget(cmd), cmd).toMatchObject({ remote: null, force: true })
+  }
+  expect(pushTargets("$env:HOME = '/tmp'; git push origin main", 'PowerShell')[0]).toMatchObject({ remote: null, force: true })
+})
