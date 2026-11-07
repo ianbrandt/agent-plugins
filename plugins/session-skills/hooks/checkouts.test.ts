@@ -839,6 +839,7 @@ function pushWorld(on: any, config: Record<string, string>, upstream = false) {
     if (line === 'remote get-url upstream') return upstream ? 'https://example.com/up/b.git' : 2
     if (line === 'remote') return upstream ? 'origin\nupstream' : 'origin'
     if (line.startsWith('config --get')) return config[line.split('.')[1]] ?? 1
+    if (line.startsWith('config --default= --get')) return config[line.split('.')[1]] ?? ''
   })
 }
 
@@ -1092,6 +1093,8 @@ function targetWorld(on: any, config: Record<string, string>, remotes: Record<st
     const re = /^config --get-regexp (\S+)$/.exec(line)
     if (re) return Object.entries(config).filter(([k]) => new RegExp(re[1]).test(k)).map(([k, v]) => `${k} ${v}`).join('\n') || 1
     if (line.startsWith('config --get ')) return config[line.slice(13)] ?? 1
+    if (line.startsWith('config --default= --get ')) return config[line.slice(24)] ?? ''
+    if (line === 'config -z --list') return Object.entries(config).map(([k, v]) => `${k}\n${v}\0`).join('')
   }, line => {
     const m = /^gh repo view (\S+) /.exec(line)
     if (m && vis[m[1]]) return vis[m[1]]
@@ -1312,4 +1315,175 @@ test('a PR body, title, or label with an H in it is not read as --head, and a va
   ]) expect((await verdict($, cmd)).reason, cmd).toContain('may push the branch')
   config['session-skills.originVisibility'] = 'private'
   expect((await verdict($, 'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.gh-resolved GIT_CONFIG_VALUE_0=o/pub gh pr create --fill')).decision).toBe('ask')
+})
+
+// Each case below got a push, a host write, or a config write past the gate, or
+// asked about an ordinary command, in a second review with live probes in git
+// 2.56.0, gh 2.103.3, bash 3.2, zsh 5.9, and pwsh.
+test('a hold key written with -- or with an option after the key is read as a write', () => {
+  for (const cmd of [
+    'git config -- session-skills.holdPublicPush false',
+    'git config session-skills.holdPublicPush false --get',
+    'git config session-skills.holdPublicPush false -l',
+  ]) expect(configWrites(cmd), cmd).toEqual(['git config session-skills.holdPublicPush'])
+  expect(configWrites('git config get --all session-skills.holdPublicPush')).toEqual([])
+})
+
+test('an alias is read through other -c aliases and the git 2.54 command form, and an alias loop is asked about', () => {
+  expect(pushTarget('git -c alias.a=b -c alias.b=push a --force origin main')?.force).toBe(true)
+  expect(configWrites('git -c alias.a=b -c alias.b=config a session-skills.holdPublicPush false')).toEqual(['git config session-skills.holdPublicPush'])
+  expect(pushTarget('git -c alias.p.command=push p origin main')).toEqual({ dir: undefined, dryRun: false, force: false, remote: 'origin' })
+  expect(pushTarget(`git -c alias.s='!git x' -c alias.x='push -f' s`)?.force).toBe(true)
+  expect(pushTargets('git -c alias.b=push a origin main')).toEqual([{ dir: undefined, dryRun: false, force: false, alias: 'a', rest: "'origin' 'main'", configs: [{ text: 'alias.b=push', literal: true, quoted: false }] }])
+  expect(() => pushTargets('git -c alias.a=a a')).toThrow('nested too deeply')
+})
+
+test('an ANSI-C quoted word is decoded, and old $[...] arithmetic and ${ cmd; } hide nothing', () => {
+  expect(pushTarget(`git $'\\x70ush' --force origin main`)?.force).toBe(true)
+  expect(pushTarget(`git push $'--\\x66orce' origin main`)?.force).toBe(true)
+  expect(pushTarget(`git $'\\160\\165sh' $'-\\u0066' origin main`)?.force).toBe(true)
+  expect(pushTarget(`git commit -m $'a\\tb\\'c' && git push -f`)?.force).toBe(true)
+  expect(pushTarget('x=$[1<<2]\ngit push -f origin main')?.force).toBe(true)
+  expect(pushTarget('x=${ git push -f; }')?.force).toBe(true)
+})
+
+test('gh and glab are read as =gh and from a path lookup, and an option before the verb or a gh alias is asked about', () => {
+  expect(hostWrite('=gh pr merge 3 --squash')?.what).toBe('gh pr merge')
+  expect(hostWrite('$(which gh) pr comment 3 --body x')?.what).toBe('gh pr comment')
+  expect(hostWrite('`command -v glab` mr merge 3')?.what).toBe('glab mr merge')
+  expect(hostWrite('gh pr -b view merge 3 --squash')).not.toBeNull()
+  expect(hostWrite('gh pr --title view create --fill')).not.toBeNull()
+  expect(hostWrite('gh --version')).toBeNull()
+  for (const cmd of [`gh alias set m 'pr merge 3 --squash' && gh m`, `gh alias set --shell p 'git push --force origin main' && gh p`, 'gh alias import a.yml', 'glab alias set m "mr merge 3"']) {
+    expect(configWrites(cmd).length, cmd).toBeGreaterThan(0)
+  }
+  expect(configWrites('gh alias list')).toEqual([])
+})
+
+test('a command run later by git or by trap is read, in a directory that cannot be read', () => {
+  expect(hostWrites("git submodule foreach 'gh issue comment 1 --body hi'")).toEqual([{ what: 'gh issue comment', dir: null, prCreate: false, otherRepo: false, pushes: false }])
+  expect(configWrites("git submodule foreach 'git config session-skills.holdPublicPush false'")).toEqual(['git config session-skills.holdPublicPush'])
+  for (const cmd of [
+    "git rebase -x 'git push --force-with-lease origin HEAD' main",
+    "git rebase --exec='git push -f' main",
+    "git rebase -ix 'git push -f' main",
+    'git bisect run git push -f',
+    "git difftool -x 'git push -f' HEAD~1",
+    'git for-each-repo --config=maintenance.repo push -f',
+    "trap 'git push -f' EXIT",
+  ]) expect(pushTarget(cmd), cmd).toMatchObject({ dir: null, force: true })
+  expect(hostWrite("trap 'gh pr merge 3' EXIT")?.what).toBe('gh pr merge')
+})
+
+test('a mirror or + refspec set in config, or any config set in the environment, forces the push', () => {
+  for (const cmd of [
+    'git -c remote.origin.mirror push origin',
+    'git -c remote.origin.mirror=true push origin',
+    'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.mirror GIT_CONFIG_VALUE_0=true git push origin',
+    'export GIT_CONFIG_PARAMETERS="\'remote.origin.mirror\'"; git push origin',
+  ]) expect(pushTarget(cmd)?.force, cmd).toBe(true)
+  expect(pushTargets("$env:GIT_COMMON_DIR = 'C:\\pub\\.git'; git push origin main", 'PowerShell')[0]?.remote).toBeNull()
+  expect(pushTargets("$env:GIT_CONFIG_COUNT='1'; git push origin main", 'PowerShell')[0]?.force).toBe(true)
+})
+
+test('an abbreviated upstream option, symbolic-ref, and directory changes in PowerShell and zsh are read', () => {
+  expect(pushTarget('git branch --set-upstream-t=pub/main && git push')?.remote).toBeNull()
+  expect(pushTarget('git branch --set-u pub/main && git push')?.remote).toBeNull()
+  expect(pushTarget('git symbolic-ref HEAD refs/heads/public && git push')?.remote).toBeNull()
+  expect(pushTarget('git symbolic-ref --short HEAD && git push')?.remote).toBeUndefined()
+  expect(pushTargets('$null = Set-Location /pub; git push', 'PowerShell')[0]?.dir).toBe('/pub')
+  expect(pushTarget('() { cd /pub }; git push')?.dir).toBeNull()
+  expect(pushTarget('repeat 1 { cd /pub }; git push')?.dir).toBeNull()
+  expect(pushTarget('exit() { :; }; cd /pub && git push')?.dir).toBe('/pub')
+  expect(pushTarget('return 2>/dev/null; cd /pub && git push')?.dir).toBe('/pub')
+  expect(pushTarget('f() { cd /pub; }; git push')?.dir).toBeUndefined()
+})
+
+test('a push that recurses into submodules, a send-pack, and a git program run directly are read', () => {
+  expect(pushTarget('git push --recurse-submodules=on-demand origin main')?.submodules).toBe(true)
+  expect(pushTarget('git push --recurse-submodules only origin main')?.submodules).toBe(true)
+  expect(pushTarget('git push --recurse-submodules=check origin main')?.submodules).toBe(false)
+  expect(pushTarget('git push --no-recurse-submodules origin main')?.submodules).toBe(false)
+  expect(pushTarget('git -c push.recurseSubmodules=on-demand push origin main')?.submodules).toBe(true)
+  expect(configWrites('git submodule set-url lib https://h/o/pub.git && git -C lib push origin main')).toEqual(['git submodule set-url'])
+  expect(configWrites('git submodule sync --recursive')).toEqual(['git submodule sync'])
+  expect(configWrites('git submodule update --init')).toEqual([])
+  expect(pushTarget('git send-pack --remote origin ../pub.git main')?.remote).toBeNull()
+  for (const cmd of ['git-push --force origin main', '/opt/homebrew/opt/git/libexec/git-core/git-push --force origin main', '"$(git --exec-path)/git-push" --force origin main']) {
+    expect(pushTarget(cmd), cmd).toMatchObject({ force: true, remote: 'origin' })
+  }
+  expect(pushTarget('git-lfs push origin main')?.remote).toBe('origin')
+})
+
+test('the last --head is read, and one whose value is not written out may be empty', () => {
+  expect(hostWrite("gh pr create --head feature --head '' --fill")?.pushes).toBe(true)
+  expect(hostWrite('H=""; gh pr create --head "$H" --fill')?.pushes).toBe(true)
+  expect(hostWrite("gh pr create --head '' --head feature --fill")?.pushes).toBe(false)
+})
+
+test('git is read only as the command, or from a path lookup, so ordinary reads are not pushes', () => {
+  for (const cmd of ['git diff "$(git merge-base main HEAD)" "$(git rev-parse HEAD)"', 'diff <(git show HEAD~1:f) <(git show HEAD:f)', 'git grep -e git -e push', 'git log --author git push']) {
+    expect(pushTargets(cmd), cmd).toEqual([])
+  }
+  for (const cmd of ['cd "$(git rev-parse --show-toplevel)" && git push', 'git --version && git push', 'git commit -m "Fix GIT_CONFIG handling" && git push']) {
+    expect(pushTarget(cmd), cmd).toEqual({ dir: undefined, dryRun: false, force: false })
+  }
+  expect(hostWrite('gh pr create --title "Document GH_REPO" --fill')?.otherRepo).toBe(false)
+  expect(pushTarget('xargs git push -f')?.force).toBe(true)
+  expect(pushTargets('sudo -u git -g staff git push -f').some(p => p.force)).toBe(true)
+})
+
+test('env -u GIT_DIR and env -i clear a GIT_DIR', () => {
+  expect(pushTarget('GIT_DIR=/priv/.git env -u GIT_DIR git push origin main')?.dir).toBeUndefined()
+  expect(pushTarget('export GIT_DIR=/priv/.git; env -i git push')?.dir).toBeUndefined()
+  expect(pushTarget('env -u GIT_DIR GIT_DIR=/pub/.git git push')?.dir).toBe('/pub/.git')
+})
+
+test('a stack of pushd or a run of parentheses is put to the user, quickly', async ($: any, on: any) => {
+  pushWorld(on, { originVisibility: 'private' })
+  for (const cmd of ['pushd /repo; '.repeat(20_000) + 'git push', '('.repeat(2000) + 'x'.repeat(500_000) + '\ngit push']) {
+    const started = Date.now()
+    const held = await verdict($, cmd)
+    expect(held.decision).toBe('ask')
+    expect(held.reason).toContain('could not be checked')
+    expect(Date.now() - started).toBeLessThan(5000)
+  }
+})
+
+test('a push held for its submodules, its config, or a failed read is put to the user, and one to a path here is not', async ($: any, on: any) => {
+  const config: Record<string, string> = { 'session-skills.originVisibility': 'private' }
+  targetWorld(on, config)
+  expect((await verdict($, 'git push ../backup.git main')).decision).toBe('allow')
+  expect((await verdict($, 'git push --recurse-submodules=on-demand origin main')).reason).toContain('submodules')
+  expect((await verdict($, 'git push origin main')).decision).toBe('allow')
+  config['push.recursesubmodules'] = 'on-demand'
+  expect((await verdict($, 'git push origin main')).reason).toContain('submodules')
+  delete config['push.recursesubmodules']
+  config['remote.origin.mirror'] = 'true'
+  expect((await verdict($, 'git push origin')).reason).toContain('Force push')
+  delete config['remote.origin.mirror']
+  config['remote.origin.push'] = '+refs/heads/*:refs/heads/*'
+  expect((await verdict($, 'git push')).reason).toContain('Force push')
+  delete config['remote.origin.push']
+  config['alias.q.command'] = 'push -f'
+  expect((await verdict($, 'git q origin main')).reason).toContain('Force push')
+  config['alias.a'] = 'b'
+  expect((await verdict($, "git -c alias.b='push -f' a origin main")).reason).toContain('Force push')
+  const lift = await verdict($, 'gh alias set m "pr merge 3"')
+  expect(lift.decision).toBe('ask')
+  expect(lift.reason).toContain('`gh alias set`')
+})
+
+test('a read of the push remote that fails holds the push', async ($: any, on: any) => {
+  on('tool.check', () => ({ decision: 'allow' }))
+  world(on, line => {
+    if (line === 'symbolic-ref --short -q HEAD') return 'main'
+    if (line === 'config --default= --get branch.main.pushRemote') return 1
+    if (line === 'config --get session-skills.originVisibility') return 'private'
+    if (/^remote get-url (--push --all )?upstream$/.test(line)) return 2
+    if (line.startsWith('remote get-url')) return 'https://h/a/b.git'
+  })
+  const held = await verdict($, 'git push')
+  expect(held.decision).toBe('ask')
+  expect(held.reason).toContain('could not be checked')
 })

@@ -41,13 +41,13 @@ export const worktreeName = (name: string, id = '') => (id ? `${id.toLowerCase()
 // subshells, script blocks, and unquoted heredoc bodies are read as commands of
 // their own. The push and host-write gates read those words. A command that a
 // settings hook rewrote is not seen.
-// shortcut: a command run as `bash -c '...'`, `eval "..."`, `Start-Process`, or a `git-<name>` program on the PATH is not read.
+// shortcut: a command run as `bash -c '...'`, `eval "..."`, `env -S '...'`, `Start-Process`, or a `git-<name>` program on the PATH that is not git's own is not read.
 
 // The directory a command runs in: a path, undefined for the session's repo,
 // or null where it cannot be read, and the hold then asks.
 export type Dir = string | null | undefined
 type Loc = { dir: Dir; stack: Dir[]; gitDir: Dir }
-type Word = { text: string; literal: boolean; quoted: boolean }
+export type Word = { text: string; literal: boolean; quoted: boolean }
 type Command = { words: Word[]; at: Loc[] }
 
 // Bash's compound commands. A cd inside one may not have run after it ends.
@@ -90,18 +90,24 @@ const lastGitDir = (words: Word[]) => words.filter(w => /^GIT_DIR=/.test(w.text)
 // Where each command leaves the shell: a cd, pushd, or popd, or a GIT_DIR
 // that later git commands read. A relative GIT_DIR is read where each git
 // command runs, so it is not read here. A call to a function defined in the
-// command may run a cd. `exit` and `return` reach no later command.
+// command, or a Bash or zsh body in braces after the first word, such as zsh's
+// `() { ... }` or `repeat 1 { ... }`, may run a cd. A function definition runs
+// nothing. `exit` reaches no later command. A `return` outside a function
+// fails in bash, which runs on, so it is read as running on.
 function effect(words: Word[], locs: Loc[], ps: boolean, functions: Set<string>): Loc[] {
   const setGitDir = (w: Word | undefined) => locs.map(l => ({ ...l, gitDir: w?.literal && !ABSOLUTE.test(w.text) ? null : resolve(l.dir, w) }))
   let k = 0
   while (!ps && k < words.length && /^[A-Za-z_]\w*=/.test(words[k].text)) k++
   // A GIT_DIR set without export is not read by git, unless it was exported before.
   if (k === words.length) return lastGitDir(words) ? locs.map(l => ({ ...l, gitDir: null })) : locs
+  // PowerShell runs the command after `$x =`.
+  if (ps && words[1]?.text === '=' && words.length > 2 && /^\$(?!\{?env:)/i.test(words[0].text)) k = 2
   while (!ps && (words[k].text === 'builtin' || words[k].text === 'command') && k + 1 < words.length) k++
   const name = ps ? words[k].text.toLowerCase() : words[k].text
   const args = words.slice(k + 1)
-  if (['exit', 'return'].includes(name) || (ps && name === 'throw')) return []
-  if (functions.has(name)) return locs.map(l => ({ ...l, dir: null }))
+  if (!ps && (args[0]?.text === '()' || name === 'function')) return locs
+  if (functions.has(name) || (!ps && args.some(w => w.text === '{' && !w.quoted))) return locs.map(l => ({ ...l, dir: null }))
+  if (name === 'exit' || (ps && name === 'throw')) return []
   if (ps) {
     const m = /^\$(?:env:|\{env:)GIT_DIR\}?(?:=(.*))?$/is.exec(words[0].text)
     if (m) return setGitDir(m[1] !== undefined ? { text: m[1], literal: !/[$`]/.test(m[1]), quoted: false } : words[1]?.text === '=' ? words[2] : undefined)
@@ -134,22 +140,41 @@ function effect(words: Word[], locs: Loc[], ps: boolean, functions: Set<string>)
   }
   return locs.map(l => {
     const dir = resolve(l.dir, target)
+    if (pushd) charge(l.stack.length + 1)
     return pushd ? { ...l, dir, stack: [l.dir, ...l.stack] } : { ...l, dir }
   })
 }
 
-// The characters one command may be read through, across every pass. Text
-// left open at each level of a nest is read again at each, and the work grows
-// with the depth; past this the gates throw, and the hook asks.
+// The characters one command may be read through, across every pass, and the
+// directories copied onto pushd stacks. Text left open at each level of a nest
+// is read again at each, and the work grows with the depth; past this the
+// gates throw, and the hook asks.
 const budget = { left: 0 }
+const charge = (n: number) => {
+  budget.left -= n
+  if (budget.left < 0) throw new Error('the command is too long or too deeply nested to read')
+}
+
+// bash's escapes in $'...', at the backslash at i: the text and where it ends.
+const ESCAPES: Record<string, string> = { a: '\x07', b: '\b', e: '\x1b', E: '\x1b', f: '\f', n: '\n', r: '\r', t: '\t', v: '\v', '\\': '\\', "'": "'", '"': '"', '?': '?' }
+function ansiC(s: string, i: number): [string, number] {
+  const e = /x([\da-fA-F]{1,2})|u([\da-fA-F]{1,4})|U([\da-fA-F]{1,8})|([0-7]{1,3})|c([\s\S])|([\s\S])/y
+  e.lastIndex = i + 1
+  const m = e.exec(s)
+  if (!m) return ['\\', i + 1]
+  const hex = m[1] ?? m[2] ?? m[3]
+  if (hex) return [String.fromCodePoint(Math.min(parseInt(hex, 16), 0x10ffff)), e.lastIndex]
+  if (m[4]) return [String.fromCharCode(parseInt(m[4], 8) & 0xff), e.lastIndex]
+  if (m[5]) return [String.fromCharCode(m[5].charCodeAt(0) & 0x1f), e.lastIndex]
+  return [ESCAPES[m[6]] ?? `\\${m[6]}`, e.lastIndex]
+}
 
 // Every simple command in `s`, with any text after a quote left open read again
 // as commands: the quote is taken as a literal character, which reads more.
 function lexAll(s: string, ps: boolean, start: Loc[], quoted = false, functions = new Set<string>()): Command[] {
   const found: Command[] = []
   for (let n = 0; n < 8; n++) {
-    budget.left -= s.length + 1
-    if (budget.left < 0) throw new Error('the command is too long or too deeply nested to read')
+    charge(s.length + 1)
     const { commands, open } = lex(s, ps, start, quoted, functions)
     for (const c of commands) found.push(c)
     if (open < 0) break
@@ -190,9 +215,29 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
       i += 2
       const inner = list(at, ')')
       if (ps) side = union(side, inner)
+    } else if (n === '{' && !ps && /[\s|]/.test(s[i + 2] ?? '')) {
+      // bash 5.3's `${ cmd; }` runs its commands in this shell.
+      i += 2
+      list(at, '}')
     } else if (n === '{') {
       i += 2
       parameter(at)
+    } else if (n === '[' && !ps) {
+      // The old `$[...]` arithmetic, where `<<` is a shift.
+      i += 2
+      for (let depth = 0; i < s.length && !(s[i] === ']' && !depth); ) {
+        charge(1)
+        const st = i
+        if (s[i] === '[') depth++
+        else if (s[i] === ']') depth--
+        else if (s[i] === '$' && dollar(at)) continue
+        else if (s[i] === '`') {
+          backtick(at)
+          continue
+        }
+        if (i === st) i++
+      }
+      i++
     } else if (n !== undefined && /[\w@*#?$!-]/.test(n)) {
       i += 2
       if (/\w/.test(n)) while (i < s.length && (/\w/.test(s[i]) || (ps && s[i] === ':'))) i++
@@ -205,6 +250,7 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
   // subshell in a substitution.
   function arithmetic(at: Loc[]): boolean {
     for (let depth = 0; i < s.length; ) {
+      charge(1)
       const c = s[i]
       const st = i
       if (c === '(') depth++
@@ -309,8 +355,11 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
       wordQuoted = true
       for (i += skip; ; i++) {
         if (i >= s.length) return unclosed(from)
-        if (backslash && s[i] === '\\') text += s[++i] ?? ''
-        else if (s[i] === "'" && ps && s[i + 1] === "'") text += s[++i]
+        if (backslash && s[i] === '\\') {
+          const [decoded, end] = ansiC(s, i)
+          text += decoded
+          i = end - 1
+        } else if (s[i] === "'" && ps && s[i + 1] === "'") text += s[++i]
         else if (s[i] === "'") return void i++
         else text += s[i]
       }
@@ -582,19 +631,23 @@ function commands(cmd: string, shell: string, outer: Dir): Command[] {
 
 // The repo a git command reads: its --git-dir, else a GIT_DIR, else its
 // directory after an `env -C` before it and each -C. A --work-tree does not
-// change the repo.
+// change the repo. `env -i` or `env -u GIT_DIR` clears a GIT_DIR set before it.
 function repoDir(at: Loc[], before: Word[], cs: Word[] = [], gitDir?: Word): Dir {
-  const env = gitDir ?? lastGitDir(before)
   const chdir: (Word | undefined)[] = []
   const e = before.findIndex(w => /^(?:.*\/)?env$/.test(w.text))
+  let cleared = false
   for (let j = e + 1; e >= 0 && j < before.length; j++) {
-    if (/^(?:-C|--chdir)$/.test(before[j].text)) chdir.push(before[++j])
-    else if (before[j].text.startsWith('--chdir=')) chdir.push(valueOf(before[j]))
+    const a = before[j].text
+    if (/^(?:-C|--chdir)$/.test(a)) chdir.push(before[++j])
+    else if (a.startsWith('--chdir=')) chdir.push(valueOf(before[j]))
+    else if (/^(?:-i|--ignore-environment|-|-uGIT_DIR|--unset=GIT_DIR)$/.test(a)) cleared = true
+    else if (/^(?:-u|--unset)$/.test(a)) cleared ||= before[++j]?.text === 'GIT_DIR'
   }
+  const env = gitDir ?? lastGitDir(cleared ? before.slice(e + 1) : before)
   return one(at.map(l => {
     let d = l.dir
     for (const c of [...chdir, ...cs]) d = resolve(d, c)
-    return env ? resolve(d, env) : l.gitDir !== undefined ? l.gitDir : d
+    return env ? resolve(d, env) : l.gitDir !== undefined && !cleared ? l.gitDir : d
   }))
 }
 
@@ -616,8 +669,10 @@ shortlog show show-branch show-ref sparse-checkout stage stash status stripspace
 update-index update-ref var verify-commit verify-pack verify-tag version whatchanged worktree write-tree`.split(/\s+/))
 
 // `remote` is the remote given in the push: undefined where none is given, and
-// null where it cannot be read from the command.
-export type Push = { dir: Dir; dryRun: boolean; force: boolean; remote?: string | null; alias?: string; rest?: string }
+// null where it cannot be read from the command. `submodules` is set where the
+// command says whether the push recurses into submodules, and is otherwise read
+// from config. `configs` are the -c values given with an alias the hook reads.
+export type Push = { dir: Dir; dryRun: boolean; force: boolean; remote?: string | null; submodules?: boolean; alias?: string; rest?: string; configs?: Word[] }
 
 // The long options of a command, the ones that take a value, and its short
 // options that take one.
@@ -643,14 +698,16 @@ function longOption(given: string, o: Options): { option: string; negated: boole
   return { option: matches.includes(name) ? name : matches.length === 1 ? matches[0] : '', negated }
 }
 
-// Whether a push is a dry run, whether it forces, and its remote. --force*,
-// --mirror, --delete, or --prune, an f or d in a short-flag group, or a refspec
-// that starts with + or deletes with a leading colon forces it. An option that
-// takes a value takes the rest of its group, or the next word. The first word
-// that is not an option is the remote, else the value of --repo.
-function pushFlags(args: Word[], o = PUSH): { dryRun: boolean; force: boolean; remote?: string | null } {
+// Whether a push is a dry run, whether it forces, whether it recurses into
+// submodules, and its remote. --force*, --mirror, --delete, or --prune, an f or
+// d in a short-flag group, or a refspec that starts with + or deletes with a
+// leading colon forces it. An option that takes a value takes the rest of its
+// group, or the next word. The first word that is not an option is the remote,
+// else the value of --repo.
+function pushFlags(args: Word[], o = PUSH): { dryRun: boolean; force: boolean; submodules?: boolean; remote?: string | null } {
   let dryRun = false
   let force = false
+  let submodules: boolean | undefined
   let options = true
   let named: Word | undefined
   let repo: Word | undefined
@@ -663,7 +720,10 @@ function pushFlags(args: Word[], o = PUSH): { dryRun: boolean; force: boolean; r
       const { option, negated } = longOption(given, o)
       const value = () => (eq ? { ...args[j], text: a.slice(a.indexOf('=') + 1) } : args[++j])
       if (option === 'repo' && !negated) repo = value()
-      else if (o.valued.test(option) && !negated) value()
+      else if (option === 'recurse-submodules') {
+        const v = negated ? undefined : value()
+        submodules = !negated && (!v?.literal || /^(?:on-demand|only)$/.test(v.text))
+      } else if (o.valued.test(option) && !negated) value()
       else if (/^(?:force|force-with-lease|mirror|delete|prune)$/.test(option) && !negated) force = true
       else if (option === 'dry-run' || option === 'help') dryRun = !negated
     } else if (options && /^-[^-]/.test(a)) {
@@ -682,12 +742,31 @@ function pushFlags(args: Word[], o = PUSH): { dryRun: boolean; force: boolean; r
     }
   }
   const remote = named ?? repo
-  return { dryRun, force, ...(remote && { remote: remote.literal ? remote.text : null }) }
+  return { dryRun, force, ...(submodules !== undefined && { submodules }), ...(remote && { remote: remote.literal ? remote.text : null }) }
 }
 
-// zsh runs `=git` as the git on the PATH, and `$(which git)` runs git too.
-const GIT = /^=?(?:.*[\/\\])?git(?:\.exe)?$/i
-const isGit = (w: Word) => GIT.test(w.text) || (!w.literal && /(?:^|[\s\/(`])git(?:\.exe)?(?:[\s)`]|$)/i.test(w.text))
+// zsh runs `=git` as the git on the PATH, `git-push` is git's own push, and
+// `$(which git)` runs git too. An assignment is not a command, and a path such
+// as `../git-tools` is not one of git's own programs.
+const GIT = /^=?(?:.*[\/\\])?git(?:-([\w-]+?))?(?:\.exe)?$/i
+const PROGRAMS = new Set([...BUILTIN, 'push', 'send-pack', 'http-push', 'subtree', 'lfs'])
+const CLI = /^=?(?:.*[\/\\])?(gh|glab)(?:\.exe)?$/i
+const LOOKUP = /^(?:\$\(|`)\s*(?:which|command\s+-[vV]|type\s+-[pP]|whence(?:\s+-p)?|where(?:\.exe)?)\s+(git|gh|glab)(?:\.exe)?\s*[)`]$/i
+const ASSIGNMENT = /^[A-Za-z_]\w*=/
+const lookup = (w: Word) => (w.literal ? '' : (LOOKUP.exec(w.text)?.[1] ?? '').toLowerCase())
+function isGit(w: Word | undefined): boolean {
+  const m = w && !ASSIGNMENT.test(w.text) ? GIT.exec(w.text) : null
+  return m ? !m[1] || PROGRAMS.has(m[1].toLowerCase()) : !!w && lookup(w) === 'git'
+}
+function cliOf(w: Word | undefined): string {
+  if (!w || ASSIGNMENT.test(w.text)) return ''
+  const name = (CLI.exec(w.text)?.[1] ?? lookup(w)).toLowerCase()
+  return name === 'git' ? '' : name
+}
+// The gh or glab in a simple command: the first, unless it is the value of an
+// option given to the gh or glab right after it, as in `sudo -u gh gh`.
+const cliAt = (words: Word[]) => words.findIndex((w, x) => cliOf(w) && !cliOf(words[x + 1]))
+
 // Words joined back into a command with their quoting, so that a `#` or `;` in
 // one is not read as a comment or an operator.
 const joined = (words: Word[]) => words.map(w => (w.literal ? `'${w.text.replace(/'/g, `'\\''`)}'` : `"${w.text}"`)).join(' ')
@@ -697,8 +776,16 @@ const joined = (words: Word[]) => words.map(w => (w.literal ? `'${w.text.replace
 // to the user.
 const TARGET_KEYS = /^(?:remote|url|branch|include|includeif|lfs)(?:\.|$)/i
 const HELD_KEYS = /^(?:remote|url|branch|include|includeif|lfs|alias|session-skills)(?:\.|$)/i
-// Variables that move the config git reads, set in front of a command.
-const CONFIG_VARS = /\bGIT_CONFIG|\b(?:HOME|XDG_CONFIG_HOME|GIT_COMMON_DIR)=/
+// Variables that move the config git reads, and those that send gh or glab to another repo.
+const CONFIG_VARS = /^(?:GIT_CONFIG\w*|HOME|XDG_CONFIG_HOME|GIT_COMMON_DIR)$/i
+const REPO_VARS = /^(?:GH_REPO|GITLAB_REPO|GIT_DIR)$/i
+// Whether a command sets one of `names`: an assignment, one given to env or
+// export, or PowerShell's $env:NAME.
+const sets = (cmds: Command[], names: RegExp) =>
+  cmds.some(c => c.words.some(w => {
+    const m = /^(?:\$\{?env:)?([A-Za-z_]\w*)\}?(?:=|$)/i.exec(w.text)
+    return !!m && names.test(m[1]) && (w.text.includes('=') || w.text.startsWith('$'))
+  }))
 
 // git's options before its subcommand, read from the word after `git` at k:
 // where the subcommand is, each -C, each -c or --config-env value, and a
@@ -723,15 +810,88 @@ function gitOptions(words: Word[], k: number): { j: number; cs: (Word | undefine
   return { j, cs, configs, gitDir }
 }
 
-// The aliases set with -c, by their lowercased name, as git reads them. An
-// alias whose text is read from a variable is set to null.
+// The git commands in a simple command, with a `git-<name>` program split into
+// `git <name>`. The arguments of a subcommand git builds in, or of an alias set
+// with -c, are not read as commands, so `git grep -e git -e push` is no push.
+// After any other subcommand the words are read on, since that git may be an
+// option's value, as in `sudo -u git -g staff git push`. A git that is the
+// value of an option given to the git right after it is not a command.
+function gitCommands(all: Word[]): { words: Word[]; k: number }[] {
+  const found: { words: Word[]; k: number }[] = []
+  let words = all
+  for (let k = 0; k < words.length; k++) {
+    if (!isGit(words[k])) continue
+    const program = ASSIGNMENT.test(words[k].text) ? undefined : GIT.exec(words[k].text)?.[1]
+    if (program) words = [...words.slice(0, k), { ...words[k], text: 'git' }, { text: program, literal: true, quoted: false }, ...words.slice(k + 1)]
+    const { j, configs } = gitOptions(words, k)
+    if (isGit(words[j])) continue
+    found.push({ words, k })
+    const sub = words[j]
+    if (!sub?.literal || PROGRAMS.has(sub.text) || configAliases(configs).has(sub.text.toLowerCase())) break
+    k = j
+  }
+  return found
+}
+
+// The aliases set with -c, by their lowercased name, as git reads them, in
+// both `alias.<name>` and git 2.54's `alias.<name>.command`. An alias whose
+// text is read from a variable is set to null.
 function configAliases(configs: Word[]): Map<string, string | null> {
   const aliases = new Map<string, string | null>()
   for (const w of configs) {
-    const m = /^alias\.([^=]+)=(.*)$/is.exec(w.text)
+    const m = /^alias\.(.+?)(?:\.command)?=(.*)$/is.exec(w.text)
     if (m) aliases.set(m[1].toLowerCase(), w.literal ? m[2] : null)
   }
   return aliases
+}
+
+// The commands a command leaves to run, each read as a shell command in a
+// directory that is not read: a `trap` action, and the command given to `git
+// submodule foreach`, `git bisect run`, `git rebase -x`, `git difftool -x`, or
+// `git for-each-repo`. A git one runs with the -c values given to the git that runs it.
+function later(all: Word[]): { text: string; configs: Word[] }[] {
+  if (all[0]?.text === 'trap') {
+    const action = all[1]?.text === '--' ? all[2] : all[1]
+    return action && !action.text.startsWith('-') ? [{ text: action.text, configs: [] }] : []
+  }
+  return gitCommands(all).flatMap(g => gitLater(g.words, g.k))
+}
+
+function gitLater(words: Word[], k: number): { text: string; configs: Word[] }[] {
+  const { j, configs } = gitOptions(words, k)
+  const sub = words[j]?.text
+  const rest = words.slice(j + 1)
+  const texts: string[] = []
+  const after = (verb: string) => rest.slice(rest.findIndex(w => w.text === verb) + 1)
+  if (sub === 'submodule' && rest.some(w => w.text === 'foreach')) {
+    // foreach runs its arguments as one shell command, so they are read again unquoted.
+    const args = after('foreach')
+    const x = args.findIndex(w => !w.text.startsWith('-'))
+    if (x >= 0) texts.push(args.slice(x).map(w => w.text).join(' '))
+  } else if (sub === 'bisect' && rest.some(w => w.text === 'run')) texts.push(joined(after('run')))
+  else if (sub === 'for-each-repo') {
+    for (let x = 0; x < rest.length; x++) {
+      const a = rest[x].text
+      if (a === '--config') x++
+      else if (a === '--' || !a.startsWith('-')) {
+        texts.push(`git ${joined(rest.slice(a === '--' ? x + 1 : x))}`)
+        break
+      }
+    }
+  } else if (sub === 'rebase' || sub === 'difftool') {
+    const name = sub === 'rebase' ? 'exec' : 'extcmd'
+    for (let x = 0; x < rest.length; x++) {
+      const a = rest[x].text
+      const long = /^--([\w-]+)(=?)/.exec(a)
+      if (long && long[1].length > 1 && name.startsWith(long[1])) texts.push(long[2] ? a.slice(a.indexOf('=') + 1) : (rest[++x]?.text ?? ''))
+      else if (!long && /^-[a-wyzA-Z]*x/.test(a)) texts.push(a.slice(a.indexOf('x') + 1) || (rest[++x]?.text ?? ''))
+    }
+  }
+  return texts.map(text => ({ text, configs }))
+}
+
+const nested = (depth: number) => {
+  if (depth > 8) throw new Error('the command runs git aliases or later commands nested too deeply to read')
 }
 
 const CONFIG: Options = {
@@ -744,20 +904,23 @@ path expiry-date default comment fixed-value includes all regexp value url appen
 
 // The held key a `git config` command writes, or undefined for a read or a key
 // that is not held. A key that is not written out is held. git reads a quoted
-// option as an option, and takes a unique prefix of a long one.
+// option as an option, and takes a unique prefix of a long one. The form before
+// git 2.46 reads no option after the key, and its subcommands read them anywhere.
 function configKey(args: Word[]): string | undefined {
   const pos: Word[] = []
   let mode = ''
+  let options = true
   for (let i = 0; i < args.length; i++) {
     const a = args[i].text
-    const long = /^--([^=]+)(=?)/.exec(a)
-    if (long) {
+    const long = options && /^--([^=]+)(=?)/.exec(a)
+    if (options && a === '--') options = false
+    else if (long) {
       const { option, negated } = longOption(long[1], CONFIG)
       if (CONFIG.valued.test(option) && !negated && !long[2]) i++
       else if (/^(?:get|get-all|get-regexp|get-urlmatch|get-color|get-colorbool|list)$/.test(option)) return undefined
       else if (option === 'edit') return a
       else if (/^(?:add|replace-all|unset|unset-all|rename-section|remove-section)$/.test(option)) mode = option
-    } else if (/^-[^-]/.test(a)) {
+    } else if (options && /^-[^-]/.test(a)) {
       for (let x = 1; x < a.length; x++) {
         if (a[x] === 'l') return undefined
         if (a[x] === 'e') return a
@@ -766,7 +929,10 @@ function configKey(args: Word[]): string | undefined {
           break
         }
       }
-    } else pos.push(args[i])
+    } else {
+      pos.push(args[i])
+      if (pos.length === 1 && !(args[i].literal && /^(?:get|list|set|unset|rename-section|remove-section|edit)$/.test(a))) options = false
+    }
   }
   // The subcommands added in git 2.46. A key always has a dot in it.
   const verb = pos[0]?.literal ? pos[0].text : ''
@@ -783,29 +949,39 @@ function configKey(args: Word[]): string | undefined {
 // A -c whose key is read from a variable, which may set any key, an alias included.
 const unread = (configs: Word[]) => configs.some(w => !w.literal && !/^[\w.-]+=/.test(w.text))
 
-// Each git command in a shell command that can change where a later push or PR
-// goes, or lift a hold: a write to a remote, url, branch, include, lfs, alias,
-// or session-skills key, and `git remote add`, `rename`, `remove`, `rm`, or
-// `set-url`. An alias set with -c is read in place.
+// Each command in a shell command that can change where a later push or PR
+// goes, run one unseen, or lift a hold: a git config write to a remote, url,
+// branch, include, lfs, alias, or session-skills key, `git remote add`,
+// `rename`, `remove`, `rm`, or `set-url`, `git submodule set-url` or `sync`,
+// and `gh alias set` or `import`. An alias set with -c is read in place.
 // shortcut: an edit to the config file itself, with a file tool or sed, or a write through an alias in git config, is not seen.
-export function configWrites(cmd: string, shell = 'Bash', outer?: Dir): string[] {
+export function configWrites(cmd: string, shell = 'Bash', outer?: Dir, inherited: Word[] = [], depth = 0): string[] {
+  nested(depth)
   const found: string[] = []
-  for (const { words } of commands(cmd, shell, outer)) {
-    for (let k = 0; k < words.length; k++) {
-      if (!isGit(words[k])) continue
-      const { j, configs } = gitOptions(words, k)
+  for (const { words: all } of commands(cmd, shell, outer)) {
+    for (const r of later(all)) for (const w of configWrites(r.text, 'Bash', null, [...inherited, ...r.configs], depth + 1)) found.push(w)
+    const c = cliAt(all)
+    if (c >= 0) {
+      const pos = all.slice(c + 1).filter(w => !w.text.startsWith('-'))
+      const verb = pos.slice(1).find(w => !w.literal || /^(?:set|import)$/.test(w.text))
+      if (pos[0]?.text === 'alias' && verb) found.push(`${cliOf(all[c])} alias ${verb.text}`)
+    }
+    for (const { words, k } of gitCommands(all)) {
+      const { j, configs: own } = gitOptions(words, k)
+      const configs = [...inherited, ...own]
       const sub = words[j]
       const rest = words.slice(j + 1)
-      const aliases = configAliases(configs)
-      const alias = sub && aliases.get(sub.text.toLowerCase())
+      const alias = sub && configAliases(configs).get(sub.text.toLowerCase())
+      const verb = rest.find(w => !w.text.startsWith('-'))
       if (sub?.text === 'remote') {
-        const verb = rest.find(w => !w.text.startsWith('-'))
         if (verb && (!verb.literal || /^(?:add|rename|remove|rm|set-url)$/.test(verb.text))) found.push(`git remote ${verb.text}`)
+      } else if (sub?.text === 'submodule') {
+        if (verb && (!verb.literal || /^(?:set-url|sync)$/.test(verb.text))) found.push(`git submodule ${verb.text}`)
       } else if (sub?.text === 'config') {
         const key = configKey(rest)
         if (key !== undefined) found.push(`git config ${key}`)
       } else if (typeof alias === 'string') {
-        for (const w of configWrites(`${alias.startsWith('!') ? alias.slice(1) : `git ${alias}`} ${joined(rest)}`)) found.push(w)
+        for (const w of configWrites(`${alias.startsWith('!') ? alias.slice(1) : `git ${alias}`} ${joined(rest)}`, 'Bash', undefined, configs, depth + 1)) found.push(w)
       } else if (sub && (alias === null || (unread(configs) && !BUILTIN.has(sub.text)))) found.push(`git ${sub.text}`)
     }
   }
@@ -813,60 +989,66 @@ export function configWrites(cmd: string, shell = 'Bash', outer?: Dir): string[]
 }
 
 // Whether a git command changes the branch a later push in the same command
-// reads its remote from, or that branch's upstream: a switch or checkout, or a
-// branch, fetch, pull, or push that sets or unsets an upstream.
-const UPSTREAM = /^(?:--set-upstream(?:-to)?(?:=.*)?|--unset-upstream|--track(?:=.*)?|-[A-Za-z]*[ut][A-Za-z]*)$/
+// reads its remote from, or that branch's upstream: a switch, checkout, or
+// symbolic-ref that sets HEAD, or a branch, fetch, pull, or push that sets or
+// unsets an upstream, with a long option given by a unique prefix as git takes it.
+const UPSTREAM = ['set-upstream-to', 'set-upstream', 'unset-upstream', 'track']
+const setsUpstream = (w: Word) => {
+  const long = /^--([\w-]+)(?:=|$)/.exec(w.text)
+  return long ? long[1].length > 1 && UPSTREAM.some(o => o.startsWith(long[1])) : /^-[A-Za-z]*[ut][A-Za-z]*$/.test(w.text)
+}
 const moves = (sub: string, rest: Word[]) =>
-  sub === 'switch' || sub === 'checkout' || (/^(?:branch|fetch|pull|push)$/.test(sub) && rest.some(w => UPSTREAM.test(w.text)))
+  sub === 'switch' || sub === 'checkout' || (sub === 'symbolic-ref' && rest.filter(w => !w.text.startsWith('-')).length > 1) ||
+  (/^(?:branch|fetch|pull|push)$/.test(sub) && rest.some(setsUpstream))
 
 // Every push in a shell command, read in `shell`: the repo it runs in, whether
 // it is a dry run, whether it forces, and its remote. `git send-pack`, `git
-// http-push`, `git subtree push`, and `git lfs push` are pushes, and the command
-// given to `git submodule foreach` is read as one, in a directory that cannot be
-// read. An alias set with -c is read in place, and any other subcommand that is
-// not built in is returned with `alias` set, for the hook to read. A subcommand
+// http-push`, `git subtree push`, and `git lfs push` are pushes, and a command
+// left to run later (see `later`) is read, in a directory that cannot be read.
+// An alias set with -c is read in place, and any other subcommand that is not
+// built in is returned with `alias` set, for the hook to read. A subcommand
 // that is not written out, such as `git $sub`, is a push in a directory that
 // cannot be read, so the hold asks. A push with no remote after a command that
-// moves the branch or its upstream has a remote that cannot be read.
-export function pushTargets(cmd: string, shell = 'Bash', outer?: Dir): Push[] {
+// moves the branch or its upstream has a remote that cannot be read. A mirror
+// or + refspec set with -c, or any config set in the environment, forces it.
+export function pushTargets(cmd: string, shell = 'Bash', outer?: Dir, inherited: Word[] = [], depth = 0): Push[] {
+  nested(depth)
   const found: Push[] = []
-  const envConfig = CONFIG_VARS.test(cmd)
+  const cmds = commands(cmd, shell, outer)
+  const envConfig = sets(cmds, CONFIG_VARS)
   let movedBranch = false
-  for (const { words, at } of commands(cmd, shell, outer)) {
-    for (let k = 0; k < words.length; k++) {
-      if (!isGit(words[k])) continue
-      const { j, cs, configs, gitDir } = gitOptions(words, k)
+  for (const { words: all, at } of cmds) {
+    for (const r of later(all)) for (const p of pushTargets(r.text, 'Bash', null, [...inherited, ...r.configs], depth + 1)) found.push({ ...p, dir: null })
+    for (const { words, k } of gitCommands(all)) {
+      const { j, cs, configs: own, gitDir } = gitOptions(words, k)
+      const configs = [...inherited, ...own]
       const aliases = configAliases(configs)
-      // A refspec or mirror set with -c can force the push, and a remote, url,
-      // branch, include, or lfs key set for it can send it to another remote.
-      const configForce = configs.some(w => !w.literal || /^remote\..*\.(?:push=\+|mirror=)/is.test(w.text))
+      const configForce = envConfig || configs.some(w => !w.literal || /^remote\..*\.(?:push=\+|mirror(?:=|$))/is.test(w.text))
       const moved = envConfig || configs.some(w => !w.literal || TARGET_KEYS.test(w.text))
+      const recurses = configs.some(w => /^(?:push\.recursesubmodules|submodule\.recurse)(?:=|$)/i.test(w.text))
       const sub = words[j]?.text
       const rest = words.slice(j + 1)
       const dir = repoDir(at, words.slice(0, k), cs as Word[], gitDir)
       const pushAt = rest.findIndex(w => w.text === 'push')
       const flags = (args: Word[], o?: Options) => {
         const f = pushFlags(args, o)
-        return { ...f, force: f.force || configForce, ...((moved || (movedBranch && f.remote === undefined)) && { remote: null }) }
+        return { ...f, force: f.force || configForce, ...(f.submodules === undefined && recurses && { submodules: true }), ...((moved || (movedBranch && f.remote === undefined)) && { remote: null }) }
       }
       const alias = sub === undefined ? undefined : aliases.get(sub.toLowerCase())
       if (sub !== undefined && !words[j].literal) found.push({ dir: null, dryRun: false, force: false, remote: null })
-      else if (sub === 'push' || sub === 'send-pack' || sub === 'http-push') found.push({ dir, ...flags(rest) })
+      else if (sub === 'push') found.push({ dir, ...flags(rest) })
+      // Their first word is a URL or a path, which no remote's visibility covers.
+      else if (sub === 'send-pack' || sub === 'http-push') found.push({ dir, ...flags(rest), remote: null })
       else if ((sub === 'subtree' || sub === 'lfs') && pushAt >= 0) found.push({ dir, ...flags(rest.slice(pushAt + 1), sub === 'subtree' ? SUBTREE : PUSH) })
-      else if (sub === 'submodule' && rest.some(w => w.text === 'foreach')) {
-        const inner = rest.slice(rest.findIndex(w => w.text === 'foreach') + 1).filter((w, x, all) => !all.slice(0, x + 1).every(v => v.text.startsWith('-')))
-        // foreach runs its arguments as one shell command, so they are read again unquoted.
-        for (const p of pushTargets(inner.map(w => w.text).join(' '), 'Bash', null)) found.push({ ...p, dir: null })
-        break
-      } else if (typeof alias === 'string') {
-        for (const p of pushTargets(`${alias.startsWith('!') ? alias.slice(1) : `git ${alias}`} ${joined(rest)}`, 'Bash', dir)) {
+      else if (typeof alias === 'string') {
+        for (const p of pushTargets(`${alias.startsWith('!') ? alias.slice(1) : `git ${alias}`} ${joined(rest)}`, 'Bash', dir, configs, depth + 1)) {
           found.push({ ...p, force: p.force || configForce, ...((moved || (movedBranch && p.remote === undefined)) && { remote: null }) })
         }
       } else if (alias === null || (sub !== undefined && unread(configs) && !BUILTIN.has(sub))) found.push({ dir, dryRun: false, force: configForce, remote: null })
       else if (sub !== undefined && !BUILTIN.has(sub) && /^[\w.-]+$/.test(sub)) {
-        found.push({ dir, dryRun: false, force: configForce, alias: sub, rest: joined(rest), ...((moved || movedBranch) && { remote: null }) })
+        found.push({ dir, dryRun: false, force: configForce, alias: sub, rest: joined(rest), ...(configs.length > 0 && { configs }), ...((moved || movedBranch) && { remote: null }) })
       }
-      if (sub === undefined || !words[j].literal || moves(sub, rest)) movedBranch = true
+      if (sub !== undefined && (!words[j].literal || moves(sub, rest))) movedBranch = true
     }
   }
   return unique(found)
@@ -875,11 +1057,11 @@ export function pushTargets(cmd: string, shell = 'Bash', outer?: Dir): Push[] {
 // The gh and glab subcommands that only read from the host or act on this
 // machine. Every other subcommand is taken as a write, so a verb added in a
 // later release, or an alias such as `gh pr new`, is put to the user. `clone`
-// reads only for a repo or a gist: `gh label clone` writes labels.
+// reads only for a repo or a gist: `gh label clone` writes labels. `gh alias
+// set` is held as a config write.
 const LOCAL_NOUNS = new Set(['auth', 'config', 'extension', 'ext', 'alias', 'completion', 'help', 'version', 'browse', 'search', 'status', 'check-update', 'changelog'])
 const READ_VERBS = new Set(['view', 'list', 'ls', 'status', 'diff', 'checks', 'checkout', 'co', 'download', 'watch', 'browse', 'get', 'search', 'verify', 'trace', 'lint', 'contributors', 'issues', 'field-list', 'item-list'])
 const PR_CREATE: Record<string, string> = { gh: 'pr', glab: 'mr' }
-const CLI = /^(?:.*[\/\\])?(gh|glab)(?:\.exe)?$/i
 
 // `pushes` is set on a PR or MR that may push the branch: gh pushes unless
 // --head is given, and glab unless --push=false is.
@@ -893,32 +1075,35 @@ const PR_SWITCHES: Record<string, [Set<string>, string]> = {
 recover remove-source-branch signoff squash-before-merge web wip yes`.split(/\s+/)), 'fhwy'],
 }
 
-// Whether a PR or MR may push the branch: gh pushes unless a branch is given
-// with --head, and glab unless --push=false is given. An option missing from
-// the switches above is read as taking a value, so a --head after it is
-// missed, and the push is held.
+// Whether a PR or MR may push the branch: gh pushes unless the last --head
+// gives a branch, and glab unless the last --push is --push=false. A --head
+// whose value is not written out may be empty. An option missing from the
+// switches above is read as taking a value, so a --head after it is missed,
+// and the push is held.
 function prPushes(cli: string, args: Word[]): boolean {
   const [switches, short] = PR_SWITCHES[cli]
-  const given = (w: Word | undefined) => !!w && (!w.literal || w.text !== '')
+  const given = (w: Word | undefined) => !!w && w.literal && w.text !== ''
+  let head = false
+  let push = true
   for (let i = 0; i < args.length; i++) {
     const a = args[i].text
     if (a === '--') break
     const long = /^--([\w-]+)(?:=(.*))?$/s.exec(a)
     if (long) {
       const [, name, eq] = long
-      if (cli === 'gh' && name === 'head' && given(eq !== undefined ? { ...args[i], text: eq } : args[i + 1])) return false
-      if (cli === 'glab' && name === 'push' && eq === 'false') return false
+      if (cli === 'gh' && name === 'head') head = given(eq !== undefined ? { ...args[i], text: eq } : args[i + 1])
+      if (cli === 'glab' && name === 'push') push = eq !== 'false'
       if (eq === undefined && !switches.has(name)) i++
     } else if (/^-[^-]/.test(a)) {
       for (let x = 1; x < a.length; x++) {
         if (short.includes(a[x])) continue
-        if (cli === 'gh' && a[x] === 'H' && given(x + 1 < a.length ? { ...args[i], text: a.slice(x + 1) } : args[i + 1])) return false
+        if (cli === 'gh' && a[x] === 'H') head = given(x + 1 < a.length ? { ...args[i], text: a.slice(x + 1) } : args[i + 1])
         if (x === a.length - 1) i++
         break
       }
     }
   }
-  return true
+  return cli === 'gh' ? !head : push
 }
 
 // Every host write in a shell command, read in `shell`: what it is, the repo it
@@ -926,16 +1111,21 @@ function prPushes(cli: string, args: Word[]): boolean {
 // sends it to another repo. An api call with a field and no method is a POST,
 // as both CLIs send it, and a GraphQL call is a write unless its query field is
 // literal and reads as a query. A help flag skips the command unless it follows
-// an option, whose value it may be.
-// shortcut: a write through a user's own gh alias is not detected.
-export function hostWrites(cmd: string, shell = 'Bash', outer?: Dir): HostWrite[] {
+// an option, whose value it may be. An option other than -R before the verb
+// may take the verb as its value, as cobra reads it, so the command is a write.
+// A command left to run later (see `later`) is read in a directory that cannot be read.
+// shortcut: a write through a gh alias saved before the command is not detected.
+export function hostWrites(cmd: string, shell = 'Bash', outer?: Dir, depth = 0): HostWrite[] {
+  nested(depth)
   const found: HostWrite[] = []
+  const cmds = commands(cmd, shell, outer)
   // A variable that moves the config gh reads can send the PR to another repo too.
-  const envRepo = /\b(GH_REPO|GITLAB_REPO|GIT_DIR)\b/.test(cmd) || CONFIG_VARS.test(cmd)
-  for (const { words, at } of commands(cmd, shell, outer)) {
-    const k = words.findIndex(w => CLI.test(w.text))
+  const envRepo = sets(cmds, REPO_VARS) || sets(cmds, CONFIG_VARS)
+  for (const { words, at } of cmds) {
+    for (const r of later(words)) for (const w of hostWrites(r.text, 'Bash', null, depth + 1)) found.push({ ...w, dir: null })
+    const k = cliAt(words)
     if (k < 0) continue
-    const cli = CLI.exec(words[k].text)![1].toLowerCase()
+    const cli = cliOf(words[k])
     const args = words.slice(k + 1)
     if (args.some((w, j) => w.literal && /^(?:-h|--help)$/.test(w.text) && !args[j - 1]?.text.startsWith('-'))) continue
     const pos: string[] = []
@@ -943,6 +1133,7 @@ export function hostWrites(cmd: string, shell = 'Bash', outer?: Dir): HostWrite[
     let method = ''
     let input = false
     let unread = false
+    let early = false
     let otherRepo = envRepo
     for (let i = 0; i < args.length; i++) {
       const a = args[i].text
@@ -952,6 +1143,7 @@ export function hostWrites(cmd: string, shell = 'Bash', outer?: Dir): HostWrite[
       if (long) {
         const [, name, eq] = long
         const value = (): Word => (eq !== undefined ? { ...args[i], text: eq } : next())
+        if (pos.length < 2 && name !== 'repo' && name !== 'version') early = true
         if (name === 'repo') {
           otherRepo = true
           value()
@@ -962,6 +1154,7 @@ export function hostWrites(cmd: string, shell = 'Bash', outer?: Dir): HostWrite[
           value()
         } else if (api && /^(?:header|jq|template|hostname|preview|cache)$/.test(name)) value()
       } else if (/^-[^-]/.test(a)) {
+        if (pos.length < 2 && !a.startsWith('-R')) early = true
         for (let x = 1; x < a.length; x++) {
           const f = a[x]
           if (f !== 'R' && !(api && 'XfFHqtp'.includes(f))) continue
@@ -981,6 +1174,7 @@ export function hostWrites(cmd: string, shell = 'Bash', outer?: Dir): HostWrite[
     const [noun, verb] = pos
     let what = ''
     if (unread) what = `${cli} ${pos.slice(0, 2).join(' ')}`
+    else if (early && noun !== 'api' && !LOCAL_NOUNS.has(noun ?? '')) what = [cli, noun].filter(Boolean).join(' ')
     else if (noun === 'api' && verb === 'graphql') {
       const query = fields.find(f => f.text.startsWith('query='))
       const text = query?.text.slice(6).trim() ?? ''
@@ -989,7 +1183,7 @@ export function hostWrites(cmd: string, shell = 'Bash', outer?: Dir): HostWrite[
       const m = method || (fields.length || input ? 'POST' : 'GET')
       if (m !== 'GET' && m !== 'HEAD') what = `${cli} api ${m}`
     } else if (noun && verb && !LOCAL_NOUNS.has(noun) && !READ_VERBS.has(verb) && !(verb === 'clone' && (noun === 'repo' || noun === 'gist'))) what = `${cli} ${noun} ${verb}`
-    const prCreate = noun === PR_CREATE[cli] && (verb === 'create' || verb === 'new')
+    const prCreate = !early && noun === PR_CREATE[cli] && (verb === 'create' || verb === 'new')
     if (what) found.push({ what, dir: repoDir(at, words.slice(0, k)), prCreate, otherRepo, pushes: prCreate && prPushes(cli, args) })
   }
   return unique(found)

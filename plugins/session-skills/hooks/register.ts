@@ -464,15 +464,55 @@ async function where($: any, dir: string | undefined): Promise<string> {
   return dir === undefined ? cwd : `${cwd.replace(/[\\/]+$/, '')}/${dir}`
 }
 
+// One git config value, '' where it is not set. A read that fails throws:
+// Claude Code reports a git that crashed as exit 1, which `--get` alone also
+// returns for a key that is not set.
+async function configValue($: any, dir: string, key: string): Promise<string> {
+  const r = await git($, dir, 'config', '--default=', '--get', key)
+  if (r.exitCode !== 0) failed(r)
+  return r.stdout.trim()
+}
+
 // The remote a `git push` with none given goes to: the branch's pushRemote,
 // then remote.pushDefault, then the branch's remote, then origin.
 async function pushRemote($: any, dir: string): Promise<string> {
-  const branch = await out(git($, dir, 'symbolic-ref', '--short', '-q', 'HEAD'))
+  const head = await git($, dir, 'symbolic-ref', '--short', '-q', 'HEAD')
+  if (head.exitCode > 1) failed(head)
+  const branch = head.exitCode === 0 ? head.stdout.trim() : ''
   for (const key of [branch && `branch.${branch}.pushRemote`, 'remote.pushDefault', branch && `branch.${branch}.remote`]) {
-    const name = key && (await out(git($, dir, 'config', '--get', key)))
+    const name = key && (await configValue($, dir, key))
     if (name) return name
   }
   return 'origin'
+}
+
+// Every git config key read in `dir`, as git prints it, with each of its values.
+// A boolean key with no value is true.
+async function configList($: any, dir: string): Promise<Map<string, string[]>> {
+  const r = await git($, dir, 'config', '-z', '--list')
+  if (r.exitCode !== 0) failed(r)
+  const keys = new Map<string, string[]>()
+  for (const entry of r.stdout.split('\0')) {
+    const nl = entry.indexOf('\n')
+    const key = nl < 0 ? entry : entry.slice(0, nl)
+    if (key.trim()) keys.set(key, [...(keys.get(key) ?? []), nl < 0 ? 'true' : entry.slice(nl + 1)])
+  }
+  return keys
+}
+
+const TRUE = /^(?:true|yes|on|-?[1-9]\d*)$/i
+
+// What config set before the command adds to a push: a force where the
+// remote mirrors or has a + refspec, and submodules where push.recurseSubmodules
+// or submodule.recurse sends the push into them.
+async function pushConfig($: any, dir: string, p: Push): Promise<{ force: boolean; submodules: boolean }> {
+  const config = await configList($, dir)
+  const name = p.remote === undefined ? await pushRemote($, dir) : p.remote
+  const get = (key: string) => config.get(key) ?? []
+  const force = !!name && (get(`remote.${name}.mirror`).some(v => TRUE.test(v)) || get(`remote.${name}.push`).some(v => v.startsWith('+')))
+  const mode = get('push.recursesubmodules').at(-1)
+  const submodules = p.submodules ?? (mode !== undefined ? /^(?:on-demand|only)$/i.test(mode) : get('submodule.recurse').some(v => TRUE.test(v)))
+  return { force, submodules }
 }
 
 // Every URL a remote pushes to, or null where git has no such remote.
@@ -483,12 +523,14 @@ async function pushUrls($: any, dir: string, name: string): Promise<string[] | n
   return r.stdout.split(/\r?\n/).map(u => u.trim()).filter(Boolean)
 }
 
+const LOCAL_PATH = /^(?:file:\/\/|\/|\.{1,2}[\\/]|[A-Za-z]:[\\/])/
+
 // The visibility gh or glab reads for every URL: private only where each one is
 // private, and '' where any one is unknown. A path on this machine is private.
 async function urlsVisibility($: any, urls: string[]): Promise<string> {
   let worst = urls.length ? 'private' : ''
   for (const url of urls) {
-    let vis = /^(?:file:\/\/|\/|\.{1,2}[\\/]|[A-Za-z]:[\\/])/.test(url) ? 'private' : ''
+    let vis = LOCAL_PATH.test(url) ? 'private' : ''
     for (const [from, argv] of VIEW) if (!vis) vis = visibility(await out(run($, [from, 'repo', 'view', url, ...argv])))
     if (!vis) return ''
     if (vis !== 'private') worst = vis
@@ -506,8 +548,8 @@ async function pushHold($: any, dir: string, remote: string | null | undefined):
   if ((await setting($, dir, 'holdPublicPush')) === 'false') return ''
   if (remote === null) return `the remote it pushes to could not be read from the command, ${waits}`
   const name = remote ?? (await pushRemote($, dir))
-  // `git push .` updates a branch in this repo.
-  if (name === '.') return ''
+  // `git push .` updates a branch in this repo, and a path is on this machine.
+  if (name === '.' || LOCAL_PATH.test(name)) return ''
   const urls = await pushUrls($, dir, name)
   if (!urls) return `it pushes to \`${name}\`, which is not a remote of this repo, ${waits}`
   const origin = await pushUrls($, dir, 'origin')
@@ -556,8 +598,10 @@ async function hostHold($: any, w: HostWrite): Promise<string> {
 }
 
 // Each push in a command, with a git alias read from config in the directory it
-// runs in and its expansion checked in its place. A subcommand with no alias is
-// not a push, and an alias that cannot be read is held as one.
+// runs in, as `alias.<name>` and git 2.54's `alias.<name>.command`, and each
+// expansion checked in its place with the -c values given with the alias. A
+// subcommand with no alias is not a push, and an alias that cannot be read is
+// held as one.
 async function pushesIn($: any, pushes: Push[], depth = 0): Promise<Push[]> {
   const found: Push[] = []
   for (const p of pushes) {
@@ -565,17 +609,20 @@ async function pushesIn($: any, pushes: Push[], depth = 0): Promise<Push[]> {
       found.push(p)
       continue
     }
+    const unread = { dir: p.dir, dryRun: false, force: p.force, remote: null }
     const dir = p.dir === null || depth > 3 ? null : await where($, p.dir).catch(() => null)
-    const r = dir === null ? null : await git($, dir, 'config', '--get', `alias.${p.alias}`)
-    if (r?.exitCode === 1) continue
-    if (!r || r.exitCode !== 0) {
-      found.push({ dir: p.dir, dryRun: false, force: p.force, remote: null })
+    if (dir === null) {
+      found.push(unread)
       continue
     }
-    const v = r.stdout.trim()
-    // A -c given with the alias that forces or moves the push holds for its expansion.
-    for (const e of await pushesIn($, pushTargets(`${v.startsWith('!') ? v.slice(1) : `git ${v}`} ${p.rest ?? ''}`, 'Bash', p.dir), depth + 1)) {
-      found.push({ ...e, force: e.force || p.force, ...(p.remote === null && { remote: null }) })
+    for (const key of [`alias.${p.alias}`, `alias.${p.alias}.command`]) {
+      const v = await configValue($, dir, key).catch(() => null)
+      if (v === null) found.push(unread)
+      if (!v) continue
+      // A -c given with the alias that forces or moves the push holds for its expansion.
+      for (const e of await pushesIn($, pushTargets(`${v.startsWith('!') ? v.slice(1) : `git ${v}`} ${p.rest ?? ''}`, 'Bash', p.dir, p.configs), depth + 1)) {
+        found.push({ ...e, force: e.force || p.force, ...(p.remote === null && { remote: null }) })
+      }
     }
   }
   return found
@@ -677,14 +724,26 @@ export const register: Register = on => {
       // The engine skips a hook that throws, and the command would run unasked.
       try {
         for (const push of (await pushesIn($, pushTargets(command, tool))).filter(p => !p.dryRun)) {
-          const why = push.dir === null
-            ? "the repo it runs in could not be read from the command, so the push waits for the user's go."
-            : await where($, push.dir).then(dir => pushHold($, dir, push.remote)).catch(err => `the push hold could not be checked: ${(err as Error).message}`)
-          if (push.force) add('Force push: this replaces commits on the remote branch that a reviewer may already have read.')
+          let force = push.force
+          let submodules = !!push.submodules
+          let why = "the repo it runs in could not be read from the command, so the push waits for the user's go."
+          if (push.dir !== null) {
+            try {
+              const dir = await where($, push.dir)
+              const config = await pushConfig($, dir, push)
+              force ||= config.force
+              submodules = config.submodules
+              why = await pushHold($, dir, push.remote)
+            } catch (err) {
+              why = `the push hold could not be checked: ${(err as Error).message}`
+            }
+          }
+          if (force) add('Force push: this replaces commits on the remote branch that a reviewer may already have read.')
+          if (submodules) add("Push held: it may push submodules to their own remotes, which are not checked, so the push waits for the user's go.")
           if (why) add(`Push held: ${why}`)
         }
         // Each of these can move a later push or PR, which the hold reads before it runs.
-        for (const what of configWrites(command, tool)) add(`Config write held: \`${what}\` can change where a push or a PR goes, or lift a hold, so it waits for the user's go.`)
+        for (const what of configWrites(command, tool)) add(`Config write held: \`${what}\` can change where a push or a PR goes, run one unseen, or lift a hold, so it waits for the user's go.`)
         for (const w of hostWrites(command, tool)) {
           const why = await hostHold($, w).catch(err => `the hold on \`${w.what}\` could not be checked: ${(err as Error).message}`)
           if (why) add(`Host write held: ${why}`)
