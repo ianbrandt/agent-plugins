@@ -69,14 +69,17 @@ The holds in `land-and-wrap` are read from the skill text, so a session that pus
 skill pushes anyway: on 2026-11-06 a session pushed a cleared TODO to this public repo. A
 `tool.check` hook on `Bash` and `PowerShell` reads the holds for the repo each push in a command
 runs in, and puts a held push to the user in the permission prompt with the `git config` line that
-lifts the hold. A `git subtree push` or `git lfs push` is a push too. A subcommand git does not
-build in is read as an alias from `git config` in the push's directory, and its expansion is checked
-in its place. A force push (`--force*`, `--mirror`, `--delete`, or `--prune`, `-f` or `-d` in a
-short-flag group, or a refspec that starts with `+` or deletes with a leading `:`) is put to the user
+lifts the hold. `git send-pack`, `git http-push`, `git subtree push`, `git lfs push`, and a push in
+the command given to `git submodule foreach` are pushes too. A subcommand git does not build in is
+read as an alias from `git config` in the push's directory, and its expansion is checked in its
+place. A force push (a unique prefix of `--force`, `--force-with-lease`, `--mirror`, `--delete`, or
+`--prune`, `-f` or `-d` in a short-flag group, a refspec that starts with `+` or deletes with a
+leading `:`, or a `+` refspec or a mirror set with `-c`) is put to the user
 whatever the holds, because it replaces commits a reviewer may have read, and it is never refused
 outright, because it is a normal step after a rebase. A hook's ask reaches a person in every
 permission mode, and where nobody can be asked, as under `claude -p`, the push is refused. Every
-push but a dry run is held, a subagent's included.
+push but a dry run or a call for help is held, a subagent's included. The hook asks when it cannot
+read a command at all: the engine skips a hook that throws, and the command would run unasked.
 
 A command is read by one lexer, in `hooks/checkouts.ts`, with the rules of the shell that runs it.
 It resolves quotes, backslash or PowerShell backtick escapes, comments, line continuations,
@@ -84,14 +87,24 @@ redirections, and quoted and unquoted heredocs and PowerShell here-strings, and 
 backtick, `<(...)`, subshell, and script block as commands of its own. Regexes were used before,
 one pass at a time, and a review with live probes found commands they misread, among them a
 backtick span in a quoted commit message read as a command, a `# --dry-run` comment read as a dry
-run, and a quote in one command paired with a quote in the next. The repo a push runs in is its
-`--git-dir` or `GIT_DIR`, else its directory after each `-C` and every `cd`, `pushd`, and `popd`
-before it. A `--work-tree` does not change the repo. A `cd` after `&&` from the start of its list
-has run by the time the push runs, but one after `||`, inside an `if` or a loop, or after a command
-that may have failed may not have, and where the push may run in more than one directory, or after
-`popd` or `cd -`, the hold asks. A `cd` in a subshell, a pipeline, or a background list does not
-move a later command. A path with a shell variable in it is not read, so that push is checked in the
-session's repo.
+run, and a quote in one command paired with a quote in the next. An adversarial pass on the lexer
+found more, among them a heredoc closed as `EOF)` and `<<` in arithmetic read as a heredoc, and
+each has a regression test. Work on one command is capped, so a crafted nest of heredocs is asked
+about in milliseconds rather than read for a minute.
+
+The repo a push runs in is its `--git-dir` or an exported `GIT_DIR`, else its directory after an
+`env -C`, each `-C`, and every `cd`, `pushd`, and `popd` before it. A `--work-tree` does not change
+the repo. A `cd` after `&&` from the start of its list has run by the time the push runs, but one
+after `||`, inside an `if` or a loop, or after a command that may have failed may not have, and
+where the push may run in more than one directory the hold asks. It asks too after `popd` or `cd -`,
+a call to a function the command defines, a `GIT_DIR` set without `export` or with a relative path,
+a path with `~` in it, a path with a variable in it after a `cd`, and a git subcommand that is not
+written out, such as `git $sub`. A branch that ends in `exit` reaches nothing after it, so
+`cd /x || exit 1; git push` is read in `/x`. The Bash tool runs bash or zsh, which differ on two
+points: zsh runs the last command of a pipeline in the current shell, and it sends only the last
+pipeline of a list to the background. Where the two readings differ, the hold asks. A PowerShell
+pipeline or subexpression runs in the current runspace and can move the location. A variable path
+in the session's own directory, as in `cd "$WT"`, is read as the session's repo.
 
 The same hook puts every write to the host through `gh` or `glab` to the user, such as a comment, a
 merge, a release, or a workflow run. Every subcommand is taken as a write except a short list of
@@ -108,8 +121,9 @@ way a private push can. The one exception is a `gh pr create` or `glab mr create
 own repo, with `holdPrText` lifted and past the fork hold. A PR aimed at another repo with `-R`, or
 with `GH_REPO` or `GITLAB_REPO` anywhere in the command, is still asked about, and so is one whose
 directory cannot be read. Each write in a chained command is checked, so a comment added after a PR
-opened unasked is still asked about. A push or write run through `bash -c`, `eval`, a quoted
-argument such as `git submodule foreach 'git push'`, or a user's own `gh alias` is not seen.
+opened unasked is still asked about. A push or write run through `bash -c`, `eval`,
+`Start-Process`, a `git-<name>` program on the PATH such as git-town, or a user's own `gh alias` is
+not seen, and neither is a force option held in a variable, as in `git push $FORCE`.
 
 A follow-up prompt after the reply used to do this. It showed in the transcript as a message from the
 plugin, it took a fenced block as the only sign of a next step, so it fired after "This session

@@ -645,7 +645,8 @@ test('a cd inside a subshell or substitution that has closed does not move a lat
 test('a push or host write inside a substitution runs in the directory of the last cd before it', () => {
   expect(pushTarget('cd /fork && out="$(git push 2>&1)"')?.dir).toBe('/fork')
   expect(pushTarget('cd /fork && out="$(cd /z && git push)"')?.dir).toBe('/z')
-  expect(pushTarget('cd /fork && out="$(cd "$WT" && git push)"')?.dir).toBeUndefined()
+  // A variable path after a cd cannot be read.
+  expect(pushTarget('cd /fork && out="$(cd "$WT" && git push)"')?.dir).toBeNull()
   expect(pushTarget('cd /fork && echo "`git -C /z push`"')?.dir).toBe('/z')
   expect(hostWrites('cd /fork && url="$(gh pr create --fill)"')).toEqual([{ what: 'gh pr create', dir: '/fork', prCreate: true, otherRepo: false }])
   expect(hostWrites('cd /fork; echo `gh pr merge 3`').map(w => w.dir)).toEqual(['/fork'])
@@ -741,6 +742,86 @@ test('a git subcommand that is not built in is returned as a possible alias, and
   expect(pushTargets('git p -f origin main')).toEqual([{ dir: undefined, dryRun: false, force: false, alias: 'p', rest: '-f origin main' }])
   expect(pushTargets('git status && git log -1')).toEqual([])
   expect(pushTarget(`git -c alias.p='push -f' p origin main`)?.force).toBe(true)
+})
+
+// Each case below was missed or misread by the first version of the lexer, in an
+// adversarial pass with live probes in bash, zsh, and pwsh.
+test('a heredoc closed as EOF), a quote in ${...}, arithmetic, or a case pattern hides nothing after it', () => {
+  expect(pushTarget(`git commit -m "$(cat <<'EOF'\nmsg\nEOF)" && git push -f`)?.force).toBe(true)
+  expect(pushTarget('echo "${PAYLOAD:-"{}"}" > p.json && git push -f && echo "pushed"')?.force).toBe(true)
+  expect(hostWrite('echo "${PAYLOAD:-"{}"}" > p.json && gh api repos/o/r/dispatches --input p.json && echo "sent"')?.what).toBe('gh api POST')
+  expect(pushTargets("echo ${x:-'}'} && git push && echo 'y'")).toHaveLength(1)
+  for (const cmd of ['x=$(( 1 << 2 ))\ngit push -f', 'echo $((1<<20))\ngit push -f', '(( n <<= 1 ))\ngit push -f']) expect(pushTarget(cmd)?.force).toBe(true)
+  expect(pushTarget('out="$(case a in a) git push -f;; esac)"')?.force).toBe(true)
+  expect(pushTarget('cat <<EOF\n$(case a in a) git push -f;; esac)\nEOF')?.force).toBe(true)
+  expect(pushTarget('x=$(case a in a) cd /pub;; esac); git push')?.dir).toBeUndefined()
+})
+
+test('a subcommand that is not written out is a push or write whose repo cannot be read', () => {
+  expect(pushTarget('args=(push -f origin main); git "${args[@]}"')?.dir).toBeNull()
+  expect(pushTarget('sub=push; git $sub -f')?.dir).toBeNull()
+  expect(hostWrite('a=(pr merge 3); gh "${a[@]}"')).not.toBeNull()
+  expect(pushTargets("$a = @('push', '-f'); git @a", 'PowerShell')[0]?.dir).toBeNull()
+})
+
+test('send-pack and http-push are pushes, and a command given to submodule foreach is read', () => {
+  expect(pushTarget('git send-pack --force git@github.com:o/r.git main')?.force).toBe(true)
+  expect(pushTarget('git http-push --dry-run https://h/r.git main')?.dryRun).toBe(true)
+  expect(pushTarget('git -C /pub submodule foreach --recursive git push origin HEAD')).toEqual({ dir: null, dryRun: false, force: false })
+  expect(pushTarget("git submodule foreach 'git push -f'")?.force).toBe(true)
+})
+
+test('a cd that zsh keeps, or that PowerShell keeps through a pipeline or subexpression, is read', () => {
+  expect(pushTarget('cd /pub && npm run dev &\ngit push')?.dir).toBeNull()
+  expect(pushTarget('echo x | cd /pub; git push')?.dir).toBeNull()
+  for (const cmd of ['Set-Location /pub | Out-Null; git push', '$h = $(Set-Location /pub; git rev-parse HEAD); git push', 'Write-Output "now in $(Set-Location /pub)"; git push', '$null = @(Set-Location /pub); git push']) {
+    expect(pushTargets(cmd, 'PowerShell')[0]?.dir).toBeNull()
+  }
+})
+
+test('a brace group skipped by || keeps the directory before it, and exit ends a branch', () => {
+  expect(pushTarget('cd /pub 2>/dev/null || { cd /priv; } && git push')?.dir).toBeNull()
+  expect(pushTarget('true || { cd /priv; } && git push')?.dir).toBeNull()
+  expect(pushTarget('cd /priv || exit 1; git push')?.dir).toBe('/priv')
+  expect(pushTarget('cd /priv || { echo no; exit 1; }; git push')?.dir).toBe('/priv')
+})
+
+test('GIT_DIR is read where git reads it, and builtin cd, env -C, a function, ~, and $PWD are read', () => {
+  expect(pushTarget('GIT_DIR=/priv/.git; cd /pub && git push')?.dir).toBeNull()
+  expect(pushTarget('export GIT_DIR=.git; cd /pub; git push')?.dir).toBeNull()
+  expect(pushTargets('${env:GIT_DIR} = "/priv/.git"; git push', 'PowerShell')[0]?.dir).toBe('/priv/.git')
+  expect(pushTarget('builtin cd /pub && git push')?.dir).toBe('/pub')
+  expect(pushTarget('env -C /pub git push')?.dir).toBe('/pub')
+  expect(pushTarget('f() { cd /pub; }; f; git push')?.dir).toBeNull()
+  expect(pushTarget('cd /pub && git -C "$PWD" push')?.dir).toBeNull()
+  expect(pushTarget('git -C ~/pub push')?.dir).toBeNull()
+  expect(pushTarget('cd ~/pub && git push')?.dir).toBeNull()
+})
+
+test('a long push option is read as git reads it, by a unique prefix and after --no-', () => {
+  expect(pushTarget('git push --dry-run --no-dry-run origin main')?.dryRun).toBe(false)
+  expect(pushTarget('git push --push-opt -n origin main')?.dryRun).toBe(false)
+  expect(pushTarget('git push --force-w origin main')?.force).toBe(true)
+  expect(pushTarget('git -c remote.origin.push=+HEAD:refs/heads/main push origin')?.force).toBe(true)
+  expect(pushTarget('git push -h')?.dryRun).toBe(true)
+  expect(pushTarget('git push --help')?.dryRun).toBe(true)
+  expect(pushTarget('git push --no-verify -u origin main')).toEqual({ dir: undefined, dryRun: false, force: false })
+})
+
+test('a PowerShell curly quote is read as a straight one', () => {
+  expect(pushTargets("git commit -m 'a’; git push -f; ’b'", 'PowerShell')[0]?.force).toBe(true)
+})
+
+// Heredocs nested in substitutions, each level with quotes left open.
+const nest = (d: number): string => (d ? `$(cat <<L${d}\n${nest(d - 1)}\nL${d}\n'"\`\${)` : 'x')
+test('a command too long or deeply nested to read is put to the user, quickly', async ($: any, on: any) => {
+  pushWorld(on, { originVisibility: 'private' })
+  for (const cmd of [`cd /pub && git push -f\ncat <<LT\n${nest(8)}\nLT`, '$('.repeat(10_000) + 'true' + ')'.repeat(10_000) + '; cd /pub && git push -f']) {
+    const started = Date.now()
+    const held = await verdict($, cmd)
+    expect(held.decision).toBe('ask')
+    expect(Date.now() - started).toBeLessThan(5000)
+  }
 })
 
 test('a push with no session repo is put to the user', async ($: any, on: any) => {
