@@ -540,15 +540,17 @@ export const register: Register = on => {
 
   // A held push is put to the user in the permission prompt, in every mode: a
   // session that pushed without reading land-and-wrap pushed to this public
-  // repo on 2026-11-06. Where nobody can be asked, the push is refused. A
-  // subagent's push is held too.
+  // repo on 2026-11-06. A force push is put to the user whatever the holds,
+  // since it replaces commits a reviewer may have read. Where nobody can be
+  // asked, the push is refused. A subagent's push is held too.
   for (const tool of ['Bash', 'PowerShell']) {
     on('tool.check', { tool }, async ($, e: any, next: any) => {
       const verdict = await next(e)
       const push = verdict.decision === 'deny' ? null : pushTarget(String(e.input?.command ?? ''))
       if (!push || push.dryRun) return verdict
       const why = await pushHold($, push.dir ?? (await primary($))).catch(err => `the push hold could not be checked: ${(err as Error).message}`)
-      return why ? { decision: 'ask', reason: `Push held: ${why}` } : verdict
+      const reasons = [push.force && 'Force push: this replaces commits on the remote branch that a reviewer may already have read.', why && `Push held: ${why}`].filter(Boolean)
+      return reasons.length ? { decision: 'ask', reason: reasons.join(' ') } : verdict
     })
   }
 

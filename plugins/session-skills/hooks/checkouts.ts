@@ -49,9 +49,10 @@ const mask = (cmd: string) =>
     .replace(/"(?:[^"\\]|\\.)*"?/g, m => 'X'.repeat(m.length)).replace(/'[^']*'?/g, m => 'X'.repeat(m.length))
 
 // The first push in a shell command: the directory it runs in, from its -C or
-// the last cd before it, and whether it is a dry run. Null for no push.
+// the last cd before it, whether it is a dry run, and whether it forces: a
+// --force option, -f in a short-flag group, or a + refspec. Null for no push.
 // shortcut: a path with a shell variable or ~ in it is not read, and the push is checked in the session's repo.
-export function pushTarget(cmd: string): { dir: string | undefined; dryRun: boolean } | null {
+export function pushTarget(cmd: string): { dir: string | undefined; dryRun: boolean; force: boolean } | null {
   const masked = mask(cmd)
   const push = PUSH.exec(masked)
   if (!push) return null
@@ -62,5 +63,6 @@ export function pushTarget(cmd: string): { dir: string | undefined; dryRun: bool
   const cd = [...masked.slice(0, push.index).matchAll(CD)].pop()
   const at = push.indices!
   const dir = at[1] ? read(at[1]) : cd ? read([cd.index! + cd[0].length - cd[1].length, cd.index! + cd[0].length]) : undefined
-  return { dir, dryRun: /(^|\s)(--dry-run|-n)(?=\s|$)/.test(push[2]) }
+  const args = push[2]
+  return { dir, dryRun: /(^|\s)(--dry-run|-n)(?=\s|$)/.test(args), force: /(^|\s)(--force|-[a-zA-Z]*f[a-zA-Z]*(?=\s|$)|\+\S)/.test(args) }
 }

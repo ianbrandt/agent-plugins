@@ -590,9 +590,9 @@ test('landing_facts reads a protected default branch, or a pull-request ruleset,
 })
 
 test('a push is read with the directory it runs in, from -C or the last cd before it, and a dry run is told apart', () => {
-  expect(pushTarget('git push')).toEqual({ dir: undefined, dryRun: false })
-  expect(pushTarget('git -C "/a b" push origin main')).toEqual({ dir: '/a b', dryRun: false })
-  expect(pushTarget(`cd /x && git fetch && cd '/y' && git push -u origin b`)).toEqual({ dir: '/y', dryRun: false })
+  expect(pushTarget('git push')).toEqual({ dir: undefined, dryRun: false, force: false })
+  expect(pushTarget('git -C "/a b" push origin main')).toEqual({ dir: '/a b', dryRun: false, force: false })
+  expect(pushTarget(`cd /x && git fetch && cd '/y' && git push -u origin b`)).toEqual({ dir: '/y', dryRun: false, force: false })
   expect(pushTarget('cd /x && git -C /z push')?.dir).toBe('/z')
   expect(pushTarget('git push --dry-run')?.dryRun).toBe(true)
   expect(pushTarget('git push -n origin main')?.dryRun).toBe(true)
@@ -600,7 +600,7 @@ test('a push is read with the directory it runs in, from -C or the last cd befor
   // A path with a shell variable in it cannot be read, so the session's repo is checked.
   expect(pushTarget('cd "$WT" && git push')?.dir).toBeUndefined()
   expect(pushTarget('echo "git push"')).toBeNull()
-  expect(pushTarget('claude -p "git -C /z push" && git push')).toEqual({ dir: undefined, dryRun: false })
+  expect(pushTarget('claude -p "git -C /z push" && git push')).toEqual({ dir: undefined, dryRun: false, force: false })
   expect(pushTarget(`git commit -F - <<'EOF'\nThen git -C /z push it\nEOF\ncd /y && git push`)?.dir).toBe('/y')
 })
 
@@ -678,4 +678,27 @@ test('a held push never reaches the shell when nobody can allow it, and a refusa
   const refused = await $.tool.call({ tool: 'Bash', command: 'git push' })
   expect(refused.deny ?? refused.isError).toBeTruthy()
   expect(ran).toBe(0)
+})
+
+test('a force push is told apart by --force*, a -f in a short-flag group, or a + refspec', () => {
+  for (const cmd of ['git push --force', 'git push --force-with-lease origin b', 'git push --force-with-lease=b:abc123 origin b', 'git push -qf origin b', 'git push -f', 'git push origin +main', 'git -C /x push origin +b:b']) {
+    expect(pushTarget(cmd)?.force).toBe(true)
+  }
+  for (const cmd of ['git push origin main', 'git push -u origin fix-force', 'git push -q origin b && git log --force', 'git commit -m "push --force later" && git push']) {
+    expect(pushTarget(cmd)?.force).toBe(false)
+  }
+})
+
+test('a force push is put to the user whatever the holds, but a dry run is not', async ($: any, on: any) => {
+  const config: Record<string, string> = { originVisibility: 'private' }
+  pushWorld(on, config)
+  const forced = await verdict($, 'git push --force-with-lease origin b')
+  expect(forced.decision).toBe('ask')
+  expect(forced.reason).toContain('Force push')
+  expect(forced.reason).not.toContain('Push held')
+  config.originVisibility = 'public'
+  const both = await verdict($, 'git push -f origin b')
+  expect(both.reason).toContain('Force push')
+  expect(both.reason).toContain('holdPublicPush')
+  expect((await verdict($, 'git push --dry-run --force origin b')).decision).toBe('allow')
 })

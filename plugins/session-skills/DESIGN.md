@@ -69,7 +69,10 @@ The holds in `land-and-wrap` are read from the skill text, so a session that pus
 skill pushes anyway: on 2026-11-06 a session pushed a cleared TODO to this public repo. A
 `tool.check` hook on `Bash` and `PowerShell` reads the holds for the directory a push runs in, from
 its `-C` or the last `cd` before it, and puts a held push to the user in the permission prompt with
-the `git config` line that lifts the hold. A hook's ask reaches a person in every permission mode,
+the `git config` line that lifts the hold. A force push (a `--force` option, `-f` in a short-flag
+group, or a `+` refspec) is put to the user whatever the holds, because it replaces commits a reviewer
+may have read, and it is never refused outright, because it is a normal step after a rebase. A
+hook's ask reaches a person in every permission mode,
 and where nobody can be asked, as under `claude -p`, the push is refused. A dry run is not held,
 and a subagent's push is held like any other. A path with a shell variable in it is not read, so
 that push is checked in the session's repo.
