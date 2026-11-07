@@ -85,7 +85,9 @@ held too where the index has a gitlink, since the submodules' remotes are not ch
 is checked rather than `.gitmodules`, because git also pushes a nested repo that has no entry there.
 A recursion or mirror setting is read from its last value, as git reads it, so a push is not held
 for a global `true` that a local `false` overrides. Where both recursion keys are set, git uses the
-one set last, in config or with `-c`, whichever key it is. A hook's ask reaches a person in every
+one set last, in config or with `-c`, whichever key it is. A mirror set with `-c` to a value git
+reads as false does not force the push, but a mirror set in config is still read in that case, and
+the push is asked about. A hook's ask reaches a person in every
 permission mode, and where nobody can be asked, as under `claude -p`, the push is refused. Every
 push but a dry run or a call for help, `git --help push` included, is checked, a subagent's included. The hook asks when it cannot
 read a command at all: the engine skips a hook that throws, and the command would run unasked.

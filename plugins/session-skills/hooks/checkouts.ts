@@ -1042,7 +1042,8 @@ export function pushTargets(cmd: string, shell = 'Bash', outer?: Dir, inherited:
       const { j, cs, configs: own, gitDir } = gitOptions(words, k)
       const configs = [...inherited, ...own]
       const aliases = configAliases(configs)
-      const configForce = envConfig || configs.some(w => !w.literal || /^remote\..*\.(?:push=\+|mirror(?:=|$))/is.test(w.text))
+      // A mirror set with -c to a value git reads as false does not force the push.
+      const configForce = envConfig || configs.some(w => !w.literal || /^remote\..*\.(?:push=\+|mirror(?:$|=(?!(?:false|no|off|0*)$)))/is.test(w.text))
       const moved = envConfig || configs.some(w => !w.literal || TARGET_KEYS.test(w.text))
       // Recursion into submodules is set by the last -c for either key, read as git reads its value.
       const recursion = configs.filter(w => /^(?:push\.recursesubmodules|submodule\.recurse)(?:=|$)/i.test(w.text)).at(-1)

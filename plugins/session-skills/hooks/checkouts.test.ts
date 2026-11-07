@@ -1384,6 +1384,9 @@ test('a mirror or + refspec set in config, or any config set in the environment,
     'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.mirror GIT_CONFIG_VALUE_0=true git push origin',
     'export GIT_CONFIG_PARAMETERS="\'remote.origin.mirror\'"; git push origin',
   ]) expect(pushTarget(cmd)?.force, cmd).toBe(true)
+  // git 2.56.0 read each of these as false, and 1k as true.
+  for (const v of ['false', 'no', 'off', '0', '']) expect(pushTarget(`git -c remote.origin.mirror=${v} push origin main`)?.force, v).toBe(false)
+  expect(pushTarget('git -c remote.origin.mirror=1k push origin')?.force).toBe(true)
   expect(pushTargets("$env:GIT_COMMON_DIR = 'C:\\pub\\.git'; git push origin main", 'PowerShell')[0]?.remote).toBeNull()
   expect(pushTargets("$env:GIT_CONFIG_COUNT='1'; git push origin main", 'PowerShell')[0]?.force).toBe(true)
 })
