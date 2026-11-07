@@ -143,7 +143,7 @@ and each has a regression test.
 
 The hold reads git config before the command runs, so a write that changes where a later push goes
 is put to the user too: a `git config` write to a key under `remote`, `url`, `branch`, `include`,
-`includeIf`, or `alias`, `git remote add`, `rename`, `remove`, `rm`, or `set-url`, and `git submodule
+`includeIf`, or `alias`, to `push.recurseSubmodules` or `submodule.recurse`, `git remote add`, `rename`, `remove`, `rm`, or `set-url`, and `git submodule
 set-url` or `sync`. So is a write to a `session-skills` key, since setting `holdPublicPush` or
 `originVisibility` would lift a hold without the user, and `gh alias set` or `import`, since a gh
 alias can run a push or a host write that the hook does not read. A `git config` command is read as

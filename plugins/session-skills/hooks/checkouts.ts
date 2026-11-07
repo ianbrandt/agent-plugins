@@ -775,7 +775,7 @@ const joined = (words: Word[]) => words.map(w => (w.literal ? `'${w.text.replace
 // single push makes its remote unknown, and a write to one or to a hold is put
 // to the user.
 const TARGET_KEYS = /^(?:remote|url|branch|include|includeif|lfs)(?:\.|$)/i
-const HELD_KEYS = /^(?:remote|url|branch|include|includeif|lfs|alias|session-skills)(?:\.|$)/i
+const HELD_KEYS = /^(?:(?:remote|url|branch|include|includeif|lfs|alias|session-skills)(?:\.|$)|push\.recursesubmodules$|submodule\.recurse$)/i
 // Variables that move the config git reads, and those that send gh or glab to another repo.
 const CONFIG_VARS = /^(?:GIT_CONFIG\w*|HOME|XDG_CONFIG_HOME|GIT_COMMON_DIR)$/i
 const REPO_VARS = /^(?:GH_REPO|GITLAB_REPO|GIT_DIR)$/i

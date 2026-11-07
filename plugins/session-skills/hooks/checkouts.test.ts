@@ -1487,3 +1487,9 @@ test('a read of the push remote that fails holds the push', async ($: any, on: a
   expect(held.decision).toBe('ask')
   expect(held.reason).toContain('could not be checked')
 })
+
+test('a config write that sends a later push into submodules is held', () => {
+  expect(configWrites('git config push.recurseSubmodules on-demand && git push origin main')).toContain('git config push.recurseSubmodules')
+  expect(configWrites('git config submodule.recurse true')).toContain('git config submodule.recurse')
+  expect(configWrites('git config push.autoSetupRemote true')).toEqual([])
+})
