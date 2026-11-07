@@ -159,6 +159,14 @@ const charge = (n: number) => {
   if (budget.left < 0) throw new Error('the command is too long or too deeply nested to read')
 }
 
+// Whether every command in the line runs in the order it is listed: false after
+// an unquoted heredoc body, a function, a loop, a pipe, a job, or a PowerShell
+// script block, each of which can run a command before one listed before it.
+const order = { kept: true }
+const reorder = () => {
+  order.kept = false
+}
+
 // bash's escapes in $'...', at the backslash at i: the text and where it ends.
 const ESCAPES: Record<string, string> = { a: '\x07', b: '\b', e: '\x1b', E: '\x1b', f: '\f', n: '\n', r: '\r', t: '\t', v: '\v', '\\': '\\', "'": "'", '"': '"', '?': '?' }
 function ansiC(s: string, i: number): [string, number] {
@@ -387,7 +395,9 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
         text += s.slice(st, i)
         literal = false
       } else if (s[i + 1] === '(' && (ps ? c === '@' : c === '<' || c === '>')) {
-        // A PowerShell array subexpression, or a Bash process substitution.
+        // A PowerShell array subexpression, or a Bash process substitution,
+        // which runs beside the command rather than before it.
+        if (!ps) reorder()
         i += 2
         const inner = list(at, ')')
         if (ps) side = union(side, inner)
@@ -428,7 +438,10 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
         }
         p = nl + 1
       }
-      if (!h.quoted) add(lexAll(s.slice(from, to), false, h.at, true, functions))
+      if (!h.quoted) {
+        reorder()
+        add(lexAll(s.slice(from, to), false, h.at, true, functions))
+      }
       i = next
     }
   }
@@ -444,6 +457,7 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
     let words: Word[] = []
     let after: Loc[] | null = null
     let cases = 0
+    let expanded = 0
     const blocks: Loc[][] = []
 
     // A cd after `&&` from the start of an and-or list has run when the next
@@ -459,7 +473,12 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
         commands.push({ words, at: base })
         if (words[0].text === 'function' && words[1]) functions.add(words[1].text)
         if (words[1]?.text === '()') functions.add(words[0].text)
+        if (functions.size || /^(?:repeat|foreach|coproc)$/.test(words[0].text)) reorder()
       }
+      // bash and zsh expand a command's arguments before its assignments, so
+      // two words that run commands may run in either order.
+      if (op === '|' || op === '|&' || op === '&' || expanded > 1) reorder()
+      expanded = 0
       words = []
       after = null
       if (op === '|' || op === '|&') {
@@ -525,7 +544,10 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
         i += r[0].length
         if (r[3]) continue
         while (s[i] === ' ' || s[i] === '\t') i++
+        // A target is expanded before the body of a group or a block it follows.
+        const listed = commands.length
         const target = word(at)
+        if (commands.length > listed) reorder()
         if (side.length) {
           after = union(at, side)
           side = []
@@ -556,6 +578,7 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
         i = st
       }
       if (c === '(' || (ps && c === '{')) {
+        if (c === '{') reorder()
         i++
         const inner = list(at, c === '(' ? ')' : '}')
         if (ps) after = union(at, inner)
@@ -578,7 +601,9 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
         }
       }
       const st = i
+      const listed = commands.length
       const w = word(at)
+      if (commands.length > listed) expanded++
       if (side.length) {
         after = union(at, side)
         side = []
@@ -598,6 +623,7 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
         }
         if (OPEN.has(w.text)) {
           if (w.text === 'case') cases++
+          else if (w.text !== 'if') reorder()
           blocks.push(cur)
           continue
         }
@@ -632,6 +658,7 @@ function commands(cmd: string, shell: string, outer: Dir): Command[] {
   // After --% PowerShell passes the rest of the line as it is, comments included.
   if (ps && /(?:^|\s)--%(?:\s|$)/.test(text)) throw new Error('a PowerShell --% is not read')
   budget.left = 200_000 + 50 * text.length
+  order.kept = true
   return lexAll(ps ? text.replace(/[\u2018\u2019\u201A\u201B]/g, "'").replace(/[\u201C\u201D\u201E]/g, '"') : text, ps, [{ dir: outer, stack: [], gitDir: undefined }])
 }
 
@@ -1036,7 +1063,7 @@ const moves = (sub: string, rest: Word[]) =>
 // with such a push, such as `gh pr checkout`, a git alias, or `npm install`,
 // makes its remote unread, and the hold asks.
 const SAFE_GIT = new Set('add blame commit describe diff fetch grep log ls-files merge merge-base pull rebase rev-list rev-parse shortlog show status symbolic-ref'.split(' '))
-const READS = /^(?::|\[|true|test|echo|printf|cat|head|tail|grep|wc|ls|pwd|write-output|write-host|get-content|get-location|get-childitem)$/i
+const READS = /^(?::|\[|true|test|echo|printf|cat|head|tail|tee|grep|wc|ls|pwd|write-output|write-host|get-content|get-location|get-childitem)$/i
 const RUNNERS = /^(?:(?:\.[\\/])?(?:gradlew(?:\.bat)?|mvnw|test\.sh)|gradle|mvn|pytest|(?:npm|pnpm|yarn|bun|cargo|go) test|claude plugin test)(?: |$)/i
 function harmless(words: Word[], ps: boolean): boolean {
   const [first, ...args] = words
@@ -1062,12 +1089,25 @@ const STAGES = new Set('add commit merge pull rebase'.split(' '))
 const writesIndex = (words: Word[]) => gitCommands(words).some(g => STAGES.has(g.words[gitOptions(g.words, g.k).j]?.text ?? ''))
 // For each command, whether another command in the line may have moved the
 // branch, its config, or the directory, and whether one may have staged a
-// gitlink. A command listed after it counts too, since a heredoc body, a
-// function, or a loop can run it first.
-function others(cmds: Command[], ps: boolean): { unknown: boolean; staged: boolean }[] {
+// gitlink. A command listed after it counts only where the line is not run in
+// the order it is listed (see `order`).
+function others(cmds: Command[], ps: boolean, kept: boolean): { unknown: boolean; staged: boolean }[] {
   const unsafe = cmds.map(c => !harmless(c.words, ps))
   const writes = cmds.map((c, x) => unsafe[x] || writesIndex(c.words))
-  return cmds.map((_, i) => ({ unknown: unsafe.some((u, x) => u && x !== i), staged: writes.some((w, x) => w && x !== i) }))
+  // Any flag before each command, and, out of order, any after it, in one pass each way.
+  const around = (flags: boolean[]) => {
+    const after = flags.map(() => false)
+    for (let x = flags.length - 2; x >= 0; x--) after[x] = after[x + 1] || flags[x + 1]
+    let before = false
+    return flags.map((f, x) => {
+      const any = before || (!kept && after[x])
+      before ||= f
+      return any
+    })
+  }
+  const unknown = around(unsafe)
+  const staged = around(writes)
+  return cmds.map((_, i) => ({ unknown: unknown[i], staged: staged[i] }))
 }
 
 // Every push in a shell command, read in `shell`: the repo it runs in, whether
@@ -1077,16 +1117,16 @@ function others(cmds: Command[], ps: boolean): { unknown: boolean; staged: boole
 // An alias set with -c is read in place, and any other subcommand that is not
 // built in is returned with `alias` set, for the hook to read. A subcommand
 // that is not written out, such as `git $sub`, is a push in a directory that
-// cannot be read, so the hold asks. A push with no remote in a line with any
-// other command not known to leave the branch and its config as they were (see
-// `harmless`) has a remote that cannot be read. A mirror or + refspec set with -c, or any config
+// cannot be read, so the hold asks. A push with no remote has a remote that
+// cannot be read where another command that may run before it (see `others`)
+// is not known to leave the branch and its config as they were (see `harmless`). A mirror or + refspec set with -c, or any config
 // set in the environment, forces it.
 export function pushTargets(cmd: string, shell = 'Bash', outer?: Dir, inherited: Word[] = [], depth = 0): Push[] {
   nested(depth)
   const found: Push[] = []
   const cmds = commands(cmd, shell, outer)
+  const around = others(cmds, isPowerShell(shell), order.kept)
   const envConfig = sets(cmds, CONFIG_VARS)
-  const around = others(cmds, isPowerShell(shell))
   for (const [i, { words: all, at }] of cmds.entries()) {
     const { unknown: afterUnknown, staged } = around[i]
     for (const r of later(all)) for (const p of pushTargets(r.text, 'Bash', null, [...inherited, ...r.configs], depth + 1)) found.push({ ...p, dir: null })
@@ -1192,9 +1232,9 @@ export function hostWrites(cmd: string, shell = 'Bash', outer?: Dir, depth = 0):
   nested(depth)
   const found: HostWrite[] = []
   const cmds = commands(cmd, shell, outer)
+  const around = others(cmds, isPowerShell(shell), order.kept)
   // A variable that moves the config gh reads can send the PR to another repo too.
   const envRepo = sets(cmds, REPO_VARS) || sets(cmds, CONFIG_VARS)
-  const around = others(cmds, isPowerShell(shell))
   for (const [i, { words, at }] of cmds.entries()) {
     for (const r of later(words)) for (const w of hostWrites(r.text, 'Bash', null, depth + 1)) found.push({ ...w, dir: null })
     const k = cliAt(words)

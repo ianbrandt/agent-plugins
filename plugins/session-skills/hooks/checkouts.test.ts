@@ -941,7 +941,7 @@ test('a force push is put to the user whatever the holds, but a dry run is not',
 
 test('every push in a command is read, each in its own directory', async ($: any, on: any) => {
   expect(pushTargets('git push origin a && git -C /fork push --force; git push -n')).toEqual([
-    { dir: undefined, dryRun: false, force: false, remote: 'origin', staged: true },
+    { dir: undefined, dryRun: false, force: false, remote: 'origin' },
     { dir: '/fork', dryRun: false, force: true, remote: null, staged: true },
     { dir: undefined, dryRun: true, force: false, remote: null, staged: true },
   ])
@@ -1459,14 +1459,32 @@ test('a push with no remote goes unasked only after commands known to leave its 
   expect(pushTargets('git add -A; git commit -m x; Set-Location C:\\repo; Write-Output done; git push', 'PowerShell')[0]?.remote).toBeUndefined()
 })
 
-// A heredoc body, a function, and a loop can run a command before a push that
-// is listed after it, so every other command in the line is read.
-test('a command listed after a push with no remote is read too', () => {
+// A heredoc body, a function, a loop, a pipe, and a background job can run a
+// command before a push that is listed after it. Where the line has none of
+// them, a command listed after the push runs after it.
+test('a command listed after a push with no remote is read where it can run first', () => {
   for (const cmd of [
     'git commit -F - <<EOF && git push\n$(git checkout other)\nEOF', 'f() { git push; }; git checkout pubb; f',
-    'n=0; while [ $n -lt 2 ]; do git push; git switch pubb; n=$((n+1)); done',
+    'function f { git push; }; git switch pubb; f', 'n=0; while [ $n -lt 2 ]; do git push; git switch pubb; n=$((n+1)); done',
+    'for i in 1 2; do git push; git switch pubb; done', 'until git push; do git switch pubb; done', 'repeat 2 { git push; git switch pubb }',
+    'git push & git switch pubb', 'git push | git switch pubb', 'git push |& git switch pubb', 'coproc git push; git switch pubb',
+    // bash 3.2 and zsh ran each of these later commands first (verify pass on this change).
+    '{ git push; } > "$(git switch pubb; echo log)"', '( git push ) 2> "$(git switch pubb)"', 'case x in x) git push;; esac > "$(git switch pubb)"',
+    '{ git push; } <<< "$(git switch pubb)"', '{ git push; } < <(git switch pubb)', ': <(git push); git switch pubb',
+    'OUT="$(git push 2>&1)" true "$(git switch pubb)"',
   ]) expect(pushTarget(cmd)?.remote, cmd).toBeNull()
-  for (const cmd of ['git push 2>&1 | grep -v remote:', 'git push 2>&1 | tail -3', 'git push && echo done']) expect(pushTarget(cmd)?.remote, cmd).toBeUndefined()
+  expect(hostWrites('{ gh pr create --fill; } > "$(git add -A; echo log)"')[0]?.staged).toBe(true)
+  expect(pushTargets('(git push) > "$(git switch pubb).log"', 'PowerShell')[0]?.remote).toBeNull()
+  for (const cmd of [
+    '1..2 | % { git push; git switch pubb }', 'foreach ($i in 1..2) { git push; git switch pubb }', 'do { git push; git switch pubb } while ($false)',
+  ]) {
+    expect(pushTargets(cmd, 'PowerShell')[0]?.remote, cmd).toBeNull()
+  }
+  for (const cmd of [
+    'git push 2>&1 | grep -v remote:', 'git push 2>&1 | tail -3', 'git push 2>&1 | tee push.log', 'git push && echo done',
+    'git push && gh pr checks --watch', 'git push && gh pr view --web', 'git push; git switch main',
+  ]) expect(pushTarget(cmd)?.remote, cmd).toBeUndefined()
+  expect(pushTargets('git push; git switch main', 'PowerShell')[0]?.remote).toBeUndefined()
 })
 
 // In a worktree, notes.local links into the primary checkout. bash 3.2's
@@ -1629,7 +1647,9 @@ test('a push or a PR that may recurse is held where the same command may stage a
   for (const cmd of ['git add -A && git commit -m "Add lib" && git push', 'git submodule add ../lib.git lib && git push origin main', 'git commit -am x && gh pr create --fill']) {
     expect((await verdict($, cmd)).reason, cmd).toContain('submodules')
   }
-  for (const cmd of ['git status && git push', 'git push origin main', 'git fetch && gh pr create --fill']) expect((await verdict($, cmd)).decision, cmd).toBe('allow')
+  for (const cmd of [
+    'git status && git push', 'git push origin main', 'git fetch && gh pr create --fill', 'git push && gh pr checks --watch', 'git push 2>&1 | tee push.log',
+  ]) expect((await verdict($, cmd)).decision, cmd).toBe('allow')
 })
 
 test('a read of the index that fails holds a push that may recurse into submodules', async ($: any, on: any) => {

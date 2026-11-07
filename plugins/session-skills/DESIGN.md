@@ -154,17 +154,19 @@ each member and prefers a group to a remote of the same name. A `send-pack` or `
 remote is not read. `git push .` updates this repo and is not held.
 
 A push with no remote is read against the branch config as it is when the hook runs, so it is asked
-about where any other command in the line is not known to leave the branch, its config, and the
-directory as they were. A command listed after the push counts too, since a heredoc body, a
-function, or a loop can run it first. The known-safe commands are a few git commands (`add`, `commit`,
+about where a command before it in the line is not known to leave the branch, its config, and the
+directory as they were. A command listed after the push counts too where the line has an unquoted
+heredoc body, a function, a loop, a pipe, a background job, or a PowerShell script block, since
+each can run it first. So `git push && gh pr checks --watch` goes unasked, and so does
+`git push | tee push.log`, since `tee` is on the known-safe list. The known-safe commands are a few git commands (`add`, `commit`,
 `status`, `diff`, `log`, `show`, `fetch`, `pull`, `merge`, `rebase`, and some reads such as
-`rev-parse`), a `cd` or `pushd` to a literal path with no `..`, reads such as `echo` and `cat`, a
+`rev-parse`), a `cd` or `pushd` to a literal path with no `..`, reads such as `echo`, `cat`, and `tee`, a
 command that only sets variables, and a test runner such as `./gradlew`, `npm test`, or
 `claude plugin test`. A git command on that list still makes the remote unread where it checks out
 a branch, as a `git rebase` given a branch with or without `--root` does, or one that continues,
 skips, or aborts, since HEAD is detached while the hook reads config and is back on the branch when
 the push runs. So does a `fetch` or `pull` that sets or unsets an upstream, and a `git rebase -x`
-that runs a command. Each of those options is read by any unique prefix, as git reads it. Anything else asks, such as
+that runs a command. Each of those options is read by any unique prefix, as git reads it. The push is asked about after any other command, such as
 `gh pr checkout`, a git alias, a variable set before git, or `npm install`. A list of commands that
 move the branch was tried first, and each review found commands missing from it, the last of them
 `gh pr checkout`. An

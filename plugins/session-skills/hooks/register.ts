@@ -507,7 +507,7 @@ const TRUE = /^(?:true|yes|on|-?[1-9]\d*)$/i
 // What config set before the command adds to a push: a force where the
 // remote mirrors or has a + refspec, and submodules where push.recurseSubmodules
 // or submodule.recurse sends the push into them and the index has a gitlink,
-// with or without a .gitmodules, or an earlier command may have staged one. A remote that is not written out may be any of
+// with or without a .gitmodules, or another command in the line may have staged one. A remote that is not written out may be any of
 // them. A setting is read from its last value, the one git uses, and of the two
 // recursion keys git uses the one set last. git pushes to each member of a
 // remote group, and prefers a group to a remote of the same name, so a group
