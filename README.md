@@ -83,8 +83,8 @@ invoked.
 
 The same script runs in GitHub Actions on Linux and Windows for each push and pull request
 ([`test.yml`](.github/workflows/test.yml)). A pass on Windows does not replace a live run there: the
-unit tests run against mocked file and git calls. Checks that need another machine are listed in
-[`TODO.md`](TODO.md).
+unit tests run against mocked file and git calls. Checks that need another machine are listed in a
+`TODO.md` at the root while any are open.
 
 The eval suites call a model and cost money. Each is run from its plugin's directory, with the
 command in that plugin's README, or in `DESIGN.md` for `writing-conventions`. So do the
