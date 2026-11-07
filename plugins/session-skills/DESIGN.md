@@ -98,7 +98,7 @@ the repo. A `cd` after `&&` from the start of its list has run by the time the p
 after `||`, inside an `if` or a loop, or after a command that may have failed may not have, and
 where the push may run in more than one directory the hold asks. It asks too after `popd` or `cd -`,
 a call to a function the command defines, a `GIT_DIR` set without `export` or with a relative path,
-a path with `~` in it, a path with a variable in it after a `cd`, and a git subcommand that is not
+a path that starts with `~` or `$HOME`, a path with a variable in it after a `cd`, and a git subcommand that is not
 written out, such as `git $sub`. A branch that ends in `exit` reaches nothing after it, so
 `cd /x || exit 1; git push` is read in `/x`. The Bash tool runs bash or zsh, which differ on two
 points: zsh runs the last command of a pipeline in the current shell, and it sends only the last
@@ -112,10 +112,15 @@ primary checkout, but the branch checked out is the worktree's. The visibility i
 the push goes to: the one given in the command, else the one git picks from the branch's
 `pushRemote`, `remote.pushDefault`, and the branch's remote, in that order, with origin last. origin,
 or a remote with the same push URLs, takes the visibility set in git config, and any other remote is
-looked up with gh or glab by each of its push URLs. The hold asks for a push to a URL or a path, and
-for one whose remote is not written out or is changed for that push with `-c`, `--config-env`, or a
-`GIT_CONFIG` variable. A `git switch` earlier in the same command is not seen, so a push after it is
-read with the remote of the branch checked out before the command.
+looked up with gh or glab by each of its push URLs, except a path on this machine, which is private.
+The hold asks for a push to a URL that is not a remote, and for one whose remote is not written out
+or is changed for that push with `-c`, `--config-env`, or a `GIT_CONFIG`, `HOME`, `XDG_CONFIG_HOME`,
+or `GIT_COMMON_DIR` variable. It asks too for a push with no remote after a `git switch` or
+`checkout`, or after a command that sets or unsets an upstream, earlier in the same command, since
+those change the branch config the push reads. `git push .` updates this repo and is not held. An
+adversarial pass found 18 commands that got past these checks, among them a PR body that starts with
+`- H` read as `--head`, `git branch -u pub/main && git push`, and an abbreviated `git config --fil`,
+and each has a regression test.
 
 The hold reads git config before the command runs, so a write that changes where a later push goes
 is put to the user too: a `git config` write to a key under `remote`, `url`, `branch`, `include`,
@@ -143,8 +148,10 @@ whose directory cannot be read. gh pushes the branch unless `--head` is given, a
 `--push=false` is, so a PR that may push is also held as a push to origin. A `GH_REPO` set in a
 shell profile is not seen, since the hook reads Claude Code's own environment. Each write in a
 chained command is checked, so a comment added after a PR opened unasked is still asked about. A push or write run through `bash -c`, `eval`,
-`Start-Process`, a `git-<name>` program on the PATH such as git-town, or a user's own `gh alias` is
-not seen, and neither is a force option held in a variable, as in `git push $FORCE`.
+`Start-Process`, a `git-<name>` program on the PATH such as git-town, a user's own `gh alias`, a git
+alias to `gh` set in git config, or brace expansion is not seen, and neither is a force option held
+in a variable, as in `git push $FORCE`. A PowerShell command with `--%` in it is asked about, since
+the rest of its line is passed on unread.
 
 A follow-up prompt after the reply used to do this. It showed in the transcript as a message from the
 plugin, it took a fenced block as the only sign of a next step, so it fired after "This session
