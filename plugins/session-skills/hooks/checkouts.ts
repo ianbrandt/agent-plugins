@@ -990,15 +990,19 @@ export function configWrites(cmd: string, shell = 'Bash', outer?: Dir, inherited
 
 // Whether a git command changes the branch a later push in the same command
 // reads its remote from, or that branch's upstream: a switch, checkout, or
-// symbolic-ref that sets HEAD, or a branch, fetch, pull, or push that sets or
-// unsets an upstream, with a long option given by a unique prefix as git takes it.
+// symbolic-ref that sets HEAD, a rebase given a branch, or a branch, fetch,
+// pull, or push that sets or unsets an upstream, with a long option given by a
+// unique prefix as git takes it.
 const UPSTREAM = ['set-upstream-to', 'set-upstream', 'unset-upstream', 'track']
 const setsUpstream = (w: Word) => {
   const long = /^--([\w-]+)(?:=|$)/.exec(w.text)
   return long ? long[1].length > 1 && UPSTREAM.some(o => o.startsWith(long[1])) : /^-[A-Za-z]*[ut][A-Za-z]*$/.test(w.text)
 }
+const positional = (rest: Word[], valued: RegExp) => rest.filter((w, i) => !w.text.startsWith('-') && !valued.test(rest[i - 1]?.text ?? ''))
 const moves = (sub: string, rest: Word[]) =>
   sub === 'switch' || sub === 'checkout' || (sub === 'symbolic-ref' && rest.filter(w => !w.text.startsWith('-')).length > 1) ||
+  // `git rebase <upstream> <branch>` checks out the branch first.
+  (sub === 'rebase' && positional(rest, /^(?:--onto|--strategy|--strategy-option|--exec|-[sXx])$/).length > 1) ||
   (/^(?:branch|fetch|pull|push)$/.test(sub) && rest.some(setsUpstream))
 
 // Every push in a shell command, read in `shell`: the repo it runs in, whether

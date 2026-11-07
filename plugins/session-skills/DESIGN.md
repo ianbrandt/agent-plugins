@@ -134,7 +134,7 @@ It asks for a push whose remote is not written out or is changed for that push w
 `--config-env`, or a `GIT_CONFIG`, `HOME`, `XDG_CONFIG_HOME`, or `GIT_COMMON_DIR` variable set in
 the command, PowerShell's `$env:` included. A `send-pack` or `http-push` takes a URL or a path, so its
 remote is not read. It asks too for a push with no remote after a `git switch`, `checkout`, or
-`symbolic-ref` that sets HEAD, or after a command that sets or unsets an upstream with an option
+`symbolic-ref` that sets HEAD, a `git rebase` given a branch to check out, or after a command that sets or unsets an upstream with an option
 given by any unique prefix, earlier in the same command, since those change the branch config the
 push reads. `git push .` updates this repo and is not held. An
 adversarial pass found 18 commands that got past these checks, among them a PR body that starts with

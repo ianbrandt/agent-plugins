@@ -1493,3 +1493,11 @@ test('a config write that sends a later push into submodules is held', () => {
   expect(configWrites('git config submodule.recurse true')).toContain('git config submodule.recurse')
   expect(configWrites('git config push.autoSetupRemote true')).toEqual([])
 })
+
+test('a rebase that checks out a branch moves a later push, and one that rebases HEAD does not', () => {
+  expect(pushTarget('git rebase main feature && git push')?.remote).toBeNull()
+  expect(pushTarget('git rebase --onto main old feature && git push')?.remote).toBeNull()
+  for (const cmd of ['git rebase main && git push', 'git rebase --onto main old && git push', "git rebase -x 'make test' main && git push"]) {
+    expect(pushTarget(cmd)?.remote, cmd).toBeUndefined()
+  }
+})
