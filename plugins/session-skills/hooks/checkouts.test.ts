@@ -2,7 +2,9 @@
 // hold, and the host-write hold against a faked git. The costly errors are a branch opened without commits held on the
 // local default branch, and an unmerged branch deleted by the prune.
 import { expect, test } from 'claude-code/testing'
-import { hostWrites, pickBase, pushTarget, refLine, visibility, worktreeName } from './checkouts'
+import { hostWrites, pickBase, pushTargets, refLine, visibility, worktreeName } from './checkouts'
+
+const pushTarget = (cmd: string) => pushTargets(cmd)[0] ?? null
 
 test('a new branch starts from origin, except where the local default branch has everything origin has', () => {
   expect(pickBase('main', false, true, false, false)).toEqual({ base: 'main' })
@@ -725,6 +727,28 @@ test('a force push is put to the user whatever the holds, but a dry run is not',
   expect(both.reason).toContain('Force push')
   expect(both.reason).toContain('holdPublicPush')
   expect((await verdict($, 'git push --dry-run --force origin b')).decision).toBe('allow')
+})
+
+test('every push in a command is read, each in its own directory', async ($: any, on: any) => {
+  expect(pushTargets('git push origin a && git -C /fork push --force; git push -n')).toEqual([
+    { dir: undefined, dryRun: false, force: false },
+    { dir: '/fork', dryRun: false, force: true },
+    { dir: undefined, dryRun: true, force: false },
+  ])
+  on('tool.check', () => ({ decision: 'allow' }))
+  on('session.repo', () => ({ value: { root: '/repo', remote: null, internal: false } }))
+  const dirs: string[] = []
+  on('process.run', (_$: any, e: any) => {
+    dirs.push(e.argv[2])
+    const line = e.argv.slice(3).join(' ')
+    if (line === 'remote get-url upstream') return { value: { exitCode: 2, stdout: '', stderr: '' } }
+    const vis = e.argv[2] === '/public' ? 'public' : 'private'
+    return { value: { exitCode: 0, stdout: line.includes('originVisibility') ? `${vis}\n` : 'https://example.com/a/b.git\n', stderr: '' } }
+  })
+  expect((await verdict($, 'git push origin a && git push -f origin b')).reason).toContain('Force push')
+  const later = await verdict($, 'git push && git -C /public push')
+  expect(later.reason).toContain('holdPublicPush')
+  expect(new Set(dirs)).toEqual(new Set(['/repo', '/public']))
 })
 
 const hostWrite = (cmd: string) => hostWrites(cmd)[0] ?? null

@@ -2,7 +2,7 @@
 // run the git work of both skills, and the tool a worktree session calls to edit
 // a file that is only in the primary checkout.
 import type { Register } from 'claude-code'
-import { type HostWrite, hostWrites, pickBase, pushTarget, refLine, visibility, worktreeName } from './checkouts'
+import { type HostWrite, hostWrites, pickBase, pushTargets, refLine, visibility, worktreeName } from './checkouts'
 import { splice } from './splice'
 
 const NONE = { type: 'object', properties: {} } as const
@@ -546,7 +546,7 @@ export const register: Register = on => {
   for (const tool of ['Bash', 'PowerShell']) {
     on('tool.call', { tool }, async ($, e: any, next: any) => {
       const ran = await next(e)
-      if (e.agentId || ran.deny !== undefined || (ran as any).isError || !pushTarget(String(e.command ?? ''))) return ran
+      if (e.agentId || ran.deny !== undefined || (ran as any).isError || !pushTargets(String(e.command ?? '')).length) return ran
       return { ...ran, context: [...(ran.context ?? []), NEXT_STEP] }
     })
   }
@@ -562,16 +562,16 @@ export const register: Register = on => {
       const verdict = await next(e)
       if (verdict.decision === 'deny') return verdict
       const command = String(e.input?.command ?? '')
-      const push = pushTarget(command)
       const reasons: string[] = []
-      if (push && !push.dryRun) {
+      const add = (reason: string) => reasons.includes(reason) || reasons.push(reason)
+      for (const push of pushTargets(command).filter(p => !p.dryRun)) {
         const why = await pushHold($, push.dir ?? (await primary($))).catch(err => `the push hold could not be checked: ${(err as Error).message}`)
-        if (push.force) reasons.push('Force push: this replaces commits on the remote branch that a reviewer may already have read.')
-        if (why) reasons.push(`Push held: ${why}`)
+        if (push.force) add('Force push: this replaces commits on the remote branch that a reviewer may already have read.')
+        if (why) add(`Push held: ${why}`)
       }
       for (const w of hostWrites(command)) {
         const why = await hostHold($, w).catch(err => `the hold on \`${w.what}\` could not be checked: ${(err as Error).message}`)
-        if (why && !reasons.includes(`Host write held: ${why}`)) reasons.push(`Host write held: ${why}`)
+        if (why) add(`Host write held: ${why}`)
       }
       return reasons.length ? { decision: 'ask', reason: reasons.join(' ') } : verdict
     })

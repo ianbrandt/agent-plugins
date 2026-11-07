@@ -36,7 +36,7 @@ export const worktreeName = (name: string, id = '') => (id ? `${id.toLowerCase()
 
 // A push is read from the call as it reached this plugin, so a command a
 // settings hook rewrote into a push is not seen.
-const PUSH = /\bgit(?:\s+-C\s+(\S+))?\s+push\b([^;&|\n]*)/d
+const PUSH = /\bgit(?:\s+-C\s+(\S+))?\s+push\b([^;&|\n]*)/dg
 const CD = /(?:^|[;&|({\n])\s*(?:cd|pushd|Set-Location|Push-Location)\s+([^\s;&|)}]+)/g
 // Each quoted argument is masked with X so the regex matches only text the
 // shell executes: a mention of git push inside a quoted argument, such as
@@ -71,31 +71,35 @@ function cdBefore(cmd: string, masked: string, index: number, outer?: string): s
   return cd ? readPath(cmd.slice(cd.index! + cd[0].length - cd[1].length, cd.index! + cd[0].length)) : outer
 }
 
-// The first push in a shell command: the directory it runs in, from its -C or
-// the last cd before it, whether it is a dry run, and whether it forces: a
-// --force option, -f in a short-flag group, or a + refspec. Null for no push.
-// The command is read as hostWrites reads it: unfolded, again unmasked where a
-// quote is left open, and then each substitution on its own, in the directory
-// of the last cd before it.
+const unique = <T>(found: T[]) => {
+  const seen = new Set<string>()
+  return found.filter(w => !seen.has(JSON.stringify(w)) && !!seen.add(JSON.stringify(w)))
+}
+
+export type Push = { dir: string | undefined; dryRun: boolean; force: boolean }
+
+// Every push in a shell command: the directory it runs in, from its -C or the
+// last cd before it, whether it is a dry run, and whether it forces: a --force
+// option, -f in a short-flag group, or a + refspec. The command is read as
+// hostWrites reads it: unfolded, again unmasked where a quote is left open, and
+// then each substitution on its own, in the directory of the last cd before it.
 // shortcut: a path with a shell variable or ~ in it is not read, and the push is checked in the session's repo.
-export function pushTarget(cmd: string, outer?: string): { dir: string | undefined; dryRun: boolean; force: boolean } | null {
+export function pushTargets(cmd: string, outer?: string): Push[] {
   const src = unfold(cmd)
   let open = false
-  let masked = mask(src, () => { open = true })
-  let push = PUSH.exec(masked)
-  if (!push && open) push = PUSH.exec((masked = src))
-  if (!push) {
-    for (const sub of substitutions(src)) {
-      const found = pushTarget(sub.text, cdBefore(src, masked, sub.at, outer))
-      if (found) return found
-    }
-    return null
-  }
-  const read = ([start, end]: [number, number]) => readPath(src.slice(start, end))
-  const at = push.indices!
-  const dir = at[1] ? read(at[1]) : cdBefore(src, masked, push.index, outer)
-  const args = push[2]
-  return { dir, dryRun: /(^|\s)(--dry-run|-n)(?=\s|$)/.test(args), force: /(^|\s)(--force|-[a-zA-Z]*f[a-zA-Z]*(?=\s|$)|\+\S)/.test(args) }
+  const masked = mask(src, () => { open = true })
+  const found = [...scanPushes(src, masked, outer), ...(open ? scanPushes(src, src, outer) : [])]
+  for (const sub of substitutions(src)) found.push(...pushTargets(sub.text, cdBefore(src, masked, sub.at, outer)))
+  return unique(found)
+}
+
+function scanPushes(src: string, masked: string, outer?: string): Push[] {
+  return [...masked.matchAll(PUSH)].map(push => {
+    const at = push.indices!
+    const dir = at[1] ? readPath(src.slice(...at[1])) : cdBefore(src, masked, push.index!, outer)
+    const args = push[2]
+    return { dir, dryRun: /(^|\s)(--dry-run|-n)(?=\s|$)/.test(args), force: /(^|\s)(--force|-[a-zA-Z]*f[a-zA-Z]*(?=\s|$)|\+\S)/.test(args) }
+  })
 }
 
 // The gh and glab subcommands that only read from the host or act on this
@@ -124,8 +128,7 @@ export function hostWrites(cmd: string, outer?: string): HostWrite[] {
   const masked = mask(src, () => { open = true })
   const found = [...scan(src, masked, outer), ...(open ? scan(src, src, outer) : [])]
   for (const sub of substitutions(src)) found.push(...hostWrites(sub.text, cdBefore(src, masked, sub.at, outer)))
-  const seen = new Set<string>()
-  return found.filter(w => !seen.has(JSON.stringify(w)) && !!seen.add(JSON.stringify(w)))
+  return unique(found)
 }
 
 function scan(src: string, masked: string, outer?: string): HostWrite[] {
