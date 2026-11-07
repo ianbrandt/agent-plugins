@@ -598,6 +598,9 @@ test('a push is read with the directory it runs in, from -C or the last cd befor
   expect(pushTarget('git push -n origin main')?.dryRun).toBe(true)
   expect(pushTarget('git push origin main && git log -n 1')?.dryRun).toBe(false)
   // A path with a shell variable in it cannot be read, so the session's repo is checked.
+  expect(pushTarget('cd /x; git push')?.dir).toBe('/x')
+  expect(pushTarget('Set-Location /x; git push')?.dir).toBe('/x')
+  expect(pushTarget('pushd /x && git push')?.dir).toBe('/x')
   expect(pushTarget('cd "$WT" && git push')?.dir).toBeUndefined()
   expect(pushTarget('echo "git push"')).toBeNull()
   expect(pushTarget('claude -p "git -C /z push" && git push')).toEqual({ dir: undefined, dryRun: false, force: false })

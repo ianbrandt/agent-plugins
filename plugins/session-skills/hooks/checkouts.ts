@@ -37,7 +37,7 @@ export const worktreeName = (name: string, id = '') => (id ? `${id.toLowerCase()
 // A push is read from the call as it reached this plugin, so a command a
 // settings hook rewrote into a push is not seen.
 const PUSH = /\bgit(?:\s+-C\s+(\S+))?\s+push\b([^;&|\n]*)/d
-const CD = /(?:^|[;&|(\n])\s*cd\s+(\S+)/g
+const CD = /(?:^|[;&|({\n])\s*(?:cd|pushd|Set-Location|Push-Location)\s+([^\s;&|)}]+)/g
 // Each quoted argument is masked with X so the regex matches only text the
 // shell executes: a mention of git push inside a quoted argument, such as
 // `claude -p "...git push..."`, no longer counts. The body of a heredoc whose
