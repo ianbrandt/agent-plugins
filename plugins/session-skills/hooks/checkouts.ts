@@ -820,11 +820,11 @@ function gitOptions(words: Word[], k: number): { j: number; cs: (Word | undefine
 
 // The git commands in a simple command, with a `git-<name>` program split into
 // `git <name>`, and `git --help <name>` read as `git help <name>`, as git runs
-// it. The arguments of a subcommand git builds in, or of an alias set with -c,
-// are not read as commands, so `git grep -e git -e push` is no push. After any
-// other subcommand the words are read on, since that git may be an option's
-// value, as in `sudo -u git -g staff git push`. A git that is the value of an
-// option given to the git right after it is not a command.
+// it. The arguments of a subcommand are not read as commands, so `git grep -e
+// git -e push` is no push, unless the git follows an option, whose value it may
+// be, as in `sudo -u git -g staff git push`, and the subcommand is not built in
+// or an alias set with -c. A git that is the value of an option given to the
+// git right after it is not a command.
 function gitCommands(all: Word[]): { words: Word[]; k: number }[] {
   const found: { words: Word[]; k: number }[] = []
   let words = all
@@ -837,7 +837,7 @@ function gitCommands(all: Word[]): { words: Word[]; k: number }[] {
     if (words[j]?.literal && /^(?:--help|-h)$/.test(words[j].text)) words = [...words.slice(0, j), { ...words[j], text: 'help' }, ...words.slice(j + 1)]
     found.push({ words, k })
     const sub = words[j]
-    if (!sub?.literal || PROGRAMS.has(sub.text) || configAliases(configs).has(sub.text.toLowerCase())) break
+    if (!sub?.literal || PROGRAMS.has(sub.text) || configAliases(configs).has(sub.text.toLowerCase()) || !words[k - 1]?.text.startsWith('-')) break
     k = j
   }
   return found

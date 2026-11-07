@@ -96,7 +96,8 @@ heredocs and PowerShell here-strings, and reads each `$(...)`, backtick, `<(...)
 `${ ...; }`, subshell, and script block as commands of its own. git is read in any word of a simple
 command, so `sudo -u x git push` is read, and so are `man git-push`, a URL that ends in `/git-push`,
 and a path that ends in `/git`, which are asked about as pushes. The arguments of a git subcommand
-are not read, so `git grep -e git -e push` is no push, and a substitution is read as git only
+or alias are not read, so `git grep -e git -e push` is no push. They are read only after a git that
+follows an option, whose value it may be, as in `sudo -u git -g staff git push`. A substitution is read as git only
 where it looks git up, as `$(which git)` does. Regexes were used before,
 one pass at a time, and a review with live probes found commands they misread, among them a
 backtick span in a quoted commit message read as a command, a `# --dry-run` comment read as a dry

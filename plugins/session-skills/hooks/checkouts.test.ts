@@ -1423,7 +1423,7 @@ test('the last --head is read, and one whose value is not written out may be emp
   expect(hostWrite("gh pr create --head '' --head feature --fill")?.pushes).toBe(false)
 })
 
-test('git is read only as the command, or from a path lookup, so ordinary reads are not pushes', () => {
+test('a read with git or push in its arguments is not a push, and a push after it is', () => {
   for (const cmd of ['git diff "$(git merge-base main HEAD)" "$(git rev-parse HEAD)"', 'diff <(git show HEAD~1:f) <(git show HEAD:f)', 'git grep -e git -e push', 'git log --author git push']) {
     expect(pushTargets(cmd), cmd).toEqual([])
   }
@@ -1628,4 +1628,9 @@ test('a config section with a recursion key in it is held when it is removed or 
 test('a call for help given to git before the subcommand is not a push or a config write', () => {
   for (const cmd of ['git --help push', 'git -h push', 'git -c a.b=c --help push']) expect(pushTargets(cmd), cmd).toEqual([])
   expect(configWrites('git --help config remote.origin.url x')).toEqual([])
+})
+
+test('the arguments of a git alias are not read as commands, but a git after an option may be its value', () => {
+  expect(pushTargets('git lg --author git push').map(p => p.alias)).toEqual(['lg'])
+  expect(pushTargets('sudo -u git -g staff git push -f').some(p => p.force)).toBe(true)
 })
