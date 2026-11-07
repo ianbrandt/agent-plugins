@@ -623,9 +623,11 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
   return { commands, open }
 }
 
+const isPowerShell = (shell: string) => /powershell|pwsh/i.test(shell)
+
 // PowerShell reads curly quotes as straight ones.
 function commands(cmd: string, shell: string, outer: Dir): Command[] {
-  const ps = /powershell|pwsh/i.test(shell)
+  const ps = isPowerShell(shell)
   const text = cmd.replace(/\r\n/g, '\n')
   // After --% PowerShell passes the rest of the line as it is, comments included.
   if (ps && /(?:^|\s)--%(?:\s|$)/.test(text)) throw new Error('a PowerShell --% is not read')
@@ -676,7 +678,8 @@ update-index update-ref var verify-commit verify-pack verify-tag version whatcha
 // null where it cannot be read from the command. `submodules` is set where the
 // command says whether the push recurses into submodules, and is otherwise read
 // from config. `configs` are the -c values given with an alias the hook reads.
-export type Push = { dir: Dir; dryRun: boolean; force: boolean; remote?: string | null; submodules?: boolean; alias?: string; rest?: string; configs?: Word[] }
+// `staged` is set where an earlier command may have staged a gitlink.
+export type Push = { dir: Dir; dryRun: boolean; force: boolean; remote?: string | null; submodules?: boolean; alias?: string; rest?: string; configs?: Word[]; staged?: boolean }
 
 // The long options of a command, the ones that take a value, and its short
 // options that take one.
@@ -1052,6 +1055,18 @@ function harmless(words: Word[], ps: boolean): boolean {
   return READS.test(first.text) || RUNNERS.test(words.map(w => w.text).join(' '))
 }
 
+// Whether a git command in a command writes the index, so that `git add -A`
+// may stage a nested repo as a gitlink that a later push recurses into.
+const STAGES = new Set('add commit merge pull rebase'.split(' '))
+const writesIndex = (words: Word[]) => gitCommands(words).some(g => STAGES.has(g.words[gitOptions(g.words, g.k).j]?.text ?? ''))
+// For each command, whether a command before it may have moved the branch, its
+// config, or the directory, and whether one may have staged a gitlink.
+function before(cmds: Command[], ps: boolean): { unknown: boolean; staged: boolean }[] {
+  const unsafe = cmds.map(c => !harmless(c.words, ps))
+  const writes = cmds.map((c, x) => unsafe[x] || writesIndex(c.words))
+  return cmds.map((_, i) => ({ unknown: unsafe.slice(0, i).some(Boolean), staged: writes.slice(0, i).some(Boolean) }))
+}
+
 // Every push in a shell command, read in `shell`: the repo it runs in, whether
 // it is a dry run, whether it forces, and its remote. `git send-pack`, `git
 // http-push`, `git subtree push`, and `git lfs push` are pushes, and a command
@@ -1068,9 +1083,9 @@ export function pushTargets(cmd: string, shell = 'Bash', outer?: Dir, inherited:
   const found: Push[] = []
   const cmds = commands(cmd, shell, outer)
   const envConfig = sets(cmds, CONFIG_VARS)
-  const ps = /powershell|pwsh/i.test(shell)
-  let afterUnknown = false
-  for (const { words: all, at } of cmds) {
+  const earlier = before(cmds, isPowerShell(shell))
+  for (const [i, { words: all, at }] of cmds.entries()) {
+    const { unknown: afterUnknown, staged } = earlier[i]
     for (const r of later(all)) for (const p of pushTargets(r.text, 'Bash', null, [...inherited, ...r.configs], depth + 1)) found.push({ ...p, dir: null })
     for (const { words, k } of gitCommands(all)) {
       const { j, cs, configs: own, gitDir } = gitOptions(words, k)
@@ -1088,7 +1103,7 @@ export function pushTargets(cmd: string, shell = 'Bash', outer?: Dir, inherited:
       const pushAt = rest.findIndex(w => w.text === 'push')
       const flags = (args: Word[], o?: Options) => {
         const f = pushFlags(args, o)
-        return { ...f, force: f.force || configForce, ...(f.submodules === undefined && recursion && { submodules: !!recurses }), ...((moved || (afterUnknown && f.remote === undefined)) && { remote: null }) }
+        return { ...f, force: f.force || configForce, ...(f.submodules === undefined && recursion && { submodules: !!recurses }), ...((moved || (afterUnknown && f.remote === undefined)) && { remote: null }), ...(staged && { staged }) }
       }
       const alias = sub === undefined ? undefined : aliases.get(sub.toLowerCase())
       if (sub !== undefined && !words[j].literal) found.push({ dir: null, dryRun: false, force: false, remote: null })
@@ -1098,14 +1113,13 @@ export function pushTargets(cmd: string, shell = 'Bash', outer?: Dir, inherited:
       else if ((sub === 'subtree' || sub === 'lfs') && pushAt >= 0) found.push({ dir, ...flags(rest.slice(pushAt + 1), sub === 'subtree' ? SUBTREE : PUSH) })
       else if (typeof alias === 'string') {
         for (const p of pushTargets(`${alias.startsWith('!') ? alias.slice(1) : `git ${alias}`} ${joined(rest)}`, 'Bash', dir, configs, depth + 1)) {
-          found.push({ ...p, force: p.force || configForce, ...((moved || (afterUnknown && p.remote === undefined)) && { remote: null }) })
+          found.push({ ...p, force: p.force || configForce, ...((moved || (afterUnknown && p.remote === undefined)) && { remote: null }), ...(staged && { staged }) })
         }
-      } else if (alias === null || (sub !== undefined && unread(configs) && !BUILTIN.has(sub))) found.push({ dir, dryRun: false, force: configForce, remote: null })
+      } else if (alias === null || (sub !== undefined && unread(configs) && !BUILTIN.has(sub))) found.push({ dir, dryRun: false, force: configForce, remote: null, ...(staged && { staged }) })
       else if (sub !== undefined && !BUILTIN.has(sub) && /^[\w.-]+$/.test(sub)) {
-        found.push({ dir, dryRun: false, force: configForce, alias: sub, rest: joined(rest), ...(configs.length > 0 && { configs }), ...((moved || afterUnknown) && { remote: null }) })
+        found.push({ dir, dryRun: false, force: configForce, alias: sub, rest: joined(rest), ...(configs.length > 0 && { configs }), ...((moved || afterUnknown) && { remote: null }), ...(staged && { staged }) })
       }
     }
-    if (!harmless(all, ps)) afterUnknown = true
   }
   return unique(found)
 }
@@ -1121,7 +1135,7 @@ const PR_CREATE: Record<string, string> = { gh: 'pr', glab: 'mr' }
 
 // `pushes` is set on a PR or MR that may push the branch: gh pushes unless
 // --head is given, and glab unless --push=false is.
-export type HostWrite = { what: string; dir: Dir; prCreate: boolean; otherRepo: boolean; pushes: boolean }
+export type HostWrite = { what: string; dir: Dir; prCreate: boolean; otherRepo: boolean; pushes: boolean; staged?: boolean }
 
 // The switches of `gh pr create` and `glab mr create`. Every other option takes
 // a value, so a value such as a body that starts with "-" is not read as one.
@@ -1177,7 +1191,8 @@ export function hostWrites(cmd: string, shell = 'Bash', outer?: Dir, depth = 0):
   const cmds = commands(cmd, shell, outer)
   // A variable that moves the config gh reads can send the PR to another repo too.
   const envRepo = sets(cmds, REPO_VARS) || sets(cmds, CONFIG_VARS)
-  for (const { words, at } of cmds) {
+  const earlier = before(cmds, isPowerShell(shell))
+  for (const [i, { words, at }] of cmds.entries()) {
     for (const r of later(words)) for (const w of hostWrites(r.text, 'Bash', null, depth + 1)) found.push({ ...w, dir: null })
     const k = cliAt(words)
     if (k < 0) continue
@@ -1240,7 +1255,7 @@ export function hostWrites(cmd: string, shell = 'Bash', outer?: Dir, depth = 0):
       if (m !== 'GET' && m !== 'HEAD') what = `${cli} api ${m}`
     } else if (noun && verb && !LOCAL_NOUNS.has(noun) && !READ_VERBS.has(verb) && !(verb === 'clone' && (noun === 'repo' || noun === 'gist'))) what = `${cli} ${noun} ${verb}`
     const prCreate = !early && noun === PR_CREATE[cli] && (verb === 'create' || verb === 'new')
-    if (what) found.push({ what, dir: repoDir(at, words.slice(0, k)), prCreate, otherRepo, pushes: prCreate && prPushes(cli, args) })
+    if (what) found.push({ what, dir: repoDir(at, words.slice(0, k)), prCreate, otherRepo, pushes: prCreate && prPushes(cli, args), ...(earlier[i].staged && { staged: true }) })
   }
   return unique(found)
 }

@@ -81,7 +81,10 @@ leading `:`, a `+` refspec or a mirror set with `-c` or in the remote's config, 
 the environment) is put to the user whatever the holds, because it replaces commits a reviewer may have read, and it is never refused
 outright, because it is a normal step after a rebase. A push that may recurse into submodules, by
 `--recurse-submodules=on-demand` or `only`, `push.recurseSubmodules`, or `submodule.recurse`, is
-held too where the index has a gitlink, since the submodules' remotes are not checked. The gitlink
+held too where the index has a gitlink, since the submodules' remotes are not checked. The hook
+reads the index before the command runs, so the push is held as well where an earlier command in
+the line may stage one, such as `git add -A` with a nested repo in the tree, or any command not on
+the known-safe list below. The gitlink
 is checked rather than `.gitmodules`, because git also pushes a nested repo that has no entry there.
 A recursion or mirror setting is read from its last value, as git reads it, so a push is not held
 for a global `true` that a local `false` overrides. Where both recursion keys are set, git uses the

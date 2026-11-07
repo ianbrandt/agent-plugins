@@ -605,7 +605,7 @@ test('a push is read with the directory it runs in, from -C or the last cd befor
   expect(pushTarget('pushd /x && git push')?.dir).toBe('/x')
   expect(pushTarget('cd "$WT" && git push')?.dir).toBeUndefined()
   expect(pushTarget('echo "git push"')).toBeNull()
-  expect(pushTarget('claude -p "git -C /z push" && git push')).toEqual({ dir: undefined, dryRun: false, force: false, remote: null })
+  expect(pushTarget('claude -p "git -C /z push" && git push')).toEqual({ dir: undefined, dryRun: false, force: false, remote: null, staged: true })
   expect(pushTarget(`git commit -F - <<'EOF'\nThen git -C /z push it\nEOF\ncd /y && git push`)?.dir).toBe('/y')
 })
 
@@ -942,8 +942,8 @@ test('a force push is put to the user whatever the holds, but a dry run is not',
 test('every push in a command is read, each in its own directory', async ($: any, on: any) => {
   expect(pushTargets('git push origin a && git -C /fork push --force; git push -n')).toEqual([
     { dir: undefined, dryRun: false, force: false, remote: 'origin' },
-    { dir: '/fork', dryRun: false, force: true, remote: null },
-    { dir: undefined, dryRun: true, force: false, remote: null },
+    { dir: '/fork', dryRun: false, force: true, remote: null, staged: true },
+    { dir: undefined, dryRun: true, force: false, remote: null, staged: true },
   ])
   on('tool.check', () => ({ decision: 'allow' }))
   on('session.repo', () => ({ value: { root: '/repo', remote: null, internal: false } }))
@@ -1610,6 +1610,16 @@ test('a push or a PR that may push is not held for submodules in a repo with no 
   for (const cmd of ['git push origin main', 'git push --recurse-submodules=on-demand origin main', 'gh pr create --fill']) {
     expect((await verdict($, cmd)).decision, cmd).toBe('allow')
   }
+})
+
+// git 2.56.0 pushed a nested repo's commit to its own remote after `git add`
+// staged it as a gitlink in the same command, where the index the hook read had none.
+test('a push or a PR that may recurse is held where the same command may stage a gitlink', async ($: any, on: any) => {
+  targetWorld(on, { 'session-skills.originVisibility': 'private', 'session-skills.holdPrText': 'false', 'session-skills.holdFork': 'false', 'submodule.recurse': 'true' })
+  for (const cmd of ['git add -A && git commit -m "Add lib" && git push', 'git submodule add ../lib.git lib && git push origin main', 'git commit -am x && gh pr create --fill']) {
+    expect((await verdict($, cmd)).reason, cmd).toContain('submodules')
+  }
+  for (const cmd of ['git status && git push', 'git push origin main', 'git fetch && gh pr create --fill']) expect((await verdict($, cmd)).decision, cmd).toBe('allow')
 })
 
 test('a read of the index that fails holds a push that may recurse into submodules', async ($: any, on: any) => {

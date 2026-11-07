@@ -507,7 +507,7 @@ const TRUE = /^(?:true|yes|on|-?[1-9]\d*)$/i
 // What config set before the command adds to a push: a force where the
 // remote mirrors or has a + refspec, and submodules where push.recurseSubmodules
 // or submodule.recurse sends the push into them and the index has a gitlink,
-// with or without a .gitmodules. A remote that is not written out may be any of
+// with or without a .gitmodules, or an earlier command may have staged one. A remote that is not written out may be any of
 // them. A setting is read from its last value, the one git uses, and of the two
 // recursion keys git uses the one set last. git pushes to each member of a
 // remote group, and prefers a group to a remote of the same name, so a group
@@ -523,7 +523,7 @@ async function pushConfig($: any, dir: string, p: Push): Promise<{ force: boolea
   const recurses = p.submodules ?? (key === 'push.recursesubmodules' ? /^(?:on-demand|only)$/i.test(mode) : TRUE.test(mode))
   // `:/` lists the whole index from a subdirectory too.
   // shortcut: the whole index is printed to find one gitlink, read only where recursion is set; filter in git if a large repo slows the hook.
-  return { force, submodules: recurses && /^160000 /m.test(await must($, dir, 'ls-files', '-s', ':/')), group }
+  return { force, submodules: recurses && (!!p.staged || /^160000 /m.test(await must($, dir, 'ls-files', '-s', ':/'))), group }
 }
 
 // Every URL a remote pushes to, or null where git has no such remote.
@@ -605,7 +605,7 @@ async function hostHold($: any, w: HostWrite): Promise<string> {
   const other = await otherBase($, dir, w.what)
   if (other) return `${write}, and ${other}.`
   if (!w.pushes) return ''
-  const config = await pushConfig($, dir, { dir, dryRun: false, force: false, remote: 'origin' })
+  const config = await pushConfig($, dir, { dir, dryRun: false, force: false, remote: 'origin', staged: w.staged })
   if (config.force || config.submodules) return `${write}, and it may push the branch with ${config.force ? 'a force' : 'its submodules'} set in config for the push.`
   const push = await pushHold($, dir, 'origin')
   return push && `${write}, and it may push the branch: ${push}`
@@ -623,7 +623,7 @@ async function pushesIn($: any, pushes: Push[], depth = 0): Promise<Push[]> {
       found.push(p)
       continue
     }
-    const unread = { dir: p.dir, dryRun: false, force: p.force, remote: null }
+    const unread = { dir: p.dir, dryRun: false, force: p.force, remote: null, staged: p.staged }
     const dir = p.dir === null || depth > 3 ? null : await where($, p.dir).catch(() => null)
     if (dir === null) {
       found.push(unread)
@@ -635,7 +635,7 @@ async function pushesIn($: any, pushes: Push[], depth = 0): Promise<Push[]> {
       if (!v) continue
       // A -c given with the alias that forces or moves the push holds for its expansion.
       for (const e of await pushesIn($, pushTargets(`${v.startsWith('!') ? v.slice(1) : `git ${v}`} ${p.rest ?? ''}`, 'Bash', p.dir, p.configs), depth + 1)) {
-        found.push({ ...e, force: e.force || p.force, ...(p.remote === null && { remote: null }) })
+        found.push({ ...e, force: e.force || p.force, ...(p.remote === null && { remote: null }), staged: e.staged || p.staged })
       }
     }
   }
