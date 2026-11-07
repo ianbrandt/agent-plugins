@@ -67,8 +67,9 @@ runs of each arm on Sonnet 5.5, the first reply stated a next step 4 of 4 times 
 
 The holds in `land-and-wrap` are read from the skill text, so a session that pushes without the
 skill pushes anyway: on 2026-11-06 a session pushed a cleared TODO to this public repo. A
-`tool.check` hook on `Bash` and `PowerShell` reads the holds for the directory a push runs in, from
-its `-C` or the last `cd` before it, and puts a held push to the user in the permission prompt with
+`tool.check` hook on `Bash` and `PowerShell` reads the holds for the directory each push in a
+command runs in, from its `-C`, `--git-dir`, or `--work-tree`, or else the last `cd` before it that
+is not inside a closed subshell, and puts a held push to the user in the permission prompt with
 the `git config` line that lifts the hold. A force push (a `--force` option, `-f` in a short-flag
 group, or a `+` refspec) is put to the user whatever the holds, because it replaces commits a reviewer
 may have read, and it is never refused outright, because it is a normal step after a rebase. A
@@ -95,7 +96,9 @@ way a private push can. The one exception is a `gh pr create` or `glab mr create
 own repo, with `holdPrText` lifted and past the fork hold. A PR aimed at another repo with `-R`, or
 with `GH_REPO` or `GITLAB_REPO` anywhere in the command, is still asked about. Each write in a
 chained command is checked, so a comment added after a PR opened unasked is still asked about. A write run
-through `bash -c`, `eval`, or a user's own `gh alias` is not seen.
+through `bash -c`, `eval`, or a user's own `gh alias` is not seen. In PowerShell, a quote escaped
+with a backtick in a title hides a `-R` after it. A backtick is not read as an escape, because in
+bash that would hide a push after two backtick substitutions in double quotes.
 
 A follow-up prompt after the reply used to do this. It showed in the transcript as a message from the
 plugin, it took a fenced block as the only sign of a next step, so it fired after "This session
