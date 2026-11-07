@@ -607,6 +607,18 @@ test('a push is read with the directory it runs in, from -C or the last cd befor
   expect(pushTarget(`git commit -F - <<'EOF'\nThen git -C /z push it\nEOF\ncd /y && git push`)?.dir).toBe('/y')
 })
 
+test('a push is read after a comment with a quote in it, across a line continuation, and inside a substitution', () => {
+  expect(pushTarget("# Push the branch (it's reviewed)\ngit push")).toEqual({ dir: undefined, dryRun: false, force: false })
+  expect(pushTarget("# Don't merge yet\ncd /y && git push")?.dir).toBe('/y')
+  expect(pushTarget(`tr -d '"' < a; git push`)).not.toBeNull()
+  expect(pushTarget('echo \\"done\\" && git -C /z push')?.dir).toBe('/z')
+  expect(pushTarget('git push origin \\\n  --force')?.force).toBe(true)
+  expect(pushTarget('git -C /z `\n  push origin main')?.dir).toBe('/z')
+  expect(pushTarget('out="$(git push -f origin main 2>&1)"')?.force).toBe(true)
+  expect(pushTarget('echo "`git push --dry-run`"')?.dryRun).toBe(true)
+  expect(pushTarget('echo "# not a comment" && echo "$x"')).toBeNull()
+})
+
 // The engine's own verdict beneath the plugin is an allow.
 const verdict = ($: any, command: string, tool = 'Bash') => $.tool.check({ tool, input: { command } })
 function pushWorld(on: any, config: Record<string, string>, upstream = false) {

@@ -75,7 +75,8 @@ may have read, and it is never refused outright, because it is a normal step aft
 hook's ask reaches a person in every permission mode,
 and where nobody can be asked, as under `claude -p`, the push is refused. A dry run is not held,
 and a subagent's push is held like any other. A path with a shell variable in it is not read, so
-that push is checked in the session's repo.
+that push is checked in the session's repo. The command is read the way a host write is read below,
+so a push after a comment line, across a line continuation, or inside a `$(...)` is held too.
 
 The same hook puts every write to the host through `gh` or `glab` to the user, such as a comment, a
 merge, a release, or a workflow run. Every subcommand is taken as a write except a short list of

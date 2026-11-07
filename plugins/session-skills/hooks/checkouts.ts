@@ -56,6 +56,12 @@ const mask = (cmd: string, unclosed = () => {}) =>
       return 'X'.repeat(m.length)
     })
 
+// Line continuations are joined and comment lines blanked, keeping the length,
+// so an argument on the next line is read and a quote in a comment opens nothing.
+const unfold = (cmd: string) => cmd.replace(/[\\`]\r?\n/g, m => ' '.repeat(m.length)).replace(/^[ \t]*#.*$/gm, m => ' '.repeat(m.length))
+// Each `$(...)` or backtick substitution, which the shell runs even inside double quotes.
+const substitutions = (src: string) => [...src.matchAll(/\$\(([^()]*)\)|`([^`]*)`/g)].map(m => m[1] ?? m[2])
+
 const unquote = (word: string) => word.replace(/^(["'])(.*)\1$/, '$2')
 const readPath = (word: string) => (/[$`~]/.test(unquote(word)) ? undefined : unquote(word))
 // The directory of the last cd before `index`, or nothing where there is none.
@@ -67,14 +73,25 @@ function cdBefore(cmd: string, masked: string, index: number): string | undefine
 // The first push in a shell command: the directory it runs in, from its -C or
 // the last cd before it, whether it is a dry run, and whether it forces: a
 // --force option, -f in a short-flag group, or a + refspec. Null for no push.
+// The command is read as hostWrites reads it: unfolded, again unmasked where a
+// quote is left open, and then each substitution on its own.
 // shortcut: a path with a shell variable or ~ in it is not read, and the push is checked in the session's repo.
 export function pushTarget(cmd: string): { dir: string | undefined; dryRun: boolean; force: boolean } | null {
-  const masked = mask(cmd)
-  const push = PUSH.exec(masked)
-  if (!push) return null
-  const read = ([start, end]: [number, number]) => readPath(cmd.slice(start, end))
+  const src = unfold(cmd)
+  let open = false
+  let masked = mask(src, () => { open = true })
+  let push = PUSH.exec(masked)
+  if (!push && open) push = PUSH.exec((masked = src))
+  if (!push) {
+    for (const sub of substitutions(src)) {
+      const found = pushTarget(sub)
+      if (found) return found
+    }
+    return null
+  }
+  const read = ([start, end]: [number, number]) => readPath(src.slice(start, end))
   const at = push.indices!
-  const dir = at[1] ? read(at[1]) : cdBefore(cmd, masked, push.index)
+  const dir = at[1] ? read(at[1]) : cdBefore(src, masked, push.index)
   const args = push[2]
   return { dir, dryRun: /(^|\s)(--dry-run|-n)(?=\s|$)/.test(args), force: /(^|\s)(--force|-[a-zA-Z]*f[a-zA-Z]*(?=\s|$)|\+\S)/.test(args) }
 }
@@ -99,11 +116,11 @@ export type HostWrite = { what: string; dir: string | undefined; prCreate: boole
 // quoted or not, since the shell runs both inside double quotes.
 // shortcut: a write run as `bash -c '...'` or `eval "..."`, or through a user's own gh alias, is not detected.
 export function hostWrites(cmd: string): HostWrite[] {
-  const src = cmd.replace(/[\\`]\r?\n/g, m => ' '.repeat(m.length)).replace(/^[ \t]*#.*$/gm, m => ' '.repeat(m.length))
+  const src = unfold(cmd)
   let open = false
   const masked = mask(src, () => { open = true })
   const found = [...scan(src, masked), ...(open ? scan(src, src) : [])]
-  for (const m of src.matchAll(/\$\(([^()]*)\)|`([^`]*)`/g)) found.push(...hostWrites(m[1] ?? m[2]))
+  for (const sub of substitutions(src)) found.push(...hostWrites(sub))
   const seen = new Set<string>()
   return found.filter(w => !seen.has(JSON.stringify(w)) && !!seen.add(JSON.stringify(w)))
 }
