@@ -1624,3 +1624,8 @@ test('a config section with a recursion key in it is held when it is removed or 
   ]) expect(configWrites(cmd), cmd).toEqual([what])
   for (const cmd of ['git config --remove-section core', 'git config push.default simple']) expect(configWrites(cmd), cmd).toEqual([])
 })
+
+test('a call for help given to git before the subcommand is not a push or a config write', () => {
+  for (const cmd of ['git --help push', 'git -h push', 'git -c a.b=c --help push']) expect(pushTargets(cmd), cmd).toEqual([])
+  expect(configWrites('git --help config remote.origin.url x')).toEqual([])
+})

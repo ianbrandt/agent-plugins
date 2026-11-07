@@ -813,17 +813,18 @@ function gitOptions(words: Word[], k: number): { j: number; cs: (Word | undefine
     else if (a === '--git-dir') gitDir = words[++j] ?? { text: '', literal: false, quoted: false }
     else if (a.startsWith('--git-dir=')) gitDir = { ...words[j], text: a.slice(10) }
     else if (/^--(?:work-tree|namespace|attr-source|super-prefix|shallow-file)$/.test(a)) j++
-    else if (!a.startsWith('-')) break
+    else if (!a.startsWith('-') || a === '--help' || a === '-h') break
   }
   return { j, cs, configs, gitDir }
 }
 
 // The git commands in a simple command, with a `git-<name>` program split into
-// `git <name>`. The arguments of a subcommand git builds in, or of an alias set
-// with -c, are not read as commands, so `git grep -e git -e push` is no push.
-// After any other subcommand the words are read on, since that git may be an
-// option's value, as in `sudo -u git -g staff git push`. A git that is the
-// value of an option given to the git right after it is not a command.
+// `git <name>`, and `git --help <name>` read as `git help <name>`, as git runs
+// it. The arguments of a subcommand git builds in, or of an alias set with -c,
+// are not read as commands, so `git grep -e git -e push` is no push. After any
+// other subcommand the words are read on, since that git may be an option's
+// value, as in `sudo -u git -g staff git push`. A git that is the value of an
+// option given to the git right after it is not a command.
 function gitCommands(all: Word[]): { words: Word[]; k: number }[] {
   const found: { words: Word[]; k: number }[] = []
   let words = all
@@ -833,6 +834,7 @@ function gitCommands(all: Word[]): { words: Word[]; k: number }[] {
     if (program) words = [...words.slice(0, k), { ...words[k], text: 'git' }, { text: program, literal: true, quoted: false }, ...words.slice(k + 1)]
     const { j, configs } = gitOptions(words, k)
     if (isGit(words[j])) continue
+    if (words[j]?.literal && /^(?:--help|-h)$/.test(words[j].text)) words = [...words.slice(0, j), { ...words[j], text: 'help' }, ...words.slice(j + 1)]
     found.push({ words, k })
     const sub = words[j]
     if (!sub?.literal || PROGRAMS.has(sub.text) || configAliases(configs).has(sub.text.toLowerCase())) break
