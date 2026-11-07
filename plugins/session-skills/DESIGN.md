@@ -106,6 +106,23 @@ pipeline of a list to the background. Where the two readings differ, the hold as
 pipeline or subexpression runs in the current runspace and can move the location. A variable path
 in the session's own directory, as in `cd "$WT"`, is read as the session's repo.
 
+A push with no directory runs in the Bash tool's working directory, which a `cd` in an earlier call
+moves, and a relative path is read against it. In a linked worktree the session's repo is the
+primary checkout, but the branch checked out is the worktree's. The visibility is read for the remote
+the push goes to: the one given in the command, else the one git picks from the branch's
+`pushRemote`, `remote.pushDefault`, and the branch's remote, in that order, with origin last. origin,
+or a remote with the same push URLs, takes the visibility set in git config, and any other remote is
+looked up with gh or glab by each of its push URLs. The hold asks for a push to a URL or a path, and
+for one whose remote is not written out or is changed for that push with `-c`, `--config-env`, or a
+`GIT_CONFIG` variable. A `git switch` earlier in the same command is not seen, so a push after it is
+read with the remote of the branch checked out before the command.
+
+The hold reads git config before the command runs, so a write that changes where a later push goes
+is put to the user too: a `git config` write to a key under `remote`, `url`, `branch`, `include`,
+`includeIf`, or `alias`, and `git remote add`, `rename`, `remove`, `rm`, or `set-url`. So is a write
+to a `session-skills` key, since setting `holdPublicPush` or `originVisibility` would lift a hold
+without the user. An edit to the config file with a file tool or `sed` is not seen.
+
 The same hook puts every write to the host through `gh` or `glab` to the user, such as a comment, a
 merge, a release, or a workflow run. Every subcommand is taken as a write except a short list of
 reads (`view`, `list`, `diff`, `checks`, and the like), nouns that act on this machine only (`auth`,
@@ -117,11 +134,15 @@ it, and a GraphQL call is a write unless its `query` field is written out and st
 `{`. The command is read by the same lexer as a push.
 
 These asks hold whatever `origin`'s visibility, since a comment or a merge cannot be pulled back the
-way a private push can. The one exception is a `gh pr create` or `glab mr create` in this clone's
-own repo, with `holdPrText` lifted and past the fork hold. A PR aimed at another repo with `-R`, or
-with `GH_REPO` or `GITLAB_REPO` anywhere in the command, is still asked about, and so is one whose
-directory cannot be read. Each write in a chained command is checked, so a comment added after a PR
-opened unasked is still asked about. A push or write run through `bash -c`, `eval`,
+way a private push can. The one exception is a `gh pr create` or `glab mr create` with `holdPrText`
+lifted, in a clone whose only remote is origin. Both CLIs take the repo from `GH_REPO` or
+`GITLAB_REPO` first, then from a default set with `gh repo set-default`, and then prefer a remote
+named `upstream`, `github`, or `gitlab` to origin, so a PR is asked about where any of those may
+apply, as in every fork. A PR aimed at another repo with `-R` is asked about too, and so is one
+whose directory cannot be read. gh pushes the branch unless `--head` is given, and glab unless
+`--push=false` is, so a PR that may push is also held as a push to origin. A `GH_REPO` set in a
+shell profile is not seen, since the hook reads Claude Code's own environment. Each write in a
+chained command is checked, so a comment added after a PR opened unasked is still asked about. A push or write run through `bash -c`, `eval`,
 `Start-Process`, a `git-<name>` program on the PATH such as git-town, or a user's own `gh alias` is
 not seen, and neither is a force option held in a variable, as in `git push $FORCE`.
 
