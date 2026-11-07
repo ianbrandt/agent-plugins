@@ -951,7 +951,9 @@ function configKey(args: Word[]): string | undefined {
     pos.shift()
   }
   if (!mode && pos.length < 2) return undefined
-  return pos.slice(0, mode.includes('rename') ? 2 : 1).find(w => !w.literal || HELD_KEYS.test(w.text))?.text
+  // A section is held where a held key is in it, as push.recurseSubmodules is in `push`.
+  const held = (w: Word) => !w.literal || HELD_KEYS.test(w.text) || (mode.endsWith('section') && /^(?:push|submodule)$/i.test(w.text))
+  return pos.slice(0, mode.includes('rename') ? 2 : 1).find(held)?.text
 }
 
 // A -c whose key is read from a variable, which may set any key, an alias included.

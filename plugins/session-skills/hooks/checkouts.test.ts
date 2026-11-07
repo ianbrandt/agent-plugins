@@ -1614,3 +1614,13 @@ test('a rebase of the root, one that continues, skips, or aborts, or a bisect re
   }
   for (const cmd of ['git rebase --root && git push', 'git rebase -i --root && git push']) expect(pushTarget(cmd)?.remote, cmd).toBeUndefined()
 })
+
+test('a config section with a recursion key in it is held when it is removed or renamed', () => {
+  for (const [cmd, what] of [
+    ['git config --remove-section push', 'git config push'],
+    ['git config --rename-section submodule old', 'git config submodule'],
+    ['git config --rename-section old push', 'git config push'],
+    ['git config remove-section Submodule', 'git config Submodule'],
+  ]) expect(configWrites(cmd), cmd).toEqual([what])
+  for (const cmd of ['git config --remove-section core', 'git config push.default simple']) expect(configWrites(cmd), cmd).toEqual([])
+})
