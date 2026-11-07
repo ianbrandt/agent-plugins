@@ -1679,6 +1679,11 @@ test('a push to a remote group is read as a push to a remote that is not written
   config['session-skills.holdPublicPush'] = 'true'
   config['session-skills.originVisibility'] = 'private'
   expect((await verdict($, 'git push publish main')).reason).toContain('the remote it pushes to could not be read')
+  config['session-skills.holdPublicPush'] = 'false'
+  config['remote.b.mirror'] = 'true'
+  // git prints a subsection in its own case, and pushed `git push My.grp` to the group.
+  config['remotes.My.grp'] = 'b'
+  expect((await verdict($, 'git push My.grp')).reason).toContain('Force push')
   expect(configWrites("git config remotes.publish 'a b'")).toEqual(['git config remotes.publish'])
   expect(pushTarget('git -c remotes.origin=pub push origin main')?.remote).toBeNull()
 })

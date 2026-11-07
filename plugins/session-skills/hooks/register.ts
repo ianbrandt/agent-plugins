@@ -511,11 +511,12 @@ const TRUE = /^(?:true|yes|on|-?[1-9]\d*)$/i
 // them. A setting is read from its last value, the one git uses, and of the two
 // recursion keys git uses the one set last. git pushes to each member of a
 // remote group, and prefers a group to a remote of the same name, so a group
-// is read as a remote that is not written out.
+// is read as a remote that is not written out. git prints a subsection in its
+// own case and matches the name in it, so the name is compared in any case.
 async function pushConfig($: any, dir: string, p: Push): Promise<{ force: boolean; submodules: boolean; group: boolean }> {
   const entries = await configList($, dir)
   const named = p.remote === undefined ? await pushRemote($, dir) : p.remote
-  const group = named !== null && entries.some(([k]) => k === `remotes.${named.toLowerCase()}`)
+  const group = named !== null && entries.some(([k]) => k.toLowerCase() === `remotes.${named.toLowerCase()}`)
   const name = group ? null : named
   const remote = ([k]: [string, string], field: string) => (name === null ? k.startsWith('remote.') && k.endsWith(`.${field}`) : k === `remote.${name}.${field}`)
   const force = [...new Map(entries)].some(e => remote(e, 'mirror') && TRUE.test(e[1])) || entries.some(e => remote(e, 'push') && e[1].startsWith('+'))
