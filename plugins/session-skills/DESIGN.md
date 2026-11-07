@@ -137,8 +137,8 @@ looked up with gh or glab by each of its push URLs, except a path on this machin
 The hold asks for a push to a URL that is not a remote, but not for one to a path on this machine.
 It asks for a push whose remote is not written out or is changed for that push with `-c`,
 `--config-env`, or a `GIT_CONFIG`, `HOME`, `XDG_CONFIG_HOME`, or `GIT_COMMON_DIR` variable set in
-the command, as an assignment before a command's first word, with `env`, `export`, or `sudo`, or
-with PowerShell's `$env:`. A variable in an argument, as in `git commit -m 'HOME=/tmp'`, is not set. When a push's
+the command, as an assignment before a command's first word, with `env`, `export`, or `sudo`, after
+a wrapper such as `timeout 60s` too, or with PowerShell's `$env:`. A variable in an argument, as in `git commit -m 'HOME=/tmp'`, is not set. When a push's
 remote is not written out, it is read as a force push if any remote has a mirror or a `+` refspec in
 config. A `send-pack` or `http-push` takes a URL or a path, so its
 remote is not read. It asks too for a push with no remote after a `git switch`, `checkout`, or

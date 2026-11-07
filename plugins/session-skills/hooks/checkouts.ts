@@ -780,13 +780,15 @@ const HELD_KEYS = /^(?:(?:remote|url|branch|include|includeif|lfs|alias|session-
 const CONFIG_VARS = /^(?:GIT_CONFIG\w*|HOME|XDG_CONFIG_HOME|GIT_COMMON_DIR)$/i
 const REPO_VARS = /^(?:GH_REPO|GITLAB_REPO|GIT_DIR)$/i
 // Whether a command sets one of `names`: an assignment before its first word,
-// one given to env, export, or another command that takes assignments, or
-// PowerShell's $env:NAME. An argument such as `-m 'HOME=/tmp'` sets nothing.
+// one given to env, export, or another command that takes assignments, after a
+// wrapper such as `timeout 60s` too, or PowerShell's $env:NAME. An argument such
+// as `-m 'HOME=/tmp'` sets nothing.
 const SETTERS = /^(?:(?:.*\/)?env|export|declare|typeset|local|readonly|sudo)$/
 const sets = (cmds: Command[], names: RegExp) =>
   cmds.some(c => {
     const first = c.words.findIndex(w => !ASSIGNMENT.test(w.text) && !/^\$\{?env:/i.test(w.text))
-    const scan = first < 0 || SETTERS.test(c.words[first].text) ? c.words : c.words.slice(0, first)
+    const setter = c.words.findIndex(w => SETTERS.test(w.text))
+    const scan = first < 0 ? c.words : [...c.words.slice(0, first), ...(setter < 0 ? [] : c.words.slice(setter))]
     return scan.some(w => {
       const m = /^(?:\$\{?env:)?([A-Za-z_]\w*)\}?(?:=|$)/i.exec(w.text)
       return !!m && names.test(m[1]) && (w.text.includes('=') || w.text.startsWith('$'))

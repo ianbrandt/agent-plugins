@@ -1599,3 +1599,11 @@ test('the last recursion or mirror setting is read, from config and from -c', as
   config['remote.pub.mirror'] = 'true'
   expect((await verdict($, 'R=origin; git push "$R"')).reason).toContain('Force push')
 })
+
+test('a variable set with env after a wrapper such as timeout is read', () => {
+  for (const wrapper of ['timeout 60s', 'nohup', 'nice -n 5']) {
+    const cmd = `${wrapper} env GH_REPO=o/other gh pr create --head feature --fill`
+    expect(hostWrite(cmd)?.otherRepo, cmd).toBe(true)
+  }
+  expect(pushTarget('timeout 60s env HOME=/tmp git push origin main')).toMatchObject({ remote: null, force: true })
+})
