@@ -621,6 +621,18 @@ test('a push is read after a comment with a quote in it, across a line continuat
   expect(pushTarget('echo "# not a comment" && echo "$x"')).toBeNull()
 })
 
+test('a push is read after git options, and its directory from the last -C, --git-dir, or --work-tree', () => {
+  expect(pushTarget('git -c core.sshCommand="ssh -i k" push')).toEqual({ dir: undefined, dryRun: false, force: false })
+  expect(pushTarget('git --no-pager -p push --force')?.force).toBe(true)
+  expect(pushTarget('git.exe push')).not.toBeNull()
+  expect(pushTarget('git -C /a -c x=y push')?.dir).toBe('/a')
+  expect(pushTarget('cd /x && git -c x=y -C "/b c" push')?.dir).toBe('/b c')
+  expect(pushTarget('git --git-dir=/fork/.git push')?.dir).toBe('/fork/.git')
+  expect(pushTarget('git --work-tree /fork push')?.dir).toBe('/fork')
+  expect(pushTarget('git -c push.default=current status')).toBeNull()
+  expect(pushTarget('git log --oneline push')).toBeNull()
+})
+
 test('a push or host write inside a substitution runs in the directory of the last cd before it', () => {
   expect(pushTarget('cd /fork && out="$(git push 2>&1)"')?.dir).toBe('/fork')
   expect(pushTarget('cd /fork && out="$(cd /z && git push)"')?.dir).toBe('/z')

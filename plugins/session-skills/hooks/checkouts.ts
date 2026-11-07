@@ -36,7 +36,9 @@ export const worktreeName = (name: string, id = '') => (id ? `${id.toLowerCase()
 
 // A push is read from the call as it reached this plugin, so a command a
 // settings hook rewrote into a push is not seen.
-const PUSH = /\bgit(?:\s+-C\s+(\S+))?\s+push\b([^;&|\n]*)/dg
+// git's own options may come before push, such as -c, --no-pager, or -C.
+const PUSH = /\bgit(?:\.exe)?((?:\s+(?:-[Cc]\s+\S+|-[pP]|--(?:git-dir|work-tree|namespace)\s+\S+|--[\w-]+(?:=\S+)?))*)\s+push\b([^;&|\n]*)/dgi
+const GIT_DIR = /(?:-C\s+|--(?:git-dir|work-tree)(?:=|\s+))(\S+)/dg
 const CD = /(?:^|[;&|({\n])\s*(?:cd|pushd|Set-Location|Push-Location)\s+([^\s;&|)}]+)/g
 // Each quoted argument is masked with X so the regex matches only text the
 // shell executes: a mention of git push inside a quoted argument, such as
@@ -95,8 +97,9 @@ export function pushTargets(cmd: string, outer?: string): Push[] {
 
 function scanPushes(src: string, masked: string, outer?: string): Push[] {
   return [...masked.matchAll(PUSH)].map(push => {
-    const at = push.indices!
-    const dir = at[1] ? readPath(src.slice(...at[1])) : cdBefore(src, masked, push.index!, outer)
+    const [start] = push.indices![1]
+    const own = [...push[1].matchAll(GIT_DIR)].pop()
+    const dir = own ? readPath(src.slice(start + own.indices![1][0], start + own.indices![1][1])) : cdBefore(src, masked, push.index!, outer)
     const args = push[2]
     return { dir, dryRun: /(^|\s)(--dry-run|-n)(?=\s|$)/.test(args), force: /(^|\s)(--force|-[a-zA-Z]*f[a-zA-Z]*(?=\s|$)|\+\S)/.test(args) }
   })
