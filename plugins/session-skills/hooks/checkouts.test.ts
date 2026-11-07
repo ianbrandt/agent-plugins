@@ -1696,6 +1696,10 @@ test('a rebase of the root, one that continues, skips, or aborts, or a bisect re
     expect(pushTarget(cmd)?.remote, cmd).toBeNull()
   }
   for (const cmd of ['git rebase --root && git push', 'git rebase -i --root && git push']) expect(pushTarget(cmd)?.remote, cmd).toBeUndefined()
+  // git 2.56.0 took each of these, and pushed from the branch the rebase checked out.
+  for (const cmd of ['git rebase --cont && git push', 'git rebase --ro pubb && git push', 'git pull --set-up origin main && git push']) {
+    expect(pushTarget(cmd)?.remote, cmd).toBeNull()
+  }
 })
 
 test('a config section with a recursion key in it is held when it is removed or renamed', () => {

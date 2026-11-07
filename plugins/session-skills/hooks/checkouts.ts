@@ -1011,19 +1011,20 @@ export function configWrites(cmd: string, shell = 'Bash', outer?: Dir, inherited
 // push reads its remote from, or that branch's upstream: a symbolic-ref that
 // sets HEAD, a rebase given a branch, or one that continues, skips, or aborts,
 // since HEAD is detached while the hook reads config and is back on the branch
-// when the push runs, or a fetch or pull that sets or unsets an upstream, with a
-// long option given by a unique prefix as git takes it.
+// when the push runs, or a fetch or pull that sets or unsets an upstream. A long
+// option is read as git takes it, by any prefix of two or more characters.
 const UPSTREAM = ['set-upstream-to', 'set-upstream', 'unset-upstream', 'track']
-const setsUpstream = (w: Word) => {
+const longOf = (w: Word, names: string[]) => {
   const long = /^--([\w-]+)(?:=|$)/.exec(w.text)
-  return long ? long[1].length > 1 && UPSTREAM.some(o => o.startsWith(long[1])) : /^-[A-Za-z]*[ut][A-Za-z]*$/.test(w.text)
+  return !!long && long[1].length > 1 && names.some(o => o.startsWith(long[1]))
 }
+const setsUpstream = (w: Word) => (w.text.startsWith('--') ? longOf(w, UPSTREAM) : /^-[A-Za-z]*[ut][A-Za-z]*$/.test(w.text))
 const positional = (rest: Word[], valued: RegExp) => rest.filter((w, i) => !w.text.startsWith('-') && !valued.test(rest[i - 1]?.text ?? ''))
 const moves = (sub: string, rest: Word[]) =>
   (sub === 'symbolic-ref' && rest.filter(w => !w.text.startsWith('-')).length > 1) ||
   // `git rebase <upstream> <branch>` and `git rebase --root <branch>` check out the branch first.
-  (sub === 'rebase' && (rest.some(w => /^--(?:continue|skip|abort)$/.test(w.text)) ||
-    positional(rest, /^(?:--onto|--strategy|--strategy-option|--exec|-[sXx])$/).length > (rest.some(w => w.text === '--root') ? 0 : 1))) ||
+  (sub === 'rebase' && (rest.some(w => longOf(w, ['continue', 'skip', 'abort'])) ||
+    positional(rest, /^(?:--onto|--strategy|--strategy-option|--exec|-[sXx])$/).length > (rest.some(w => longOf(w, ['root'])) ? 0 : 1))) ||
   (/^(?:fetch|pull)$/.test(sub) && rest.some(setsUpstream))
 
 // The commands known to leave the branch, its config, and the directory as
