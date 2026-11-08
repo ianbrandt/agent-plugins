@@ -1086,6 +1086,42 @@ test('a git alias set in the environment or an included file is held as unread, 
   for (const cmd of ['git lg', 'git pr:x 3', 'git citool', 'HOME=/repo/h git status']) expect((await verdict($, cmd)).decision, cmd).toBe('allow')
 })
 
+// git 2.56.0 force-pushed `git pussh --force origin main` with each held value, and with each
+// allowed one printed a suggestion and ran nothing.
+test('a subcommand with no alias is held where help.autocorrect may run it as the command it is closest to', async ($: any, on: any) => {
+  const config: Record<string, string> = { 'session-skills.originVisibility': 'private', 'session-skills.holdPublicPush': 'false' }
+  on('tool.check', () => ({ decision: 'allow' }))
+  world(on, line => {
+    const url = /^remote get-url (?:--push --all )?(\S+)$/.exec(line)
+    if (url) return url[1] === 'origin' ? 'https://h/a/b.git' : 2
+    if (line === 'remote') return 'origin'
+    if (line === 'branch --show-current') return 'main'
+    if (line === 'ls-files -s :/') return ''
+    const key = /^config (?:--default= )?--get (.*)$/s.exec(line)?.[1]
+    if (key) return config[key] ?? (line.includes('--default=') ? '' : 1)
+  })
+  const cmd = 'git pussh --force origin main'
+  for (const value of [undefined, '0', 'false', 'off', 'show', 'never', 'prompt']) {
+    if (value === undefined) delete config['help.autocorrect']
+    else config['help.autocorrect'] = value
+    expect((await verdict($, cmd)).decision, value).toBe('allow')
+  }
+  for (const value of ['1', 'true', 'immediate', '-1', '20', '0x0']) {
+    config['help.autocorrect'] = value
+    const held = await verdict($, cmd)
+    expect(held.decision, value).toBe('ask')
+    expect(held.reason, value).toContain('a git alias that could not be read')
+  }
+  expect((await verdict($, 'git -c help.autocorrect=0 pussh --force origin main')).decision).toBe('allow')
+  config['alias.pussh.command'] = 'log -1'
+  expect((await verdict($, 'git pussh')).decision).toBe('allow')
+  delete config['alias.pussh.command']
+  delete config['help.autocorrect']
+  for (const c of ['git -c help.autocorrect=1 pussh', 'git -c Help.AutoCorrect pussh', 'git -c help.autocorrect="$v" pussh']) {
+    expect((await verdict($, c)).decision, c).toBe('ask')
+  }
+})
+
 const hostWrite = (cmd: string) => hostWrites(cmd)[0] ?? null
 test('a host write from gh or glab is read from the command, with its directory and whether it opens a PR', () => {
   expect(hostWrite('gh pr create --title x --body-file f')).toEqual({ what: 'gh pr create', dir: undefined, prCreate: true, otherRepo: false, pushes: true })

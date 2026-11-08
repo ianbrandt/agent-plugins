@@ -2,7 +2,7 @@
 // run the git work of both skills, and the tool a worktree session calls to edit
 // a file that is only in the primary checkout.
 import type { Register } from 'claude-code'
-import { configWrites, type Dir, expand, type HostWrite, hostWrites, pickBase, type Push, pushTargets, refLine, visibility, worktreeName } from './checkouts'
+import { configWrites, type Dir, expand, type HostWrite, hostWrites, pickBase, type Push, pushTargets, refLine, visibility, type Word, worktreeName } from './checkouts'
 import { splice } from './splice'
 
 const NONE = { type: 'object', properties: {} } as const
@@ -615,12 +615,27 @@ async function hostHold($: any, w: HostWrite): Promise<string> {
   return push && `${write}, and it may push the branch: ${push}`
 }
 
+// The help.autocorrect values with which git 2.56.0 runs nothing for a subcommand
+// it does not know. With `prompt` it asks at the terminal, which only the user can answer.
+const SUGGESTS = new Set(['', '0', 'false', 'no', 'off', 'show', 'never', 'prompt'])
+
+// Whether git may run a subcommand it does not know as the one closest to it,
+// from the last help.autocorrect given with -c, else from config. A value that
+// cannot be read, or one git refuses, is held.
+async function autocorrects($: any, dir: string, configs: Word[]): Promise<boolean> {
+  const set = configs.filter(w => /^help\.autocorrect(?:=|$)/is.test(w.text)).at(-1)
+  // A -c key with no `=` sets the key to true.
+  const v = set ? (set.literal ? (set.text.includes('=') ? set.text.slice(set.text.indexOf('=') + 1) : 'true') : null) : await configValue($, dir, 'help.autocorrect').catch(() => null)
+  return v === null || !SUGGESTS.has(v.trim().toLowerCase())
+}
+
 // Each push in a command, with a git alias read from config in the directory it
 // runs in, as `alias.<name>` and git 2.54's `alias.<name>.command`, and each
 // expansion checked in its place with the -c values given with the alias. The
 // gh and glab writes in each expansion are added to `hosts`. A subcommand with
-// no alias is not a push, and an alias that cannot be read is held as a push
-// and as a host write. A command that sends gh to another repo does so for each expansion.
+// no alias is not a push unless help.autocorrect may run it as the command it is
+// closest to, and it and an alias that cannot be read are held as a push and as
+// a host write. A command that sends gh to another repo does so for each expansion.
 async function pushesIn($: any, pushes: Push[], hosts: HostWrite[], depth = 0): Promise<Push[]> {
   const found: Push[] = []
   for (const p of pushes) {
@@ -639,9 +654,11 @@ async function pushesIn($: any, pushes: Push[], hosts: HostWrite[], depth = 0): 
     }
     // A name such as `pr:m` can only be read in the subsection form: git refuses `alias.pr:m` as a key.
     const keys = /^[a-z][a-z0-9-]*$/i.test(p.alias.split('.').at(-1)!) ? [`alias.${p.alias}`] : []
+    let named = false
     for (const key of [...keys, `alias.${p.alias}.command`]) {
       const v = await configValue($, dir, key).catch(() => null)
       if (v === null) unread()
+      if (v !== '') named = true
       if (!v) continue
       const text = expand(v, p.rest ?? '')
       for (const w of hostWrites(text, 'Bash', p.dir, p.configs)) hosts.push({ ...w, otherRepo: w.otherRepo || !!p.otherRepo, staged: w.staged || p.staged })
@@ -651,6 +668,7 @@ async function pushesIn($: any, pushes: Push[], hosts: HostWrite[], depth = 0): 
         found.push({ ...e, force: e.force || p.force, ...(p.remote === null && { remote: null }), staged: e.staged || p.staged })
       }
     }
+    if (!named && (await autocorrects($, dir, p.configs ?? []))) unread()
   }
   return found
 }
