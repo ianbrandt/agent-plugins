@@ -858,7 +858,8 @@ const unique = <T>(found: T[]) => {
   return found.filter(w => !seen.has(JSON.stringify(w)) && !!seen.add(JSON.stringify(w)))
 }
 
-// git's built-in commands. Any other subcommand may be an alias, which the
+// git's built-in commands, as `git --list-cmds=builtins` prints them in git 2.56.0, but push and
+// send-pack, which are read as pushes. Any other subcommand may be an alias, which the
 // hook reads from config. git-gui's `gui` and `citool`, `instaweb`, and
 // `send-email` are left out: git runs an alias of that name where the program
 // is not installed.
@@ -870,7 +871,11 @@ interpret-trailers last-modified log ls-files ls-remote ls-tree mailinfo mailspl
 merge-tree mergetool mktag mktree multi-pack-index mv name-rev notes pack-objects pack-refs prune prune-packed pull range-diff read-tree
 rebase reflog refs remote repack replace replay repo request-pull rerere reset restore rev-list rev-parse revert rm
 shortlog show show-branch show-ref sparse-checkout stage stash status stripspace submodule switch symbolic-ref tag unpack-objects
-update-index update-ref var verify-commit verify-pack verify-tag version whatchanged worktree write-tree`.split(/\s+/))
+update-index update-ref var verify-commit verify-pack verify-tag version whatchanged worktree write-tree
+checkout--worker credential-cache credential-cache--daemon credential-store diff-pairs format-rev fsck-objects fsmonitor--daemon
+history hook index-pack merge-index merge-ours merge-recursive merge-recursive-ours merge-recursive-theirs merge-subtree
+pack-redundant patch-id pickaxe receive-pack remote-ext remote-fd show-index submodule--helper unpack-file update-server-info
+upload-archive upload-archive--writer upload-pack url-parse`.split(/\s+/))
 
 // `remote` is the remote given in the push: undefined where none is given, and
 // null where it cannot be read from the command. `submodules` is set where the

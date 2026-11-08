@@ -2361,3 +2361,9 @@ test('the PR step of land-and-wrap, as written, is asked about, not refused', as
   expect((await verdict($, 'gh pr create --base "$DEFAULT" --head "$BRANCH" --title "$TITLE" --body-file "$F"')).decision).toBe('ask')
   expect((await verdict($, 'gh pr create --head $BRANCH --fill')).decision).toBe('deny')
 })
+
+test('git hook and git\'s other built-in commands are not read as aliases', () => {
+  for (const cmd of ['git hook list pre-push', `GIT_CONFIG_PARAMETERS="'a.b'='c'" git hook run --to-stdin=r pre-push -- o https://h/a.git`, 'git history reword HEAD', 'git credential-store get']) {
+    expect(pushTargets(cmd), cmd).toEqual([])
+  }
+})
