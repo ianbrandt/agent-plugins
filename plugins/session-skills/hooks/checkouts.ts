@@ -1276,7 +1276,8 @@ export function pushTargets(cmd: string, shell = 'Bash', outer?: Dir, inherited:
       const aliases = configAliases(configs)
       // A mirror set with -c to a value git reads as false does not force the push.
       const configForce = envConfig || configs.some(w => !w.literal || /^remote\..*\.(?:push=\+|mirror(?:$|=(?!(?:false|no|off|0*)$)))/is.test(w.text))
-      const moved = envConfig || configs.some(w => !w.literal || TARGET_KEYS.test(w.text))
+      // xargs adds its input to the arguments, which may name the remote.
+      const moved = envConfig || words.slice(0, k).some(w => /^(?:.*[\/\\])?xargs(?:\.exe)?$/i.test(w.text)) || configs.some(w => !w.literal || TARGET_KEYS.test(w.text))
       // Recursion into submodules is set by the last -c for either key, read as git reads its value.
       // An alias may be set in the environment or in a file included with -c, which the hook does not read.
       const hidden = envConfig || configs.some(w => /^include(?:if)?\./i.test(w.text))

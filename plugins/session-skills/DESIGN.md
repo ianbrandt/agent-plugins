@@ -87,7 +87,9 @@ is held as a host write too. An alias is not read where the command sets config 
 `GIT_CONFIG_COUNT` or `HOME`, or includes a file with `-c include.path`, so it is held as one that
 cannot be read. A name such as `pr:m` is read only as `alias.<name>.command`, since git refuses it
 as a key otherwise, and `gui`, `citool`, `instaweb`, and `send-email` are read as
-aliases, since git runs an alias of that name where the program is not installed. A force push (a unique prefix of `--force`, `--force-with-lease`, `--mirror`, `--delete`, or
+aliases, since git runs an alias of that name where the program is not installed. A push run
+through `xargs` is held as one whose remote cannot be read, since xargs adds its input to the
+push's arguments. A force push (a unique prefix of `--force`, `--force-with-lease`, `--mirror`, `--delete`, or
 `--prune`, `-f` or `-d` in a short-flag group, a refspec that starts with `+` or deletes with a
 leading `:`, a `+` refspec or a mirror set with `-c` or in the remote's config, or any config set in
 the environment) is put to the user whatever the holds, because it replaces commits a reviewer may have read, and it is never refused

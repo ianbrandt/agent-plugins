@@ -1576,6 +1576,16 @@ test('a read with git or push in its arguments is not a push, and a push after i
   expect(pushTargets('sudo -u git -g staff git push -f').some(p => p.force)).toBe(true)
 })
 
+// Live, `echo pub | xargs git push` pushed to `pub`: xargs adds its input to the
+// command's arguments, so the remote cannot be read from the command.
+test('a push run through xargs has a remote that cannot be read', () => {
+  for (const cmd of ['echo pub | xargs git push', 'xargs -0 git push origin', 'xargs -I{} git push {}', 'sudo xargs git subtree push -P lib', 'xargs git -c alias.p=push p']) {
+    expect(pushTarget(cmd)?.remote, cmd).toBeNull()
+  }
+  expect(pushTarget('xargs git p')).toMatchObject({ alias: 'p', remote: null })
+  expect(pushTarget('echo xargs && git push origin')?.remote).toBe('origin')
+})
+
 // A push with no remote is read against the branch config as it is when the
 // hook runs. In round five `gh pr checkout` got past a list of commands that
 // move the branch, as aliases and rebases had in earlier rounds.
