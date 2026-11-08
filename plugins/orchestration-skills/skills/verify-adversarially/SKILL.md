@@ -50,6 +50,10 @@ A code trace produces a plausible story but no result, so run a probe.
 
 - Write a temporary test against the real code wherever it is feasible, and run it.
 - Probe against compiled classes, not against the diff.
+- **Stub `git`, `gh`, and `glab` on the PATH before the first real-shell probe of a command
+  reader.** A probe that runs the command the reader screens runs it for real. One verify pass ran
+  the real `gh pr merge 3` before its `gh` stub existed, and it merged nothing only because the
+  scratch directory had no remote. A stub that prints its arguments and working directory is enough.
 - **Report a refuted probe as refuted, not dropped.** A hypothesis you raised and silently stopped
   mentioning reads to everyone downstream as a hypothesis you confirmed. The refutation is a finding.
 
