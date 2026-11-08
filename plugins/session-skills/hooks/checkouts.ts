@@ -1132,7 +1132,18 @@ const moves = (sub: string, rest: Word[]) =>
 // the hold asks. Each git form was probed with git 2.56.0.
 const SAFE_GIT = new Set('add blame cherry-pick commit describe diff fetch grep log ls-files merge merge-base mv pull rebase revert rev-list rev-parse rm shortlog show stash status symbolic-ref tag'.split(' '))
 const READS = /^(?::|\[\[?|true|test|exit|echo|printf|cat|head|tail|tee|grep|wc|ls|pwd|write-output|write-host|get-content|get-location|get-childitem|select-object)$/i
-const RUNNERS = /^(?:(?:\.[\\/])?(?:gradlew(?:\.bat)?|mvnw|test\.sh)|gradle|mvn|pytest|(?:npm|pnpm|yarn|bun|cargo|go) test|(?:npm|pnpm|yarn|bun) run (?:build|test|lint)|claude plugin test)(?: |$)/i
+const RUNNERS = /^(?:(?:\.[\\/])?test\.sh|pytest|(?:npm|pnpm|yarn|bun|cargo|go) test|(?:npm|pnpm|yarn|bun) run (?:build|test|lint)|claude plugin test)(?: |$)/i
+// A Gradle or Maven run is a runner only where every task or phase tests or
+// builds: a goal such as `gitflow:feature-start` switches the branch. Gradle
+// may prefix a task with a project path; a Maven `plugin:goal` asks.
+const BUILD_TOOLS = /^(?:(?:\.[\\/])?(?:gradlew(?:\.bat)?|mvnw)|gradle|mvn)$/i
+const GRADLE_TASK = /^(?:[\w-]*:)*(?:clean|test|check|build)$/
+const MAVEN_PHASE = /^(?:clean|validate|compile|test-compile|test|package|verify)$/
+// Options of either tool with a separate value, which is not a task.
+const BUILD_VALUED = /^(?:-[pxDPfT]|-pl|-rf|--(?:tests|project-dir|exclude-task|projects|file|threads|activate-profiles|resume-from))$/
+const buildRun = ([tool, ...args]: Word[]) =>
+  BUILD_TOOLS.test(tool.text) && args.every(w => w.literal) &&
+  positional(args, BUILD_VALUED).every(w => (/gradle/i.test(tool.text) ? GRADLE_TASK : MAVEN_PHASE).test(w.text))
 // gh and glab run a built-in command before an alias of the same name (gh 2.103.3, glab 1.128.0).
 const HOST_READS = /^(?:gh (?:pr (?:view|list|status|checks|diff)|run (?:list|view|watch)|repo view)|glab (?:mr (?:view|list|diff)|ci (?:status|view|list)|repo view))$/
 // set's flags that only change how errors and tracing are handled; -k would read an assignment anywhere as one for the command.
@@ -1186,7 +1197,7 @@ function harmless(words: Word[], ps: boolean): boolean {
   if ((ps ? /^(?:cd|chdir|sl|set-location|pushd|push-location)$/i : /^(?:cd|pushd)$/).test(first.text)) {
     return args.length > 0 && args.every(w => w.literal && w.text !== '-' && !UP.test(w.text))
   }
-  return READS.test(first.text) || RUNNERS.test(words.map(w => w.text).join(' '))
+  return READS.test(first.text) || buildRun(words) || RUNNERS.test(words.map(w => w.text).join(' '))
 }
 
 // Whether a git command in a command writes the index, so that `git add -A`

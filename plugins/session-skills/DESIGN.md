@@ -181,8 +181,10 @@ and `git push | tee push.log`, since `tee` is on the known-safe list. The known-
 or `pushd` to a literal path with no `..`, reads such as `echo`, `cat`, `tee`, `[[`, `exit`, and
 `Select-Object`, a gh or glab read such as `gh pr view` or `glab mr view`, a command that only sets
 variables, `set` with `-e`, `-u`, `-x`, or `-o pipefail`, a PowerShell `if` and a condition such as
-`$LASTEXITCODE -eq 0`, a test runner such as `./gradlew`, `npm test`, `npm run build`, or
-`claude plugin test`, and any of these after `timeout`. Each git form was run with git 2.56.0 and
+`$LASTEXITCODE -eq 0`, a test runner such as `npm test`, `npm run build`, or
+`claude plugin test`, a Gradle run of only `clean`, `test`, `check`, or `build`, a Maven run of
+only lifecycle phases up to `verify`, and any of these after `timeout`. A Maven goal such as
+`gitflow:feature-start` can switch the branch, so the push after one is asked about. Each git form was run with git 2.56.0 and
 left the branch, its config, and the directory as they were, except that under
 `push.autoSetupRemote` a first push sets its branch's upstream to the remote it pushed to, which is
 the remote a later push reads. gh and glab run a built-in command before an alias of the same

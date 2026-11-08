@@ -1619,6 +1619,21 @@ test('a push with no remote goes unasked after a stash, a tag, a read, a timeout
     'git push --receive-pack=x && git push', 'set -k; git push', 'timeout 60 git checkout other && git push', 'timeout 60 sudo git status && git push',
     'timeout "$T" ./gradlew check && git push', 'npm run deploy && git push', 'gh pr checkout 3 && git push', 'gh api -X POST /x && git push',
   ]) expect(pushTargets(cmd).at(-1)?.remote, cmd).toBeNull()
+})
+
+// A Gradle task or Maven goal can switch the branch, as the gitflow plugin's
+// feature-start does, so only tasks that test and build are read as runners.
+test('a push with no remote goes unasked after a Gradle or Maven run of tests and builds only', () => {
+  for (const cmd of [
+    './gradlew clean :app:test --tests Foo -x lint && git push', 'gradle -p sub build --offline && git push',
+    'mvn -B -q verify && git push', './mvnw clean test -pl core -DskipITs && git push', 'mvn -P ci package && git push', './gradlew && git push',
+  ]) expect(pushTargets(cmd).at(-1)?.remote, cmd).toBeUndefined()
+  expect(pushTargets('.\\gradlew.bat check; git push', 'PowerShell')[0]?.remote).toBeUndefined()
+  expect(pushTargets('.\\gradlew.bat publish; git push', 'PowerShell')[0]?.remote).toBeNull()
+  for (const cmd of [
+    'mvn -B gitflow:feature-start -DfeatureName=x && git push', 'mvn surefire:test && git push', 'mvn deploy && git push',
+    './gradlew publish && git push', './gradlew test gitPush && git push', './gradlew test -Dx="$X" && git push',
+  ]) expect(pushTargets(cmd).at(-1)?.remote, cmd).toBeNull()
   for (const cmd of [
     'git commit -m x; if ($LASTEXITCODE -eq 0) { git push }', 'git push 2>&1 | Select-Object -Last 5', 'if ($?) { git push } else { Write-Output no }',
   ]) expect(pushTargets(cmd, 'PowerShell')[0]?.remote, cmd).toBeUndefined()
