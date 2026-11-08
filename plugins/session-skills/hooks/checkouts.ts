@@ -1038,14 +1038,14 @@ export function configWrites(cmd: string, shell = 'Bash', outer?: Dir, inherited
 // push reads its remote from, or that branch's upstream: a symbolic-ref that
 // sets HEAD, a rebase given a branch, or one that continues, skips, or aborts,
 // since HEAD is detached while the hook reads config and is back on the branch
-// when the push runs, or a fetch or pull that sets or unsets an upstream. A long
-// option is read as git takes it, by any prefix of two or more characters.
-const UPSTREAM = ['set-upstream-to', 'set-upstream', 'unset-upstream', 'track']
+// when the push runs, or a fetch or pull with `--set-upstream`, which has no
+// short form: their -t is --tags and -u is --update-head-ok. A long option is
+// read as git takes it, by any prefix of two or more characters.
 const longOf = (w: Word, names: string[]) => {
   const long = /^--([\w-]+)(?:=|$)/.exec(w.text)
   return !!long && long[1].length > 1 && names.some(o => o.startsWith(long[1]))
 }
-const setsUpstream = (w: Word) => (w.text.startsWith('--') ? longOf(w, UPSTREAM) : /^-[A-Za-z]*[ut][A-Za-z]*$/.test(w.text))
+const setsUpstream = (w: Word) => longOf(w, ['set-upstream'])
 const positional = (rest: Word[], valued: RegExp) => rest.filter((w, i) => !w.text.startsWith('-') && !valued.test(rest[i - 1]?.text ?? ''))
 const moves = (sub: string, rest: Word[]) =>
   (sub === 'symbolic-ref' && rest.filter(w => !w.text.startsWith('-')).length > 1) ||

@@ -1455,7 +1455,10 @@ test('a push with no remote goes unasked only after commands known to leave its 
     'git -C /repo merge --ff-only claude/r1-a && git -C /repo push', './gradlew check && git push', 'claude plugin test && git push',
     'npm test && git push', 'cd /repo/sub && git push', 'echo done && git push', 'X=1; git push', '(cd /repo && git status) && git push',
     'if git diff --quiet; then :; else git push; fi', `git commit -m "$(cat <<'EOF'\nSubject\n\nBody.\nEOF\n)" && git push`,
+    // For fetch and pull, -t is --tags and -u is --update-head-ok.
+    'git fetch -t origin && git push', 'git fetch -u origin main && git push', 'git pull -t && git push', 'git fetch --tags origin && git push',
   ]) expect(pushTargets(cmd).at(-1)?.remote, cmd).toBeUndefined()
+  for (const cmd of ['git pull --set-up pub main && git push', 'git fetch --set-upstream=x pub main && git push']) expect(pushTargets(cmd).at(-1)?.remote, cmd).toBeNull()
   expect(pushTargets('git add -A; git commit -m x; Set-Location C:\\repo; Write-Output done; git push', 'PowerShell')[0]?.remote).toBeUndefined()
 })
 

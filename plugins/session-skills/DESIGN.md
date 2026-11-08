@@ -165,7 +165,7 @@ command that only sets variables, and a test runner such as `./gradlew`, `npm te
 `claude plugin test`. A git command on that list still makes the remote unread where it checks out
 a branch, as a `git rebase` given a branch with or without `--root` does, or one that continues,
 skips, or aborts, since HEAD is detached while the hook reads config and is back on the branch when
-the push runs. So does a `fetch` or `pull` that sets or unsets an upstream, and a `git rebase -x`
+the push runs. So does a `fetch` or `pull` with `--set-upstream`, and a `git rebase -x`
 that runs a command. Each of those options is read by any unique prefix, as git reads it. The push is asked about after any other command, such as
 `gh pr checkout`, a git alias, a variable set before git, or `npm install`. A list of commands that
 move the branch was tried first, and each review found commands missing from it, the last of them
