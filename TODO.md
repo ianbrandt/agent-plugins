@@ -38,9 +38,6 @@ Check it on the Windows machine, in a scratch directory, with no real remote inv
    unset GIT_CONFIG_PARAMETERS
    ```
 
-5. In a Claude Code CLI session under the managed settings, ask Claude to run
-   `echo $env:GIT_CONFIG_PARAMETERS` in PowerShell and `echo "$GIT_CONFIG_PARAMETERS"` in Bash after
-   setting the variable in a `settings.json` `env` entry, to see whether a value set for the
-   session reaches both tools.
-
-Record the git version and each result in R559.1 on the Mac, then delete this file.
+Bring the git version and each result back to the Mac, then delete this file. Whether a variable
+that session-skills sets reaches the PowerShell and Bash tools under the managed settings can only
+be checked once the hook is built, so that check will come with the build.
