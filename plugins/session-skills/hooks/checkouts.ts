@@ -879,7 +879,10 @@ update-index update-ref var verify-commit verify-pack verify-tag version whatcha
 // `staged` is set where another command in the line may have staged a gitlink.
 // `unread` is set on an alias that may be set where the hook does not read it.
 // `switched` is set where another command in the line may have moved the branch.
-export type Push = { dir: Dir; dryRun: boolean; force: boolean; remote?: string | null; submodules?: boolean; alias?: string; rest?: string; configs?: Word[]; staged?: boolean; otherRepo?: boolean; unread?: boolean; switched?: boolean }
+// `bypass` is set where the push's own git is given the bypass (`isBypass`), and
+// `via` names the alias it was given in. `retry` is the push's git command after
+// `git`, with no -C, --git-dir, or bypass, for the instruction in a refusal.
+export type Push = { dir: Dir; dryRun: boolean; force: boolean; remote?: string | null; submodules?: boolean; alias?: string; rest?: string; configs?: Word[]; staged?: boolean; otherRepo?: boolean; unread?: boolean; switched?: boolean; noVerify?: boolean; bypass?: boolean; via?: string; retry?: string }
 
 // The long options of a command, the ones that take a value, and its short
 // options that take one.
@@ -910,10 +913,11 @@ function longOption(given: string, o: Options): { option: string; negated: boole
 // d in a short-flag group, or a refspec that starts with + or deletes with a
 // leading colon forces it. An option that takes a value takes the rest of its
 // group, or the next word. The first word that is not an option is the remote,
-// else the value of --repo.
-function pushFlags(args: Word[], o = PUSH): { dryRun: boolean; force: boolean; submodules?: boolean; remote?: string | null } {
+// else the value of --repo. The last of --no-verify and --verify is the one git uses.
+function pushFlags(args: Word[], o = PUSH): { dryRun: boolean; force: boolean; submodules?: boolean; remote?: string | null; noVerify?: boolean } {
   let dryRun = false
   let force = false
+  let noVerify = false
   let submodules: boolean | undefined
   let options = true
   let named: Word | undefined
@@ -933,6 +937,7 @@ function pushFlags(args: Word[], o = PUSH): { dryRun: boolean; force: boolean; s
       } else if (o.valued.test(option) && !negated) value()
       else if (/^(?:force|force-with-lease|mirror|delete|prune)$/.test(option) && !negated) force = true
       else if (option === 'dry-run' || option === 'help') dryRun = !negated
+      else if (option === 'verify' || option === 'no-verify') noVerify = (option === 'no-verify') !== negated
     } else if (options && /^-[^-]/.test(a)) {
       for (let x = 1; x < a.length; x++) {
         if (o.short.includes(a[x])) {
@@ -949,7 +954,44 @@ function pushFlags(args: Word[], o = PUSH): { dryRun: boolean; force: boolean; s
     }
   }
   const remote = named ?? repo
-  return { dryRun, force, ...(submodules !== undefined && { submodules }), ...(remote && { remote: remote.literal ? remote.text : null }) }
+  return { dryRun, force, ...(submodules !== undefined && { submodules }), ...(remote && { remote: remote.literal ? remote.text : null }), ...(noVerify && { noVerify }) }
+}
+
+// The bypass the pre-push hook is turned off with for one git process. git reads
+// the section and key in any case, and the hook's name as written.
+const isBypass = (w: Word) => w.literal && /^hook\.sessionskills\.enabled=(?:false|no|off|0*)$/i.test(w.text) && w.text.split('.')[1] === 'sessionskills'
+
+// Words as they would be typed again, each quoted only where the shell needs it.
+const typed = (words: Word[]) => words.map(w => (!w.literal ? `"${w.text}"` : /^[\w./:@%+=,^-]+$/.test(w.text) ? w.text : `'${w.text.replace(/'/g, `'\\''`)}'`)).join(' ')
+
+// The mark a retry has in place of its directory, which the gate writes in.
+export const DIR_MARK = '\0'
+// An assignment as it would be typed again, with only its value quoted.
+const typedAssignment = (w: Word) => `${w.text.slice(0, w.text.indexOf('=') + 1)}${typed([valueOf(w)])}`
+
+// The git command at k as it would be typed again with the bypass: the
+// variables assigned before it but GIT_DIR, then `git -C <DIR_MARK>` and the
+// bypass, with no other -C or --git-dir, since the directory is given.
+function retryOf(words: Word[], k: number, j: number): string {
+  const assigned = words.slice(0, k).filter(w => ASSIGNMENT.test(w.text) && !/^GIT_DIR=/.test(w.text)).map(typedAssignment)
+  const kept: Word[] = []
+  for (let x = k + 1; x < j; x++) {
+    const a = words[x].text
+    if (a === '-C' || a === '--git-dir' || (a === '-c' && words[x + 1] && isBypass(words[x + 1]))) x++
+    else if (!a.startsWith('--git-dir=')) kept.push(words[x])
+  }
+  return [...assigned, `git -C ${DIR_MARK} -c hook.sessionskills.enabled=false`, typed([...kept, ...words.slice(j)])].join(' ')
+}
+
+// Whether a directory in the command is held in a variable: a cd's target, a
+// -C, --chdir, or --git-dir value, or GIT_DIR. Such a directory is read as the
+// session's repo, so a retry printed for it gives `<dir>` instead.
+export function vagueDir(cmd: string, shell = 'Bash'): boolean {
+  const ps = isPowerShell(shell)
+  const cd = ps ? /^(?:cd|chdir|sl|set-location|pushd|push-location)$/i : /^(?:cd|pushd)$/
+  return commands(cmd, shell, undefined).some(({ words }) =>
+    (cd.test(words[0]?.text ?? '') && words.slice(1).some(w => !w.literal)) ||
+    words.some((w, x) => (!w.literal && /^(?:--git-dir=|--chdir=|GIT_DIR=)/.test(w.text)) || (/^(?:-C|--chdir|--git-dir)$/.test(w.text) && words[x + 1] && !words[x + 1].literal)))
 }
 
 // zsh runs `=git` as the git on the PATH, `git-push` is git's own push, and
@@ -982,7 +1024,7 @@ const joined = (words: Word[]) => words.map(w => (w.literal ? `'${w.text.replace
 // single push makes its remote unknown, and a write to one or to a hold is put
 // to the user.
 const TARGET_KEYS = /^(?:remotes?|url|branch|include|includeif|lfs)(?:\.|$)/i
-const HELD_KEYS = /^(?:(?:remotes?|url|branch|include|includeif|lfs|alias|session-skills)(?:\.|$)|push\.recursesubmodules$|submodule\.recurse$)/i
+const HELD_KEYS = /^(?:(?:remotes?|url|branch|include|includeif|lfs|alias|session-skills|hook)(?:\.|$)|push\.recursesubmodules$|submodule\.recurse$)/i
 // Variables that move the config git reads, and those that send gh or glab to another repo.
 const CONFIG_VARS = /^(?:GIT_CONFIG\w*|HOME|XDG_CONFIG_HOME|GIT_COMMON_DIR)$/i
 const REPO_VARS = /^(?:GH_REPO|GITLAB_REPO|GIT_DIR)$/i
@@ -1217,6 +1259,86 @@ export function configWrites(cmd: string, shell = 'Bash', outer?: Dir, inherited
   return unique(found)
 }
 
+// Each git command given the bypass whose subcommand is not a push the lexer
+// reads, such as an alias or `git town`, which may push where the command does not show.
+export function bypassMisuse(cmd: string, shell = 'Bash', outer?: Dir, depth = 0): string[] {
+  nested(depth)
+  const found: string[] = []
+  for (const { words: all } of commands(cmd, shell, outer)) {
+    for (const r of later(all)) found.push(...bypassMisuse(r.text, 'Bash', null, depth + 1))
+    for (const { words, k } of gitCommands(all)) {
+      const { j, configs } = gitOptions(words, k)
+      if (!configs.some(isBypass)) continue
+      const sub = words[j]
+      const pushes = !!sub?.literal && (/^(?:push|send-pack|http-push)$/.test(sub.text) || (/^(?:subtree|lfs)$/.test(sub.text) && words.slice(j + 1).some(w => w.text === 'push')))
+      if (!pushes) found.push(sub ? `git ${sub.text}` : 'git')
+    }
+  }
+  return unique(found)
+}
+
+// A hook key, read anywhere in a command's text, so one in eval text or quotes counts.
+const HOOK_KEY = /(?<![\w-])hook\.[^\s=]+\.(?:enabled|command|event)(?![\w-])/gi
+// The variables the session's hook is added in, and PowerShell's commands that remove an Env: path.
+const HOOK_VARS = /^GIT_CONFIG_(?:PARAMETERS|COUNT)$/i
+const ENV_REMOVERS = /^(?:remove-item|clear-item|ri|rm|rmdir|rd|del|erase|cli|set-item|new-item|set-content|si|ni|sc)$/i
+// Whether an Env: name, which may have * or ? in it, matches either variable.
+const envHits = (name: string) => {
+  const re = new RegExp(`^${name.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')}$`, 'i')
+  return ['GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUNT'].some(v => re.test(v))
+}
+// Whether a command unsets or clears either variable: `unset`, a setter's
+// argument such as `export -n` or `env -u`, `env -i`, or a PowerShell cmdlet on an Env: path.
+function clearsHookVars(words: Word[], ps: boolean): boolean {
+  if (ps) return ENV_REMOVERS.test(words[0]?.text ?? '') && words.some(w => /^env:/i.test(w.text) && envHits(w.text.replace(/^env:[\\/]?/i, '')))
+  if (words[0]?.text === 'unset') return words.slice(1).some(w => HOOK_VARS.test(w.text))
+  const s = words.findIndex(w => SETTERS.test(w.text))
+  if (s < 0) return false
+  const env = /^(?:.*\/)?env$/.test(words[s].text)
+  return words.slice(s + 1).some(w => HOOK_VARS.test(w.text) || (env && (HOOK_VARS.test(w.text.replace(/^(?:-u|--unset=)/, '')) || w.text === '-i' || w.text === '-' || longOf(w, ['ignore-environment']))))
+}
+
+// Each change in a command that can turn the session's pre-push hook off or
+// replace it: a hook key, and a write, unset, or clear of GIT_CONFIG_PARAMETERS
+// or GIT_CONFIG_COUNT in any command, read as words, so a mention in a commit
+// message is not one. A command run later and an alias set with -c are read too.
+export function hookWrites(cmd: string, shell = 'Bash', outer?: Dir, depth = 0): string[] {
+  nested(depth)
+  const found: string[] = [...(cmd.match(HOOK_KEY) ?? [])]
+  const cmds = commands(cmd, shell, outer)
+  const ps = isPowerShell(shell)
+  if (sets(cmds, HOOK_VARS) || cmds.some(c => clearsHookVars(c.words, ps))) found.push('GIT_CONFIG_PARAMETERS or GIT_CONFIG_COUNT')
+  for (const { words: all } of cmds) {
+    for (const r of later(all)) found.push(...hookWrites(r.text, 'Bash', null, depth + 1))
+    for (const { words, k } of gitCommands(all)) {
+      const { j, configs } = gitOptions(words, k)
+      const alias = words[j]?.literal ? configAliases(configs).get(words[j].text.toLowerCase()) : undefined
+      if (typeof alias === 'string') found.push(...hookWrites(expand(alias, joined(words.slice(j + 1))), 'Bash', null, depth + 1))
+    }
+  }
+  return unique(found)
+}
+
+// Whether a URL is a path on this machine or points to a loopback host, as the
+// pre-push hook reads it (`here` in pre-push.sh). Without `://`, a colon before
+// any slash makes it scp-style, except a drive letter on Windows: elsewhere git
+// reads `C:/x` as host C.
+export function localUrl(url: string, windows: boolean): boolean {
+  if (url.startsWith('file://')) return true
+  const at = url.indexOf('://')
+  let host: string
+  if (at >= 0) host = url.slice(at + 3).split(/[/?#]/)[0]
+  else {
+    const colon = url.indexOf(':')
+    if (colon < 0) return true
+    host = url.slice(0, colon)
+    if (host.includes('/') || (windows && /^[A-Za-z]$/.test(host))) return true
+  }
+  host = host.slice(host.lastIndexOf('@') + 1)
+  host = host.startsWith('[') ? host.slice(1).split(']')[0] : host.split(':')[0]
+  return /^(?:localhost|127\.0\.0\.1|::1)$/i.test(host)
+}
+
 // Whether a git command from the list below still changes the branch a later
 // push reads its remote from, or that branch's upstream: a symbolic-ref that
 // sets HEAD, a rebase given a branch, or one that continues, skips, or aborts,
@@ -1405,7 +1527,7 @@ export function pushTargets(cmd: string, shell = 'Bash', outer?: Dir, inherited:
       const pushAt = rest.findIndex(w => w.text === 'push')
       const flags = (args: Word[], o?: Options) => {
         const f = pushFlags(args, o)
-        return { ...f, force: f.force || configForce, ...(f.submodules === undefined && recursion && { submodules: !!recurses }), ...((moved || (afterUnknown && f.remote === undefined)) && { remote: null }), ...(staged && { staged }), ...(afterUnknown && { switched: true }) }
+        return { ...f, force: f.force || configForce, ...(f.submodules === undefined && recursion && { submodules: !!recurses }), ...((moved || (afterUnknown && f.remote === undefined)) && { remote: null }), ...(staged && { staged }), ...(afterUnknown && { switched: true }), ...(own.some(isBypass) && { bypass: true }), retry: retryOf(words, k, j) }
       }
       const alias = sub === undefined ? undefined : aliases.get(sub.toLowerCase())
       if (sub !== undefined && !words[j].literal) found.push({ dir: null, dryRun: false, force: false, remote: null })
@@ -1415,7 +1537,7 @@ export function pushTargets(cmd: string, shell = 'Bash', outer?: Dir, inherited:
       else if ((sub === 'subtree' || sub === 'lfs') && pushAt >= 0) found.push({ dir, ...flags(rest.slice(pushAt + 1), sub === 'subtree' ? SUBTREE : PUSH) })
       else if (typeof alias === 'string') {
         for (const p of pushTargets(expand(alias, joined(rest)), 'Bash', dir, configs, depth + 1)) {
-          found.push({ ...p, force: p.force || configForce, ...((moved || (afterUnknown && p.remote === undefined)) && { remote: null }), ...(staged && { staged }), ...(otherRepo && p.alias && { otherRepo }), ...(hidden && p.alias && { unread: true }), ...(afterUnknown && { switched: true }) })
+          found.push({ ...p, force: p.force || configForce, ...((moved || (afterUnknown && p.remote === undefined)) && { remote: null }), ...(staged && { staged }), ...(otherRepo && p.alias && { otherRepo }), ...(hidden && p.alias && { unread: true }), ...(afterUnknown && { switched: true }), ...(p.bypass && !p.via && { via: sub }) })
         }
       } else if (alias === null || (sub !== undefined && unread(configs) && !BUILTIN.has(sub))) found.push({ dir, dryRun: false, force: configForce, remote: null, ...(staged && { staged }) })
       else if (sub && !BUILTIN.has(sub)) {
@@ -1438,7 +1560,8 @@ const PR_CREATE: Record<string, string> = { gh: 'pr', glab: 'mr' }
 // `pushes` is set on a PR or MR that may push the branch: gh pushes unless
 // --head is given, and glab unless --push=false is.
 // `unread` is set on a git alias the hook could not read, which may run one.
-export type HostWrite = { what: string; dir: Dir; prCreate: boolean; otherRepo: boolean; pushes: boolean; staged?: boolean; unread?: boolean }
+// `headUnread` is set on a PR whose --head is a quoted variable, which may be empty.
+export type HostWrite = { what: string; dir: Dir; prCreate: boolean; otherRepo: boolean; pushes: boolean; staged?: boolean; unread?: boolean; headUnread?: boolean }
 
 // The switches of `gh pr create` and `glab mr create`. Every other option takes
 // a value, so a value such as a body that starts with "-" is not read as one.
@@ -1453,9 +1576,16 @@ recover remove-source-branch signoff squash-before-merge web wip yes`.split(/\s+
 // whose value is not written out may be empty. An option missing from the
 // switches above is read as taking a value, so a --head after it is missed,
 // and the push is held.
-function prPushes(cli: string, args: Word[]): boolean {
+// The second value is set where the last --head is a quoted variable, which
+// may be empty: such a PR is asked about rather than refused.
+function prPushes(cli: string, args: Word[]): [boolean, boolean] {
   const [switches, short] = PR_SWITCHES[cli]
   const given = (w: Word | undefined) => !!w && w.literal && w.text !== ''
+  let vague = false
+  const read = (w: Word | undefined) => {
+    vague = !!w && !w.literal && w.quoted
+    return given(w)
+  }
   let head = false
   let push = true
   for (let i = 0; i < args.length; i++) {
@@ -1464,19 +1594,19 @@ function prPushes(cli: string, args: Word[]): boolean {
     const long = /^--([\w-]+)(?:=(.*))?$/s.exec(a)
     if (long) {
       const [, name, eq] = long
-      if (cli === 'gh' && name === 'head') head = given(eq !== undefined ? { ...args[i], text: eq } : args[i + 1])
+      if (cli === 'gh' && name === 'head') head = read(eq !== undefined ? { ...args[i], text: eq } : args[i + 1])
       if (cli === 'glab' && name === 'push') push = eq !== 'false'
       if (eq === undefined && !switches.has(name)) i++
     } else if (/^-[^-]/.test(a)) {
       for (let x = 1; x < a.length; x++) {
         if (short.includes(a[x])) continue
-        if (cli === 'gh' && a[x] === 'H') head = given(x + 1 < a.length ? { ...args[i], text: a.slice(x + 1) } : args[i + 1])
+        if (cli === 'gh' && a[x] === 'H') head = read(x + 1 < a.length ? { ...args[i], text: a.slice(x + 1) } : args[i + 1])
         if (x === a.length - 1) i++
         break
       }
     }
   }
-  return cli === 'gh' ? !head : push
+  return cli === 'gh' ? [!head, !head && vague] : [push, false]
 }
 
 // Every host write in a shell command, read in `shell`: what it is, the repo it
@@ -1568,7 +1698,10 @@ export function hostWrites(cmd: string, shell = 'Bash', outer?: Dir, inherited: 
       if (m !== 'GET' && m !== 'HEAD') what = `${cli} api ${m}`
     } else if (noun && verb && !LOCAL_NOUNS.has(noun) && !READ_VERBS.has(verb) && !(verb === 'clone' && (noun === 'repo' || noun === 'gist'))) what = `${cli} ${noun} ${verb}`
     const prCreate = !early && noun === PR_CREATE[cli] && (verb === 'create' || verb === 'new')
-    if (what) found.push({ what, dir: repoDir(at, words.slice(0, k)), prCreate, otherRepo, pushes: prCreate && prPushes(cli, args), ...(around[i].staged && { staged: true }) })
+    // `gh repo create --push` pushes to the repo it creates.
+    const repoPush = cli === 'gh' && noun === 'repo' && verb === 'create' && args.some(w => /^--push(?:=true)?$/.test(w.text))
+    const [prPush, headUnread] = prCreate ? prPushes(cli, args) : [false, false]
+    if (what) found.push({ what, dir: repoDir(at, words.slice(0, k)), prCreate, otherRepo, pushes: prPush || repoPush, ...(around[i].staged && { staged: true }), ...(headUnread && { headUnread }) })
   }
   return unique(found)
 }

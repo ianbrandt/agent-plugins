@@ -220,6 +220,11 @@ test('no request comes with a command that pushed nothing, a failed push, or a s
   expect(await bash($, 'git push')).toEqual([])
   w.result = { deny: 'no' }
   expect(await bash($, 'git push')).toEqual([])
+  // A command that ran on after the hook refused its push exits 0.
+  w.result = { result: { stdout: 'done\n', stderr: "session-skills: push refused by the session's pre-push hook: the remote is not known to be private.\n" } }
+  expect(await bash($, 'git push; echo done')).toEqual([])  // A pipe through tail can cut the hook's first line, and git's last line is left.
+  w.result = { result: { stdout: "To ask the user, run: git -C /r -c hook.sessionskills.enabled=false push origin b:b\nerror: failed to push some refs to 'https://h/a/b.git'\n", stderr: '' } }
+  expect(await bash($, 'git push origin b 2>&1 | tail -3')).toEqual([])
 })
 
 test('no prompt is submitted at the end of a turn that pushed', async ($: any, on: any) => {

@@ -2,9 +2,11 @@
 // hold, and the host-write hold against a faked git. The costly errors are a branch opened without commits held on the
 // local default branch, and an unmerged branch deleted by the prune.
 import { expect, test } from 'claude-code/testing'
-import { backstopConfig, cleanUrl, configWrites, hostWrites, pickBase, recorded, pushTargets, refLine, visibility, worktreeName } from './checkouts'
+import { backstopConfig, bypassMisuse, type Push, cleanUrl, configWrites, hookWrites, hostWrites, localUrl, pickBase, recorded, pushTargets, refLine, visibility, worktreeName } from './checkouts'
 
-const pushTarget = (cmd: string) => pushTargets(cmd)[0] ?? null
+// A push without the command its refusal gives, which tests of their own check.
+const plain = (ps: Push[]) => ps.map(({ retry: _, ...p }) => p)
+const pushTarget = (cmd: string) => plain(pushTargets(cmd))[0] ?? null
 // The directory of the first push, with a throw read as null, since the hook asks for either.
 const dir = (cmd: string, shell = 'Bash') => {
   try {
@@ -824,7 +826,7 @@ test('a long push option is read as git reads it, by a unique prefix and after -
   expect(pushTarget('git -c remote.origin.push=+HEAD:refs/heads/main push origin')?.force).toBe(true)
   expect(pushTarget('git push -h')?.dryRun).toBe(true)
   expect(pushTarget('git push --help')?.dryRun).toBe(true)
-  expect(pushTarget('git push --no-verify -u origin main')).toEqual({ dir: undefined, dryRun: false, force: false, remote: 'origin' })
+  expect(pushTarget('git push --no-verify -u origin main')).toEqual({ dir: undefined, dryRun: false, force: false, remote: 'origin', noVerify: true })
 })
 
 test('a PowerShell curly quote is read as a straight one', () => {
@@ -843,10 +845,10 @@ test('a command too long or deeply nested to read is put to the user, quickly', 
   }
 })
 
-test('a push with no session repo is put to the user', async ($: any, on: any) => {
+test('a push with no session repo is held', async ($: any, on: any) => {
   on('tool.check', () => ({ decision: 'allow' }))
   on('session.repo', () => ({ value: null }))
-  expect((await verdict($, 'git push -f origin main')).decision).toBe('ask')
+  expect((await verdict($, 'git push -f origin main')).decision).not.toBe('allow')
 })
 
 // The engine's own verdict beneath the plugin is an allow.
@@ -862,12 +864,12 @@ function pushWorld(on: any, config: Record<string, string>, upstream = false) {
   })
 }
 
-test('a push to a public origin, or of unknown visibility, is put to the user, in either shell', async ($: any, on: any) => {
+test('a push to a public origin, or of unknown visibility, is held, in either shell', async ($: any, on: any) => {
   const config: Record<string, string> = { originVisibility: 'public' }
   pushWorld(on, config)
   for (const tool of ['Bash', 'PowerShell']) {
     const held = await verdict($, 'git push origin main', tool)
-    expect(held.decision).toBe('ask')
+    expect(held.decision).not.toBe('allow')
     expect(held.reason).toContain('origin is public')
     expect(held.reason).toContain('git config session-skills.holdPublicPush false')
   }
@@ -914,7 +916,7 @@ test('the hold is read in the directory the push runs in, and a failed read hold
   expect((await verdict($, 'git push')).decision).toBe('allow')
   expect(new Set(dirs)).toEqual(new Set(['/repo']))
   const failed = await verdict($, 'cd /broken && git push')
-  expect(failed.decision).toBe('ask')
+  expect(failed.decision).not.toBe('allow')
   expect(failed.reason).toContain('could not be checked')
 })
 
@@ -982,11 +984,11 @@ test('a force push is told apart by --force*, a -f in a short-flag group, or a +
   }
 })
 
-test('a force push is put to the user whatever the holds, but a dry run is not', async ($: any, on: any) => {
+test('a force push is held whatever the holds, but a dry run is not', async ($: any, on: any) => {
   const config: Record<string, string> = { originVisibility: 'private' }
   pushWorld(on, config)
   const forced = await verdict($, 'git push --force-with-lease origin b')
-  expect(forced.decision).toBe('ask')
+  expect(forced.decision).not.toBe('allow')
   expect(forced.reason).toContain('Force push')
   expect(forced.reason).not.toContain('Push held')
   config.originVisibility = 'public'
@@ -997,7 +999,7 @@ test('a force push is put to the user whatever the holds, but a dry run is not',
 })
 
 test('every push in a command is read, each in its own directory', async ($: any, on: any) => {
-  expect(pushTargets('git push origin a && git -C /fork push --force; git push -n')).toEqual([
+  expect(plain(pushTargets('git push origin a && git -C /fork push --force; git push -n'))).toEqual([
     { dir: undefined, dryRun: false, force: false, remote: 'origin' },
     { dir: '/fork', dryRun: false, force: true, remote: null, staged: true, switched: true },
     { dir: undefined, dryRun: true, force: false, remote: null, staged: true, switched: true },
@@ -1018,11 +1020,11 @@ test('every push in a command is read, each in its own directory', async ($: any
   expect(new Set(dirs)).toEqual(new Set(['/repo', '/public']))
 })
 
-test('a push or PR in a directory that cannot be read is put to the user', async ($: any, on: any) => {
+test('a push or PR in a directory that cannot be read is held', async ($: any, on: any) => {
   pushWorld(on, { originVisibility: 'private', holdPrText: 'false' })
   expect((await verdict($, 'cd /a && git push')).decision).toBe('allow')
   const push = await verdict($, 'false && cd /a; git push')
-  expect(push.decision).toBe('ask')
+  expect(push.decision).not.toBe('allow')
   expect(push.reason).toContain('could not be read')
   expect((await verdict($, 'gh pr create --fill')).decision).toBe('allow')
   expect((await verdict($, 'false && cd /a; gh pr create --fill')).reason).toContain('could not be read')
@@ -1092,14 +1094,14 @@ test('a git alias set in the environment or an included file is held as unread, 
     'export HOME=/repo/h; git -c alias.a=m a 3',
   ]) {
     const held = await verdict($, cmd)
-    expect(held.decision, cmd).toBe('ask')
+    expect(held.decision, cmd).not.toBe('allow')
     expect(held.reason, cmd).toContain('a git alias that could not be read')
   }
   const force = await verdict($, "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.m GIT_CONFIG_VALUE_0='push -f' git m")
   expect(force.reason).toContain('Force push')
   for (const cmd of ['git pr:m 3', 'git ü 3', "git 'a b' 3", 'git gui 3', 'git send-email 3']) {
     const held = await verdict($, cmd)
-    expect(held.decision, cmd).toBe('ask')
+    expect(held.decision, cmd).not.toBe('allow')
     expect(held.reason, cmd).toContain('Host write held: `gh pr merge`')
   }
   for (const cmd of ['git lg', 'git pr:x 3', 'git citool', 'HOME=/repo/h git status']) expect((await verdict($, cmd)).decision, cmd).toBe('allow')
@@ -1128,7 +1130,7 @@ test('a subcommand with no alias is held where help.autocorrect may run it as th
   for (const value of ['1', 'true', 'immediate', '-1', '20', '0x0']) {
     config['help.autocorrect'] = value
     const held = await verdict($, cmd)
-    expect(held.decision, value).toBe('ask')
+    expect(held.decision, value).not.toBe('allow')
     expect(held.reason, value).toContain('a git alias that could not be read')
   }
   expect((await verdict($, 'git -c help.autocorrect=0 pussh --force origin main')).decision).toBe('allow')
@@ -1137,7 +1139,7 @@ test('a subcommand with no alias is held where help.autocorrect may run it as th
   delete config['alias.pussh.command']
   delete config['help.autocorrect']
   for (const c of ['git -c help.autocorrect=1 pussh', 'git -c Help.AutoCorrect pussh', 'git -c help.autocorrect="$v" pussh']) {
-    expect((await verdict($, c)).decision, c).toBe('ask')
+    expect((await verdict($, c)).decision, c).not.toBe('allow')
   }
 })
 
@@ -1190,22 +1192,22 @@ test('a host write is put to the user whatever the visibility, in either shell',
   expect((await verdict($, 'gh pr view 3')).decision).toBe('allow')
 })
 
-test('a PR or MR in a fork is put to the user, since gh and glab open it in upstream', async ($: any, on: any) => {
+test('a PR or MR in a fork is held, since gh and glab open it in upstream', async ($: any, on: any) => {
   const config: Record<string, string> = { originVisibility: 'private' }
   pushWorld(on, config, true)
   const held = await verdict($, 'gh pr create --title x --body-file b.md')
-  expect(held.decision).toBe('ask')
+  expect(held.decision).not.toBe('allow')
   expect(held.reason).toContain('git config session-skills.holdFork false')
   config.holdFork = 'false'
   expect((await verdict($, 'gh pr create --title x --body-file b.md')).reason).toContain('git config session-skills.holdPrText false')
   config.holdPrText = 'false'
   expect((await verdict($, 'gh pr create --title x --body-file b.md')).reason).toContain('`upstream` besides origin')
   expect((await verdict($, 'glab mr create -s b -b main')).reason).toContain('`upstream` besides origin')
-  expect((await verdict($, 'gh pr create -R up/b --title x')).decision).toBe('ask')
+  expect((await verdict($, 'gh pr create -R up/b --title x')).decision).not.toBe('allow')
   expect((await verdict($, 'gh pr create --fill && gh pr comment --body x')).reason).toContain('`gh pr comment`')
 })
 
-test('a push and a host write in one command are both put to the user', async ($: any, on: any) => {
+test('a push and a host write in one command are both held', async ($: any, on: any) => {
   pushWorld(on, { originVisibility: 'public' })
   const both = await verdict($, 'git push -u origin b && gh pr create --fill')
   expect(both.reason).toContain('holdPublicPush')
@@ -1276,20 +1278,20 @@ test('a push is read with the remote it names, and one that cannot be read from 
   ] as const) expect(pushTarget(cmd)?.remote, cmd).toBe(remote)
 })
 
-test('a push to a remote other than origin is held by that remote\'s visibility, and one to a URL or an unread remote asks', async ($: any, on: any) => {
+test('a push to a remote other than origin is held by that remote\'s visibility, and one to a URL or an unread remote is held', async ($: any, on: any) => {
   const remotes = { origin: ['https://h/a/b.git'], pub: ['https://h/o/pub.git'], mirror: ['https://h/a/b.git'] }
   const vis: Record<string, string> = { 'https://h/o/pub.git': 'public' }
   targetWorld(on, { 'session-skills.originVisibility': 'private' }, remotes, vis)
   expect((await verdict($, 'git push origin main')).decision).toBe('allow')
   const pub = await verdict($, 'git push pub main')
-  expect(pub.decision).toBe('ask')
+  expect(pub.decision).not.toBe('allow')
   expect(pub.reason).toContain('`pub` is public')
   expect((await verdict($, 'git push mirror main')).decision).toBe('allow')
   vis['https://h/o/pub.git'] = 'private'
   expect((await verdict($, 'git push pub main')).decision).toBe('allow')
   expect((await verdict($, 'git push https://h/a/b.git main')).reason).toContain('not a remote of this repo')
   expect((await verdict($, 'git push "$R" main')).reason).toContain('the remote it pushes to could not be read')
-  expect((await verdict($, 'git -c remote.origin.pushurl=https://h/o/pub.git push origin main')).decision).toBe('ask')
+  expect((await verdict($, 'git -c remote.origin.pushurl=https://h/o/pub.git push origin main')).decision).not.toBe('allow')
 })
 
 test('a push with no remote goes where git sends it: the branch\'s push remote, then the push default, then its upstream', async ($: any, on: any) => {
@@ -1331,12 +1333,12 @@ test('a PR or MR that may push the branch is held as a push too', async ($: any,
   const config: Record<string, string> = { 'session-skills.originVisibility': 'public', 'session-skills.holdPrText': 'false' }
   targetWorld(on, config)
   const pushes = await verdict($, 'gh pr create --fill')
-  expect(pushes.decision).toBe('ask')
+  expect(pushes.decision).not.toBe('allow')
   expect(pushes.reason).toContain('holdPublicPush')
-  expect((await verdict($, 'gh pr create --dry-run --fill')).decision).toBe('ask')
+  expect((await verdict($, 'gh pr create --dry-run --fill')).decision).not.toBe('allow')
   expect((await verdict($, 'gh pr create --fill --head feature')).decision).toBe('allow')
   expect((await verdict($, 'gh pr create -dH feature --fill')).decision).toBe('allow')
-  expect((await verdict($, 'glab mr create --fill --yes')).decision).toBe('ask')
+  expect((await verdict($, 'glab mr create --fill --yes')).decision).not.toBe('allow')
   expect((await verdict($, 'glab mr create --fill --push=false --yes')).decision).toBe('allow')
   config['session-skills.originVisibility'] = 'private'
   expect((await verdict($, 'gh pr create --fill')).decision).toBe('allow')
@@ -1393,12 +1395,12 @@ test('a write to a git config key that moves a push or a PR, or lifts a hold, is
   ]) expect(configWrites(cmd), cmd).toEqual([])
 })
 
-test('a config write that moves a push or a PR, or lifts a hold, is put to the user', async ($: any, on: any) => {
+test('a config write that moves a push or a PR, or lifts a hold, is held', async ($: any, on: any) => {
   targetWorld(on, { 'session-skills.originVisibility': 'private' })
   const lift = await verdict($, 'git config session-skills.holdPublicPush false')
-  expect(lift.decision).toBe('ask')
+  expect(lift.decision).not.toBe('allow')
   expect(lift.reason).toContain('`git config session-skills.holdPublicPush`')
-  expect((await verdict($, 'git remote set-url origin https://h/o/pub.git && git push')).decision).toBe('ask')
+  expect((await verdict($, 'git remote set-url origin https://h/o/pub.git && git push')).decision).not.toBe('allow')
   expect((await verdict($, 'git config --get session-skills.originVisibility')).decision).toBe('allow')
   expect((await verdict($, 'git config user.email a@b.c')).decision).toBe('allow')
 })
@@ -1407,7 +1409,7 @@ test('a config write that moves a push or a PR, or lifts a hold, is put to the u
 // adversarial pass with live probes against real git and gh.
 const REMOTES = { origin: ['https://h/a/b.git'], pub: ['https://h/o/pub.git'] }
 const PUBLIC = { 'https://h/o/pub.git': 'public' }
-test('a push whose remote is moved or hidden in the command is put to the user', async ($: any, on: any) => {
+test('a push whose remote is moved or hidden in the command is held', async ($: any, on: any) => {
   targetWorld(on, { 'session-skills.originVisibility': 'private', 'alias.p': 'push' }, { ...REMOTES, check: ['https://h/a/b.git'] }, PUBLIC)
   for (const cmd of [
     'git -c "$CFG" push origin main',
@@ -1431,10 +1433,10 @@ test('a push whose remote is moved or hidden in the command is put to the user',
     '$(which git) push pub main',
     'cd "$HOME/pub" && git push',
     'git -c remote.origin.pushurl=https://h/o/pub.git p origin main',
-  ]) expect((await verdict($, cmd)).decision, cmd).toBe('ask')
+  ]) expect((await verdict($, cmd)).decision, cmd).not.toBe('allow')
   const forced = await verdict($, 'git -c remote.origin.push=+HEAD:refs/heads/main p origin')
   expect(forced.reason).toContain('Force push')
-  expect((await verdict($, 'git push --% --repo # --force origin main', 'PowerShell')).decision).toBe('ask')
+  expect((await verdict($, 'git push --% --repo # --force origin main', 'PowerShell')).decision).not.toBe('allow')
 })
 
 test('a push to this repo or to a path on this machine is not held, and the usual pushes in a private repo are not either', async ($: any, on: any) => {
@@ -1476,7 +1478,7 @@ test('a PR body, title, or label with an H in it is not read as --head, and a va
     'glab mr create --description "--push=false" --fill',
   ]) expect((await verdict($, cmd)).reason, cmd).toContain('may push the branch')
   config['session-skills.originVisibility'] = 'private'
-  expect((await verdict($, 'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.gh-resolved GIT_CONFIG_VALUE_0=o/pub gh pr create --fill')).decision).toBe('ask')
+  expect((await verdict($, 'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.gh-resolved GIT_CONFIG_VALUE_0=o/pub gh pr create --fill')).decision).not.toBe('allow')
 })
 
 // Each case below got a push, a host write, or a config write past the gate, or
@@ -1894,7 +1896,7 @@ test('a read of the push remote or its branch that fails holds the push', async 
   for (const line of [crashed, 'branch --show-current']) {
     crashed = line
     const held = await verdict($, 'git push')
-    expect(held.decision, line).toBe('ask')
+    expect(held.decision, line).not.toBe('allow')
     expect(held.reason, line).toContain('could not be checked')
   }
 })
@@ -2215,4 +2217,147 @@ test('an inherited setting that turns every pre-push hook off is dropped, and a 
 test('an ssh URL keeps its user, which is the login', () => {
   expect(cleanUrl('ssh://git@github.com/o/r.git')).toBe('ssh://git@github.com/o/r.git')
   expect(cleanUrl('git+ssh://git@h/r')).toBe('git+ssh://git@h/r')
+})
+
+// The lexer's side of the pre-push backstop (DESIGN.md, "Pre-push backstop").
+const BYPASS = 'git -c hook.sessionskills.enabled=false'
+test('a URL is on this machine where the pre-push hook reads it so, with a drive letter a path only on Windows', () => {
+  for (const url of ['/srv/r.git', './r', '../r', 'r', 'file:///x', 'http://localhost/r', 'ssh://git@127.0.0.1:22/r', 'http://[::1]:80/r', 'a/b:c', 'u@LocalHost:r']) {
+    expect(localUrl(url, false), url).toBe(true)
+  }
+  for (const url of ['C:/x', 'C:\\x', 'g:o/r', 'git@github.com:o/r.git', 'https://h/a/b.git', 'https://h/r?x=localhost', 'http://127.0.0.2/r']) {
+    expect(localUrl(url, false), url).toBe(false)
+  }
+  expect(localUrl('C:/x', true)).toBe(true)
+  expect(localUrl('C:\\x', true)).toBe(true)
+  expect(localUrl('gh:o/r', true)).toBe(false)
+})
+
+test('a push given the bypass, --no-verify, and the command to retry it with are read', () => {
+  expect(pushTarget(`${BYPASS} push origin main`)?.bypass).toBe(true)
+  expect(pushTarget('git -c hook.sessionskills.enabled=true push origin main')?.bypass).toBeUndefined()
+  expect(pushTarget('git -c hook.SessionSkills.enabled=false push origin main')?.bypass).toBeUndefined()
+  expect(pushTarget(`cd /x && ${BYPASS} push`)?.bypass).toBe(true)
+  for (const cmd of ['git push --no-verify origin main', 'git push --no-veri origin main', 'git push --verify --no-verify']) expect(pushTarget(cmd)?.noVerify, cmd).toBe(true)
+  for (const cmd of ['git push --no-verify --verify', 'git push origin main']) expect(pushTarget(cmd)?.noVerify, cmd).toBeUndefined()
+  expect(pushTargets('git -C /x -c core.sshCommand="ssh -i k" push --force-with-lease --force-if-includes origin "$B"')[0]?.retry).toBe(`git -C \0 -c hook.sessionskills.enabled=false -c 'core.sshCommand=ssh -i k' push --force-with-lease --force-if-includes origin "$B"`)
+  expect(pushTargets(`${BYPASS} -c a.b='c d' push origin 'my branch'`)[0]?.retry).toBe(`git -C \0 -c hook.sessionskills.enabled=false -c 'a.b=c d' push origin 'my branch'`)
+  expect(pushTargets('git --git-dir=/x/.git subtree push -P docs origin gh-pages')[0]?.retry).toBe('git -C \0 -c hook.sessionskills.enabled=false subtree push -P docs origin gh-pages')
+  // The bypass is accepted on git push itself, and on an alias it is refused.
+  expect(pushTarget(`git -c alias.p='-c hook.sessionskills.enabled=false push' p origin main`)?.via).toBe('p')
+})
+
+test('the bypass on anything but a push, an alias included, is read', () => {
+  expect(bypassMisuse(`${BYPASS} town ship`)).toEqual(['git town'])
+  expect(bypassMisuse(`${BYPASS} p origin main`)).toEqual(['git p'])
+  expect(bypassMisuse(`${BYPASS} commit -m x && ${BYPASS} push`)).toEqual(['git commit'])
+  for (const cmd of [`${BYPASS} push origin main`, `${BYPASS} subtree push -P d origin b`, `${BYPASS} lfs push origin main`, 'git -c hook.sessionskills.enabled=true town ship']) {
+    expect(bypassMisuse(cmd), cmd).toEqual([])
+  }
+})
+
+test('a hook setting and a change to GIT_CONFIG_PARAMETERS or GIT_CONFIG_COUNT are read in any command', () => {
+  for (const cmd of [
+    'git -c hook.sessionskills.command=true push', 'git config --global hook.pre-push.enabled false', "eval 'git -c HOOK.x.Event=pre-push push'",
+    'GIT_CONFIG_PARAMETERS= npm run release', 'env -u GIT_CONFIG_PARAMETERS make publish', 'env --unset=GIT_CONFIG_COUNT x', 'env -uGIT_CONFIG_PARAMETERS x',
+    'env -i PATH=/bin ./release.sh', 'env - ./release.sh', 'env --ignore-environment ./release.sh', 'unset GIT_CONFIG_PARAMETERS; ./gradlew release',
+    'export GIT_CONFIG_COUNT=0', 'export -n GIT_CONFIG_PARAMETERS', "trap 'unset GIT_CONFIG_PARAMETERS' EXIT",
+  ]) expect(hookWrites(cmd).length, cmd).toBeGreaterThan(0)
+  for (const cmd of [
+    'Remove-Item Env:GIT_CONFIG_PARAMETERS', 'rm Env:GIT_CONFIG_PARAMETERS', 'Clear-Item Env:GIT_CONFIG_COUNT', 'ri env:\\GIT_CONFIG_*',
+    "$env:GIT_CONFIG_PARAMETERS = ''", "[Environment]::SetEnvironmentVariable('GIT_CONFIG_PARAMETERS', $null)",
+    "[System.Environment]::SetEnvironmentVariable('GIT_CONFIG_COUNT', '0')",
+  ]) expect(hookWrites(cmd, 'PowerShell').length, cmd).toBeGreaterThan(0)
+  for (const cmd of [
+    'git add src/webhook.ts', 'npm test -- -t com.acme.webhook.*', 'git commit -m "Fix GIT_CONFIG handling"', 'grep GIT_CONFIG_PARAMETERS x',
+    'echo "$GIT_CONFIG_PARAMETERS"', 'git hook list pre-push', 'cat hooks/hooks.json', 'rm Env.txt', 'unset GIT_DIR',
+  ]) expect(hookWrites(cmd), cmd).toEqual([])
+  expect(hookWrites('echo $env:GIT_CONFIG_PARAMETERS', 'PowerShell')).toEqual([])
+  expect(configWrites('git config hook.sessionskills.command true')).toEqual(['git config hook.sessionskills.command'])
+})
+
+test('gh repo create --push is read as a host write that pushes', () => {
+  expect(hostWrites('gh repo create o/r --private --source . --push')[0]?.pushes).toBe(true)
+  expect(hostWrites('gh repo create o/r --private --source .')[0]?.pushes).toBe(false)
+})
+
+test('a held plain push is refused with the bypass form, and the bypass is asked about', async ($: any, on: any) => {
+  const config: Record<string, string> = { originVisibility: 'public' }
+  pushWorld(on, config)
+  const refused = await verdict($, 'git push --force-with-lease --force-if-includes origin main')
+  expect(refused.decision).toBe('deny')
+  expect(refused.reason).toContain('Force push')
+  expect(refused.reason).toContain(`git -C /repo/.claude/worktrees/removed ${BYPASS.slice(4)} push --force-with-lease --force-if-includes origin main`)
+  const asked = await verdict($, `${BYPASS} push origin main`)
+  expect(asked.decision).toBe('ask')
+  expect(asked.reason).toContain('origin is public')
+  expect(asked.reason).toContain('hook.sessionskills.enabled=false')
+  expect(asked.reason).not.toContain('Hook setting held')
+  config.originVisibility = 'private'
+  expect((await verdict($, 'git push origin main')).decision).toBe('allow')
+  expect((await verdict($, `${BYPASS} push origin main`)).decision).toBe('ask')
+  const noVerify = await verdict($, 'git push --no-verify origin main')
+  expect(noVerify.decision).toBe('deny')
+  expect(noVerify.reason).toContain('--no-verify')
+  expect((await verdict($, `${BYPASS} town ship`)).decision).toBe('deny')
+  expect((await verdict($, `git -c alias.p='-c hook.sessionskills.enabled=false push' p origin main`)).decision).toBe('deny')
+  expect((await verdict($, 'unset GIT_CONFIG_PARAMETERS; npm run release')).decision).toBe('ask')
+  expect((await verdict($, 'git add src/webhook.ts')).decision).toBe('allow')
+})
+
+test('a push whose repo or remote cannot be read is refused with what to write out', async ($: any, on: any) => {
+  pushWorld(on, { originVisibility: 'private' })
+  const dir = await verdict($, 'cd ~/pub && git push origin main')
+  expect(dir.decision).toBe('deny')
+  expect(dir.reason).toContain('git -C <dir>')
+  const remote = await verdict($, 'git push "$R" main')
+  expect(remote.decision).toBe('deny')
+  expect(remote.reason).toContain(`${BYPASS.slice(4)} push "$R" main`)
+  expect((await verdict($, `cd ~/pub && ${BYPASS} push origin main`)).decision).toBe('ask')
+})
+
+test('no force line or hold is added for a push to a path on this machine, even in a fork', async ($: any, on: any) => {
+  targetWorld(on, { 'session-skills.originVisibility': 'public' }, { origin: ['https://h/a/b.git'], upstream: ['https://h/up/b.git'], scratch: ['/tmp/s.git'], drive: ['C:/x'] })
+  for (const cmd of ['git push --force scratch main', 'git push -f /tmp/s.git main', 'git push --no-verify ../s.git main', 'git push --force . HEAD:main']) {
+    expect((await verdict($, cmd)).decision, cmd).toBe('allow')
+  }
+  // On macOS git reads C:/x as an ssh host named C.
+  expect((await verdict($, 'git push drive main')).decision).toBe('deny')
+})
+
+test('a PR or repo create that would push to a held target is refused, and one that would not is asked about', async ($: any, on: any) => {
+  const config: Record<string, string> = { 'session-skills.originVisibility': 'public' }
+  targetWorld(on, config)
+  const pr = await verdict($, 'gh pr create --fill')
+  expect(pr.decision).toBe('deny')
+  expect(pr.reason).toContain('--head')
+  expect((await verdict($, 'glab mr create --fill --yes')).reason).toContain('--push=false')
+  expect((await verdict($, 'gh pr create -R o/r --fill')).decision).toBe('deny')
+  expect((await verdict($, 'gh pr create --fill --head feature')).decision).toBe('ask')
+  expect((await verdict($, 'gh repo create o/r --private --source . --push')).decision).toBe('deny')
+  config['session-skills.originVisibility'] = 'private'
+  expect((await verdict($, 'gh pr create --fill')).decision).toBe('ask')
+})
+
+// Each case below was found by an adversarial pass with live probes, the first in real git.
+test('a push in a directory held in a variable is refused with <dir>, not the session directory', async ($: any, on: any) => {
+  pushWorld(on, { originVisibility: 'public' })
+  for (const cmd of ['git -C "$WT" push -u origin HEAD', 'cd "$WT" && git push', 'WT=/repo/wt; cd "$WT" && git push --force-with-lease origin HEAD', 'GIT_DIR="$G" git push origin main']) {
+    const v = await verdict($, cmd)
+    expect(v.decision, cmd).toBe('deny')
+    expect(v.reason, cmd).not.toContain('git -C /repo/.claude/worktrees/removed -c hook.sessionskills.enabled=false')
+    expect(v.reason, cmd).toContain('git -C <dir> -c hook.sessionskills.enabled=false')
+  }
+})
+
+test('a retry keeps the variables assigned before git, and a Windows directory is written with slashes', async ($: any, on: any) => {
+  pushWorld(on, { originVisibility: 'public' })
+  expect((await verdict($, 'GIT_SSH_COMMAND="ssh -i ~/.ssh/work" HUSKY=0 git push origin main')).reason).toContain(`GIT_SSH_COMMAND='ssh -i ~/.ssh/work' HUSKY=0 git -C /repo/.claude/worktrees/removed ${BYPASS.slice(4)} push origin main`)
+  expect((await verdict($, 'git -C "C:\\Users\\ian\\repo" push origin main')).reason).toContain(`git -C C:/Users/ian/repo ${BYPASS.slice(4)} push origin main`)
+})
+
+test('the PR step of land-and-wrap, as written, is asked about, not refused', async ($: any, on: any) => {
+  targetWorld(on, { 'session-skills.originVisibility': 'public' }, undefined, undefined, 'feat')
+  expect((await verdict($, 'gh pr create --base "$DEFAULT" --head "$BRANCH" --title "$TITLE" --body-file "$F"')).decision).toBe('ask')
+  expect((await verdict($, 'gh pr create --head $BRANCH --fill')).decision).toBe('deny')
 })
