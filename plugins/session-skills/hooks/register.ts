@@ -2,7 +2,7 @@
 // run the git work of both skills, and the tool a worktree session calls to edit
 // a file that is only in the primary checkout.
 import type { Register } from 'claude-code'
-import { configWrites, type Dir, type HostWrite, hostWrites, pickBase, type Push, pushTargets, refLine, visibility, worktreeName } from './checkouts'
+import { configWrites, type Dir, expand, type HostWrite, hostWrites, pickBase, type Push, pushTargets, refLine, visibility, worktreeName } from './checkouts'
 import { splice } from './splice'
 
 const NONE = { type: 'object', properties: {} } as const
@@ -614,10 +614,10 @@ async function hostHold($: any, w: HostWrite): Promise<string> {
 
 // Each push in a command, with a git alias read from config in the directory it
 // runs in, as `alias.<name>` and git 2.54's `alias.<name>.command`, and each
-// expansion checked in its place with the -c values given with the alias. A
-// subcommand with no alias is not a push, and an alias that cannot be read is
-// held as one.
-async function pushesIn($: any, pushes: Push[], depth = 0): Promise<Push[]> {
+// expansion checked in its place with the -c values given with the alias. The
+// gh and glab writes in each expansion are added to `hosts`. A subcommand with
+// no alias is not a push, and an alias that cannot be read is held as one.
+async function pushesIn($: any, pushes: Push[], hosts: HostWrite[], depth = 0): Promise<Push[]> {
   const found: Push[] = []
   for (const p of pushes) {
     if (!p.alias) {
@@ -634,8 +634,10 @@ async function pushesIn($: any, pushes: Push[], depth = 0): Promise<Push[]> {
       const v = await configValue($, dir, key).catch(() => null)
       if (v === null) found.push(unread)
       if (!v) continue
+      const text = expand(v, p.rest ?? '')
+      for (const w of hostWrites(text, 'Bash', p.dir, p.configs)) hosts.push({ ...w, staged: w.staged || p.staged })
       // A -c given with the alias that forces or moves the push holds for its expansion.
-      for (const e of await pushesIn($, pushTargets(`${v.startsWith('!') ? v.slice(1) : `git ${v}`} ${p.rest ?? ''}`, 'Bash', p.dir, p.configs), depth + 1)) {
+      for (const e of await pushesIn($, pushTargets(text, 'Bash', p.dir, p.configs), hosts, depth + 1)) {
         found.push({ ...e, force: e.force || p.force, ...(p.remote === null && { remote: null }), staged: e.staged || p.staged })
       }
     }
@@ -659,7 +661,8 @@ const SHELLS: Record<string, (input: any) => { shells: string[]; dir: Dir }> = {
 
 // Adds why each push, config write, and host write in a command waits for the user.
 async function gate($: any, command: string, shell: string, outer: Dir, add: (reason: string) => void) {
-  for (const push of (await pushesIn($, pushTargets(command, shell, outer))).filter(p => !p.dryRun)) {
+  const hosts = hostWrites(command, shell, outer)
+  for (const push of (await pushesIn($, pushTargets(command, shell, outer), hosts)).filter(p => !p.dryRun)) {
     let force = push.force
     let submodules = !!push.submodules
     let why = "the repo it runs in could not be read from the command, so the push waits for the user's go."
@@ -680,7 +683,7 @@ async function gate($: any, command: string, shell: string, outer: Dir, add: (re
   }
   // Each of these can move a later push or PR, which the hold reads before it runs.
   for (const what of configWrites(command, shell, outer)) add(`Config write held: \`${what}\` can change where a push or a PR goes, run one unseen, or lift a hold, so it waits for the user's go.`)
-  for (const w of hostWrites(command, shell, outer)) {
+  for (const w of hosts) {
     const why = await hostHold($, w).catch(err => `the hold on \`${w.what}\` could not be checked: ${(err as Error).message}`)
     if (why) add(`Host write held: ${why}`)
   }

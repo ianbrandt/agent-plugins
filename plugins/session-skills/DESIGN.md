@@ -79,7 +79,7 @@ that cannot be read: the command given to `git submodule foreach`, `git bisect r
 `git difftool -x`, or `git for-each-repo`, and a `trap` action. A subcommand git does not build in
 is read as an alias from `git config` in the push's directory, as `alias.<name>` and git 2.54's
 `alias.<name>.command`, and its expansion is checked in its place with the `-c` values given with
-it. A force push (a unique prefix of `--force`, `--force-with-lease`, `--mirror`, `--delete`, or
+it, for gh and glab writes as well as pushes. A force push (a unique prefix of `--force`, `--force-with-lease`, `--mirror`, `--delete`, or
 `--prune`, `-f` or `-d` in a short-flag group, a refspec that starts with `+` or deletes with a
 leading `:`, a `+` refspec or a mirror set with `-c` or in the remote's config, or any config set in
 the environment) is put to the user whatever the holds, because it replaces commits a reviewer may have read, and it is never refused
@@ -215,8 +215,8 @@ submodule config that push reads. The PR is held when the default repo set with 
 cannot be read. A `GH_REPO` set in a
 shell profile is not seen, since the hook reads Claude Code's own environment. Each write in a
 chained command is checked, so a comment added after a PR opened unasked is still asked about. A push or write run through `bash -c`, `eval`,
-`Start-Process`, a `git-<name>` program on the PATH such as git-town, a user's own `gh alias`, a git
-alias to `gh` set in git config, or brace expansion is not seen, and neither is a force option held
+`Start-Process`, a `git-<name>` program on the PATH such as git-town, a user's own `gh alias`, or
+brace expansion is not seen, and neither is a force option held
 in a variable, as in `git push $FORCE`. A PowerShell command with `--%` in it is asked about, since
 the rest of its line is passed on unread.
 

@@ -1019,6 +1019,20 @@ test('a git alias is read from config in the directory it runs in, and its expan
   expect((await verdict($, 'git lg -5')).decision).toBe('allow')
 })
 
+test('a gh or glab write in a git alias is held, whether the alias is read from config or set with -c', async ($: any, on: any) => {
+  const config: Record<string, string> = { originVisibility: 'private', pr: '!gh pr merge', mr: '!glab mr note 3 -m x', lg: 'log --oneline', via: '!git pr' }
+  pushWorld(on, config)
+  for (const [cmd, what] of [['git pr 3', 'gh pr merge'], ['git mr', 'glab mr note'], ['git via 3', 'gh pr merge']]) {
+    const held = await verdict($, cmd)
+    expect(held.decision, cmd).toBe('ask')
+    expect(held.reason, cmd).toContain(`Host write held: \`${what}\``)
+  }
+  expect((await verdict($, 'git lg -5')).decision).toBe('allow')
+  expect(hostWrites(`cd /x && git -c alias.m='!gh pr merge' m 3`)).toEqual([{ what: 'gh pr merge', dir: '/x', prCreate: false, otherRepo: false, pushes: false }])
+  expect(hostWrites(`git -c alias.a='!git b' -c alias.b='!gh issue comment 1 -b x' a`).map(w => w.what)).toEqual(['gh issue comment'])
+  expect(hostWrites(`git -c alias.l='log -1' l`)).toEqual([])
+})
+
 const hostWrite = (cmd: string) => hostWrites(cmd)[0] ?? null
 test('a host write from gh or glab is read from the command, with its directory and whether it opens a PR', () => {
   expect(hostWrite('gh pr create --title x --body-file f')).toEqual({ what: 'gh pr create', dir: undefined, prCreate: true, otherRepo: false, pushes: true })

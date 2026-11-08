@@ -934,6 +934,9 @@ function gitLater(words: Word[], k: number): { text: string; configs: Word[] }[]
   return texts.map(text => ({ text, configs }))
 }
 
+// The command an alias runs, with the arguments given after it: a `!` alias in the shell, any other with git.
+export const expand = (alias: string, rest: string) => `${alias.startsWith('!') ? alias.slice(1) : `git ${alias}`} ${rest}`
+
 const nested = (depth: number) => {
   if (depth > 8) throw new Error('the command runs git aliases or later commands nested too deeply to read')
 }
@@ -1027,7 +1030,7 @@ export function configWrites(cmd: string, shell = 'Bash', outer?: Dir, inherited
         const key = configKey(rest)
         if (key !== undefined) found.push(`git config ${key}`)
       } else if (typeof alias === 'string') {
-        for (const w of configWrites(`${alias.startsWith('!') ? alias.slice(1) : `git ${alias}`} ${joined(rest)}`, 'Bash', undefined, configs, depth + 1)) found.push(w)
+        for (const w of configWrites(expand(alias, joined(rest)), 'Bash', undefined, configs, depth + 1)) found.push(w)
       } else if (sub && (alias === null || (unread(configs) && !BUILTIN.has(sub.text)))) found.push(`git ${sub.text}`)
     }
   }
@@ -1167,7 +1170,7 @@ export function pushTargets(cmd: string, shell = 'Bash', outer?: Dir, inherited:
       else if (sub === 'send-pack' || sub === 'http-push') found.push({ dir, ...flags(rest), remote: null })
       else if ((sub === 'subtree' || sub === 'lfs') && pushAt >= 0) found.push({ dir, ...flags(rest.slice(pushAt + 1), sub === 'subtree' ? SUBTREE : PUSH) })
       else if (typeof alias === 'string') {
-        for (const p of pushTargets(`${alias.startsWith('!') ? alias.slice(1) : `git ${alias}`} ${joined(rest)}`, 'Bash', dir, configs, depth + 1)) {
+        for (const p of pushTargets(expand(alias, joined(rest)), 'Bash', dir, configs, depth + 1)) {
           found.push({ ...p, force: p.force || configForce, ...((moved || (afterUnknown && p.remote === undefined)) && { remote: null }), ...(staged && { staged }) })
         }
       } else if (alias === null || (sub !== undefined && unread(configs) && !BUILTIN.has(sub))) found.push({ dir, dryRun: false, force: configForce, remote: null, ...(staged && { staged }) })
@@ -1238,9 +1241,10 @@ function prPushes(cli: string, args: Word[]): boolean {
 // literal and reads as a query. A help flag skips the command unless it follows
 // an option, whose value it may be. An option other than -R before the verb
 // may take the verb as its value, as cobra reads it, so the command is a write.
-// A command left to run later (see `later`) is read in a directory that cannot be read.
+// A command left to run later (see `later`) is read in a directory that cannot be read,
+// and a git alias set with -c is read in place, with the -c values given with it.
 // shortcut: a write through a gh alias saved before the command is not detected.
-export function hostWrites(cmd: string, shell = 'Bash', outer?: Dir, depth = 0): HostWrite[] {
+export function hostWrites(cmd: string, shell = 'Bash', outer?: Dir, inherited: Word[] = [], depth = 0): HostWrite[] {
   nested(depth)
   const found: HostWrite[] = []
   const cmds = commands(cmd, shell, outer)
@@ -1248,7 +1252,16 @@ export function hostWrites(cmd: string, shell = 'Bash', outer?: Dir, depth = 0):
   // A variable that moves the config gh reads can send the PR to another repo too.
   const envRepo = sets(cmds, REPO_VARS) || sets(cmds, CONFIG_VARS)
   for (const [i, { words, at }] of cmds.entries()) {
-    for (const r of later(words)) for (const w of hostWrites(r.text, 'Bash', null, depth + 1)) found.push({ ...w, dir: null })
+    for (const r of later(words)) for (const w of hostWrites(r.text, 'Bash', null, [...inherited, ...r.configs], depth + 1)) found.push({ ...w, dir: null })
+    for (const { words: g, k } of gitCommands(words)) {
+      const { j, cs, configs: own, gitDir } = gitOptions(g, k)
+      const configs = [...inherited, ...own]
+      const alias = g[j]?.literal ? configAliases(configs).get(g[j].text.toLowerCase()) : undefined
+      if (typeof alias !== 'string') continue
+      for (const w of hostWrites(expand(alias, joined(g.slice(j + 1))), 'Bash', repoDir(at, g.slice(0, k), cs as Word[], gitDir), configs, depth + 1)) {
+        found.push({ ...w, ...(around[i].staged && { staged: true }) })
+      }
+    }
     const k = cliAt(words)
     if (k < 0) continue
     const cli = cliOf(words[k])
