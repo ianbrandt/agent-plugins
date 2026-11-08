@@ -68,6 +68,9 @@ function union(...lists: Loc[][]): Loc[] {
 // A function body, which runs wherever the function is called.
 const NOWHERE: Loc[] = [{ dir: null, stack: [], gitDir: null }]
 
+// A PowerShell function's name, in the letter case it is looked up in, with no scope.
+const psName = (text: string) => text.toLowerCase().replace(/^(?:global|script|local|private):/, '')
+
 const one = (dirs: Dir[]): Dir => (dirs.every(d => d === dirs[0]) ? dirs[0] : null)
 
 const ABSOLUTE = /^(?:[A-Za-z]:)?[\\/]/
@@ -111,10 +114,11 @@ function effect(words: Word[], locs: Loc[], ps: boolean, functions: Set<string>)
   // PowerShell runs the command after `$x =`.
   if (ps && words[1]?.text === '=' && words.length > 2 && /^\$(?!\{?env:)/i.test(words[0].text)) k = 2
   while (!ps && (words[k].text === 'builtin' || words[k].text === 'command') && k + 1 < words.length) k++
-  const name = ps ? words[k].text.toLowerCase() : words[k].text
   const args = words.slice(k + 1)
+  // A PowerShell function may be dot-sourced, as in `. f`.
+  const name = ps ? psName((words[k].text === '.' && args[0]?.text) || words[k].text) : words[k].text
   if (!ps && (args[0]?.text === '()' || name === 'function')) return locs
-  if (functions.has(name) || (!ps && args.some(w => w.text === '{' && !w.quoted))) return locs.map(l => ({ ...l, dir: null }))
+  if (functions.has(name) || (!ps && args.some(w => w.text === '{' && !w.quoted))) return NOWHERE
   if (name === 'exit' || (ps && name === 'throw')) return []
   if (ps) {
     const m = /^\$(?:env:|\{env:)GIT_DIR\}?(?:=(.*))?$/is.exec(words[0].text)
@@ -492,7 +496,8 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
       const ran = words.length ? effect(words, base, ps, functions) : base
       if (words.length) {
         commands.push({ words, at: base })
-        if (words[0].text === 'function' && words[1]) functions.add(words[1].text)
+        if (ps && /^(?:function|filter)$/i.test(words[0].text) && words[1]) functions.add(psName(words[1].text))
+        else if (words[0].text === 'function' && words[1]) functions.add(words[1].text)
         if (words[1]?.text === '()') functions.add(words[0].text)
         defining = named(words)
         if (functions.size || /^(?:repeat|foreach|coproc)$/.test(words[0].text)) reorder()
@@ -619,9 +624,12 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
           if (words.length) words.push({ text: c === '(' ? '()' : '{}', literal: false, quoted: false })
           continue
         }
+        const from = i
         const inner = list(at, c === '(' ? ')' : '}')
         if (ps) after = union(at, inner)
-        words.push({ text: c === '(' ? '()' : '{}', literal: false, quoted: false })
+        // Parentheses with text in them, as in zsh's `ls (a|b)` or `for x (a)`, are not a function definition.
+        const empty = ps || !s.slice(from, i - 1).trim()
+        words.push({ text: c === '{' ? '{}' : empty ? '()' : '(…)', literal: false, quoted: false })
         continue
       }
       const here = ps ? /@(['"])[ \t]*\n/y : null
@@ -1149,7 +1157,7 @@ function gitStays(sub: string, rest: Word[]): boolean {
 }
 function harmless(words: Word[], ps: boolean): boolean {
   const [first, ...args] = words
-  if (words.length === 1 && !first.literal && /^(?:\(\)|\{\})$/.test(first.text)) return true
+  if (words.length === 1 && !first.literal && /^(?:\(\)|\(…\)|\{\})$/.test(first.text)) return true
   if (!ps && words.every(w => ASSIGNMENT.test(w.text))) return true
   if (ps && psIf(words)) return true
   // A PowerShell condition such as `$LASTEXITCODE -eq 0`.

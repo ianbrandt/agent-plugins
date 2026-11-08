@@ -1501,6 +1501,16 @@ test('a command in a function body is read in a directory that cannot be read', 
   expect(pushTarget('f() { cd /pub; }; git push')?.dir).toBeUndefined()
   expect(pushTarget('f()\n{ cd /pub; }\ngit push')?.dir).toBeUndefined()
   expect(pushTarget('arr=(); git push')?.dir).toBeUndefined()
+  // A call may change GIT_DIR, and PowerShell names are read in any letter case, with a scope or a dot-source (verify pass).
+  expect(pushTarget('export GIT_DIR=/prv/.git; f() { export GIT_DIR=/pub/.git; }; f; git push')?.dir).toBeNull()
+  for (const cmd of [
+    'function Enter-Pub { Set-Location /pub }; Enter-Pub; git push', 'Function F { Set-Location /pub }; F; git push',
+    'filter f { Set-Location /pub }; 1 | f; git push', 'function global:go { Set-Location /pub }; go; git push', 'function go { Set-Location /pub }; . go; git push',
+  ]) expect(pushTargets(cmd, 'PowerShell')[0], cmd).toHaveProperty('dir', null)
+  // A zsh glob or short loop in parentheses names no function.
+  expect(pushTarget('ls (a|b)\n{ cd /pub; }\ngit push')?.dir).toBe('/pub')
+  expect(pushTarget('for x (a)\n{ cd /pub; }; git push')?.dir).toBe('/pub')
+  expect(pushTarget('cat (README|CHANGELOG).md; git push')?.dir).toBeUndefined()
   // zsh takes any command as a body, which is not read.
   for (const cmd of ['publish() git push origin HEAD', 'publish()\ngit push origin HEAD', 'f() if true; then git push; fi']) expect(() => pushTargets(cmd), cmd).toThrow()
 })
