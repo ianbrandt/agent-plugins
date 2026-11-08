@@ -89,6 +89,13 @@ recording the visibility above, is asked about once more there. A PR or MR opene
 lifted, in a clone whose only remote is `origin`, is the one write that goes unasked, unless the
 branch push it may make is held.
 
+The plugin also adds a `pre-push` hook to every git the session starts. It refuses a push to a
+remote not known to be private, a fork's push, and any force push, except to a path on this machine.
+So **write a held push, and any force push, with `-c hook.sessionskills.enabled=false` after
+`git`**, as in `git -C "$MAIN" -c hook.sessionskills.enabled=false push origin "$DEFAULT"`. That
+form is the one printed when the hook refuses a push, and a held push written that way is still put
+to the user in the permission prompt.
+
 These are independent of the backlog. A repo you own can track its work in an untracked, local-only
 roadmap and still merge into its default branch; that combination needs no special handling.
 Whether work merges depends on fork-ness and the landing mode, and whether it is pushed depends on
@@ -117,8 +124,8 @@ runbook), otherwise land by the mode from §1.
    can't fast-forward, say so rather than forcing a merge commit.
 4. **Push if private**, or with the public-push hold lifted (§1). Otherwise, on a public repo,
    present the unpushed range (`origin/main..main`) and stop there; the user reads it before it
-   is published. After pushing on the user's go, end that turn with §4's "Say what's left" again,
-   since the landing closes there.
+   is published. On the user's go, push in the form from §1, and end that turn with §4's "Say
+   what's left" again, since the landing closes there.
 5. **After §4's release, remove your own worktree** with `mcp__session-skills__remove_worktree`,
    passing `$WT` as `path`, then call `mcp__session-skills__prune_branches`, which deletes the
    merged branch. Do not run `git branch -d` in its place. A session started inside the worktree
@@ -141,11 +148,13 @@ runbook), otherwise land by the mode from §1.
 4. **Push the branch**, under the visibility rule—`git -C "$WT" push -u origin "$BRANCH"`. Once a
    rebase has rewritten a pushed branch, add `--force-with-lease --force-if-includes`: the fetch in
    step 2 moves the lease's ref, so `--force-with-lease` alone would overwrite a reviewer's commit.
-   On a public hold, present `git -C "$WT" log --oneline "origin/$DEFAULT..HEAD"` and stop there.
+   Write a force push, and a held push on the user's go, in the form from §1. On a public hold,
+   present `git -C "$WT" log --oneline "origin/$DEFAULT..HEAD"` and stop there.
 5. **Draft the title and body** in the repo's PR style, and show them in the reply. They **wait for
    the user's go**, on a private repo too, unless the hold is lifted (§1).
 6. **Open the PR**—`gh pr create --base "$DEFAULT" --head "$BRANCH" --title "$TITLE" --body-file
-   "$F"`, or `glab mr create -s "$BRANCH" -b "$DEFAULT" -t "$TITLE" --description-file "$F"`. With
+   "$F"`, or `glab mr create -s "$BRANCH" -b "$DEFAULT" -t "$TITLE" --description-file "$F"
+   --push=false`, since the branch is already pushed. With
    no host tool, as with a Bitbucket `origin` and plain git, write the title and body to a local
    file in the repo's notes directory, and give the user the create link from the `remote:` lines
    of the `git push` output. Where the repo has no notes directory, use `.claude/pr-drafts/` in
