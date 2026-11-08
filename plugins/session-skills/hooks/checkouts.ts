@@ -65,6 +65,9 @@ function union(...lists: Loc[][]): Loc[] {
   return seen.size > 16 ? [{ dir: null, stack: [], gitDir: null }] : [...seen.values()]
 }
 
+// A function body, which runs wherever the function is called.
+const NOWHERE: Loc[] = [{ dir: null, stack: [], gitDir: null }]
+
 const one = (dirs: Dir[]): Dir => (dirs.every(d => d === dirs[0]) ? dirs[0] : null)
 
 const ABSOLUTE = /^(?:[A-Za-z]:)?[\\/]/
@@ -97,7 +100,7 @@ const lastGitDir = (words: Word[]) => words.filter(w => /^GIT_DIR=/.test(w.text)
 // command runs, so it is not read here. A call to a function defined in the
 // command, or a Bash or zsh body in braces after the first word, such as zsh's
 // `() { ... }` or `repeat 1 { ... }`, may run a cd. A function definition runs
-// nothing. `exit` reaches no later command. A `return` outside a function
+// nothing, and its body is read in a directory that cannot be read (see `NOWHERE`). `exit` reaches no later command. A `return` outside a function
 // fails in bash, which runs on, so it is read as running on.
 function effect(words: Word[], locs: Loc[], ps: boolean, functions: Set<string>): Loc[] {
   const setGitDir = (w: Word | undefined) => locs.map(l => ({ ...l, gitDir: w?.literal && !ABSOLUTE.test(w.text) ? null : resolve(l.dir, w) }))
@@ -210,6 +213,16 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
   const heredocs: { delim: string; quoted: boolean; strip: boolean; at: Loc[] }[] = []
   const escape = ps ? '`' : '\\'
   const meta = ps ? /[\s;&|(){}<>]/ : /[\s;&|()<>]/
+  // A function's name with no body yet: `f ()`, `function f`, or `function f ()`
+  // in bash and zsh, and `function f` or `filter f` with or without a parameter
+  // list in PowerShell. `a=()` is an array.
+  const name = (w: Word | undefined) => !!w && w.literal && !w.quoted && !w.text.includes('=')
+  const named = (ws: Word[]) =>
+    ps
+      ? /^(?:function|filter)$/i.test(ws[0]?.text ?? '') && name(ws[1]) && (ws.length === 2 || (ws.length === 3 && ws[2].text === '()'))
+      : ws.at(-1)?.text === '()' && ws.at(-1)?.literal === false
+        ? ws.length === 2 ? name(ws[0]) : ws.length === 3 && ws[0].text === 'function' && name(ws[1])
+        : ws.length === 2 && ws[0].text === 'function' && name(ws[1])
   let i = 0
   let open = -1
   const unclosed = (at: number) => {
@@ -452,6 +465,8 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
   // The commands from i up to `end`, or the end of the text, starting from
   // `from`; returns every place the shell may be after them.
   function list(from: Loc[], end: string): Loc[] {
+    // Whether the last command was a function name with no body yet, which may follow on a later line.
+    let defining = false
     let before = from
     let cur = from
     let ends: Loc[][] = []
@@ -479,6 +494,7 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
         commands.push({ words, at: base })
         if (words[0].text === 'function' && words[1]) functions.add(words[1].text)
         if (words[1]?.text === '()') functions.add(words[0].text)
+        defining = named(words)
         if (functions.size || /^(?:repeat|foreach|coproc)$/.test(words[0].text)) reorder()
       }
       // bash and zsh expand a command's arguments before its assignments, so
@@ -597,6 +613,12 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
         // A PowerShell if, elseif, or else body runs in its place.
         if (c === '{' && !psIf(words)) reorder()
         i++
+        if ((ps ? c === '{' : c === '(') && (named(words) || (defining && !words.length && !after))) {
+          defining = false
+          list(NOWHERE, c === '(' ? ')' : '}')
+          if (words.length) words.push({ text: c === '(' ? '()' : '{}', literal: false, quoted: false })
+          continue
+        }
         const inner = list(at, c === '(' ? ')' : '}')
         if (ps) after = union(at, inner)
         words.push({ text: c === '(' ? '()' : '{}', literal: false, quoted: false })
@@ -627,6 +649,13 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
       }
       if (i === st) {
         i++
+        continue
+      }
+      if (!ps && !after && (named(words) || (defining && !words.length))) {
+        if (w.text !== '{' || w.quoted) throw new Error('a function body that is not in braces or parentheses is not read')
+        defining = false
+        list(NOWHERE, '}')
+        if (words.length) words.push({ text: '{}', literal: false, quoted: false })
         continue
       }
       if (!ps && !w.quoted && !words.length && !after) {

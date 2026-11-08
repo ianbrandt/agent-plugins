@@ -1482,6 +1482,29 @@ test('a command run later by git or by trap is read, in a directory that cannot 
   expect(hostWrite("trap 'gh pr merge 3' EXIT")?.what).toBe('gh pr merge')
 })
 
+// A function runs where it is called, so its body is read in a directory that cannot be read.
+test('a command in a function body is read in a directory that cannot be read', () => {
+  for (const cmd of [
+    'publish() { git push origin HEAD; }; cd /pub && publish',
+    'function publish { git push origin HEAD; }; cd /pub; publish',
+    'function publish() { cd /priv; git push origin HEAD; }',
+    'publish() ( git push origin HEAD )',
+    'publish()\n{\n  git push origin HEAD\n}\ncd /pub && publish',
+    'publish() { { git push origin HEAD; }; }',
+    'publish() { echo "$(git push origin HEAD)"; }',
+  ]) expect(pushTarget(cmd)?.dir, cmd).toBeNull()
+  for (const cmd of ['function publish { git push origin HEAD }; Set-Location /pub; publish', 'function publish($r) {\n git push $r HEAD\n}']) {
+    expect(pushTargets(cmd, 'PowerShell')[0]?.dir, cmd).toBeNull()
+  }
+  expect(hostWrite('merge() { gh pr merge 3; }; cd /pub && merge')?.dir).toBeNull()
+  // The directory after a definition is the one before it.
+  expect(pushTarget('f() { cd /pub; }; git push')?.dir).toBeUndefined()
+  expect(pushTarget('f()\n{ cd /pub; }\ngit push')?.dir).toBeUndefined()
+  expect(pushTarget('arr=(); git push')?.dir).toBeUndefined()
+  // zsh takes any command as a body, which is not read.
+  for (const cmd of ['publish() git push origin HEAD', 'publish()\ngit push origin HEAD', 'f() if true; then git push; fi']) expect(() => pushTargets(cmd), cmd).toThrow()
+})
+
 test('a mirror or + refspec set in config, or any config set in the environment, forces the push', () => {
   for (const cmd of [
     'git -c remote.origin.mirror push origin',

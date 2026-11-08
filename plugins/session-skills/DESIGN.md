@@ -76,7 +76,9 @@ in its `cwd`, or in an unknown directory when it reuses a tab or `cwd` starts wi
 directory is unknown and the command is read as both bash and PowerShell. `git send-pack`, `git http-push`, `git subtree push`, and `git lfs push` are pushes
 too, and so is `git-push` run directly. A push in a command left to run later is read in a directory
 that cannot be read: the command given to `git submodule foreach`, `git bisect run`, `git rebase -x`,
-`git difftool -x`, or `git for-each-repo`, and a `trap` action. A subcommand git does not build in
+`git difftool -x`, or `git for-each-repo`, a `trap` action, and a function body, since a function
+runs where it is called. A body that is not in braces or parentheses, as zsh allows in
+`f() git push`, is not read, and the hold asks. A subcommand git does not build in
 is read as an alias from `git config` in the push's directory, as `alias.<name>` and git 2.54's
 `alias.<name>.command`, and its expansion is checked in its place with the `-c` values given with
 it, for gh and glab writes as well as pushes. Where `GH_REPO` or `GITLAB_REPO` is set in the
