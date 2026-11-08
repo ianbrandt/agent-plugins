@@ -1570,7 +1570,7 @@ test('a command in a function body is read in a directory that cannot be read', 
   for (const cmd of ['publish() git push origin HEAD', 'publish()\ngit push origin HEAD', 'f() if true; then git push; fi']) expect(() => pushTargets(cmd), cmd).toThrow()
 })
 
-// Each of these ran where the function was called, in zsh, bash, or pwsh (R542 verify pass).
+// Each of these ran where the function was called, in zsh, bash, or pwsh, in an adversarial pass.
 test('a function defined or called in a less common form is read where it cannot be read, or throws', () => {
   for (const cmd of [
     "'f'() { git push; }; cd /pub && f", '"f"() { git push; }; cd /pub && f', "f'g'() { git push; }; cd /pub && fg",
@@ -1606,7 +1606,7 @@ test('a function defined or called in a less common form is read where it cannot
   expect(() => pushTargets('function { cd /pub; }; git push')).toThrow()
 })
 
-// Each of these pushed in /pub in zsh, bash, or pwsh (R554).
+// Each of these pushed in /pub in zsh, bash, or pwsh.
 test('a push or host write among the words of a call to a function is read where the call cannot be read', () => {
   for (const cmd of [
     'wrap() { cd /pub; "$@"; }; wrap git push', 'in_repo() { cd /pub && "$@"; }; in_repo git push origin main',
@@ -2119,7 +2119,7 @@ test('the arguments of a git alias are not read as commands, but a git after an 
   expect(pushTargets('sudo -u git -g staff git push -f').some(p => p.force)).toBe(true)
 })
 
-// Found in the R554 adversarial pass, each probed in bash 3.2, zsh 5.9, or pwsh 7.
+// Found in an adversarial pass, each probed in bash 3.2, zsh 5.9, or pwsh 7.
 const WRAP = 'wrap() { cd /pub; "$@"; }; '
 const PSW = 'function wrap { Set-Location /pub; & $args[0] $args[1] | Write-Host }; '
 const PSF = 'function f { Set-Location /pub }; '
