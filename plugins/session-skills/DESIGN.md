@@ -77,8 +77,11 @@ directory is unknown and the command is read as both bash and PowerShell. `git s
 too, and so is `git-push` run directly. A push in a command left to run later is read in a directory
 that cannot be read: the command given to `git submodule foreach`, `git bisect run`, `git rebase -x`,
 `git difftool -x`, or `git for-each-repo`, a `trap` action, and a function body, since a function
-runs where it is called. A body that is not in braces or parentheses, as zsh allows in
-`f() git push`, is not read, and the hold asks. A subcommand git does not build in
+runs where it is called. That includes zsh's definitions with a quoted name or several names, as
+in `'f'() { ... }` and `f g () { ... }`, and a PowerShell parameter's default value. A body that is
+not in braces or parentheses, as zsh allows in `f() git push`, is not read, and the hold asks. So is
+a function whose name is expanded, as in `$n() { ... }`, and one set in zsh's `functions` array or
+through PowerShell's `function:` drive. A subcommand git does not build in
 is read as an alias from `git config` in the push's directory, as `alias.<name>` and git 2.54's
 `alias.<name>.command`, and its expansion is checked in its place with the `-c` values given with
 it, for gh and glab writes as well as pushes. Where `GH_REPO` or `GITLAB_REPO` is set in the
@@ -140,16 +143,18 @@ The repo a push runs in is its `--git-dir` or an exported `GIT_DIR`, else its di
 clears a `GIT_DIR` set before it, and a `--work-tree` does not change the repo. A `cd` after `&&` from the start of its list has run by the time the push runs, but one
 after `||`, inside an `if` or a loop, or after a command that may have failed may not have, and
 where the push may run in more than one directory the hold asks. It asks too after `popd` or `cd -`,
-a call to a function the command defines, a body in braces after a command's first word, as in
+a call to a function the command defines, including one after `eval` or zsh's `noglob` and, once
+the command defines a function, any command whose name is not written out, a body in braces after a command's first word, as in
 zsh's `() { ... }` or `repeat 1 { ... }`, a `GIT_DIR` set without `export` or with a relative path,
 a path that starts with `~` or `$HOME`, a path with a variable in it after a `cd`, a path with `..` in
 it, and a git subcommand that is not written out, such as `git $sub`. bash folds a `..` into the path
 as written and git into the path on disk, and the two differ after a link, as a worktree's
 `notes.local` is. A branch that ends in `exit` reaches nothing after it, so
 `cd /x || exit 1; git push` is read in `/x`, unless the command defines a function named `exit`.
-A `return` outside a function fails in bash, which runs on, so it is read as running on. The Bash tool runs bash or zsh, which differ on two
-points: zsh runs the last command of a pipeline in the current shell, and it sends only the last
-pipeline of a list to the background. Where the two readings differ, the hold asks. A PowerShell
+A `return` outside a function fails in bash, which runs on, so it is read as running on. The Bash tool runs bash or zsh, which differ on three
+points: zsh runs the last command of a pipeline in the current shell, it sends only the last
+pipeline of a list to the background, and it runs the command after `noglob` or `nocorrect`, where
+bash fails. Where the two readings differ, the hold asks. A PowerShell
 pipeline or subexpression, or the command after `$x =`, runs in the current runspace and can move
 the location. A variable path
 in the session's own directory, as in `cd "$WT"`, is read as the session's repo.

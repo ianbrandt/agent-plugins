@@ -102,23 +102,36 @@ const lastGitDir = (words: Word[]) => words.filter(w => /^GIT_DIR=/.test(w.text)
 // that later git commands read. A relative GIT_DIR is read where each git
 // command runs, so it is not read here. A call to a function defined in the
 // command, or a Bash or zsh body in braces after the first word, such as zsh's
-// `() { ... }` or `repeat 1 { ... }`, may run a cd. A function definition runs
+// `() { ... }` or `repeat 1 { ... }`, may run a cd, and so may a call after
+// `eval` or zsh's `noglob`. A function definition runs
 // nothing, and its body is read in a directory that cannot be read (see `NOWHERE`). `exit` reaches no later command. A `return` outside a function
 // fails in bash, which runs on, so it is read as running on.
 function effect(words: Word[], locs: Loc[], ps: boolean, functions: Set<string>): Loc[] {
   const setGitDir = (w: Word | undefined) => locs.map(l => ({ ...l, gitDir: w?.literal && !ABSOLUTE.test(w.text) ? null : resolve(l.dir, w) }))
   let k = 0
-  while (!ps && k < words.length && /^[A-Za-z_]\w*=/.test(words[k].text)) k++
+  while (!ps && k < words.length && /^[A-Za-z_]\w*=/.test(words[k].text) && !functions.has(words[k].text)) k++
   // A GIT_DIR set without export is not read by git, unless it was exported before.
   if (k === words.length) return lastGitDir(words) ? locs.map(l => ({ ...l, gitDir: null })) : locs
   // PowerShell runs the command after `$x =`.
   if (ps && words[1]?.text === '=' && words.length > 2 && /^\$(?!\{?env:)/i.test(words[0].text)) k = 2
-  while (!ps && (words[k].text === 'builtin' || words[k].text === 'command') && k + 1 < words.length) k++
+  while (!ps && /^(?:builtin|command|eval)$/.test(words[k].text) && k + 1 < words.length) k += words[k + 1].text === '--' && k + 2 < words.length ? 2 : 1
+  // zsh's `noglob` runs the command after it, and bash fails on it.
+  if (!ps && /^(?:noglob|nocorrect)$/.test(words[k].text) && k + 1 < words.length) return union(locs, effect(words.slice(k + 1), locs, ps, functions))
   const args = words.slice(k + 1)
   // A PowerShell function may be dot-sourced, as in `. f`.
   const name = ps ? psName((words[k].text === '.' && args[0]?.text) || words[k].text) : words[k].text
   if (!ps && (args[0]?.text === '()' || name === 'function')) return locs
-  if (functions.has(name) || (!ps && args.some(w => w.text === '{' && !w.quoted))) return NOWHERE
+  if (!ps && (words.some(w => /^functions(?:\[[^\]]*\])?\+?=/.test(w.text)) || (name === 'functions' && args.some(w => /^-\w*c/.test(w.text))))) {
+    throw new Error("a function set in zsh's functions array is not read")
+  }
+  const drive = (w: Word) => /(?:^|[\\:{$])function:/i.test(w.text)
+  if (ps && ((drive(words[0]) && (words[1]?.text === '=' || words[0].text.endsWith('='))) || (/^(?:set-item|si|new-item|ni|set-content|sc|add-content|ac)$/.test(name) && args.some(drive)))) {
+    throw new Error('a function set through the function: drive is not read')
+  }
+  // A command whose name is not written out may call a function.
+  // A subshell, arithmetic, or a body is read as a placeholder word that is not literal.
+  const unwritten = !words[k].literal && !/^(?:\(\)|\(…\)|\{\}|\(\(\)\))$/.test(words[k].text)
+  if (functions.has(name) || (!ps && ((functions.size && unwritten) || args.some(w => w.text === '{' && !w.quoted)))) return NOWHERE
   if (name === 'exit' || (ps && name === 'throw')) return []
   if (ps) {
     const m = /^\$(?:env:|\{env:)GIT_DIR\}?(?:=(.*))?$/is.exec(words[0].text)
@@ -218,15 +231,21 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
   const escape = ps ? '`' : '\\'
   const meta = ps ? /[\s;&|(){}<>]/ : /[\s;&|()<>]/
   // A function's name with no body yet: `f ()`, `function f`, or `function f ()`
-  // in bash and zsh, and `function f` or `filter f` with or without a parameter
-  // list in PowerShell. `a=()` is an array.
-  const name = (w: Word | undefined) => !!w && w.literal && !w.quoted && !w.text.includes('=')
-  const named = (ws: Word[]) =>
-    ps
-      ? /^(?:function|filter)$/i.test(ws[0]?.text ?? '') && name(ws[1]) && (ws.length === 2 || (ws.length === 3 && ws[2].text === '()'))
-      : ws.at(-1)?.text === '()' && ws.at(-1)?.literal === false
-        ? ws.length === 2 ? name(ws[0]) : ws.length === 3 && ws[0].text === 'function' && name(ws[1])
-        : ws.length === 2 && ws[0].text === 'function' && name(ws[1])
+  // in bash and zsh, where zsh also takes several names and a quoted one, and
+  // `function f` or `filter f` with or without a parameter list in PowerShell.
+  // `a=()` is an array. A name with an expansion in it cannot be read.
+  const names = (ws: Word[]) => {
+    if (ws.some(w => !w.literal)) throw new Error('a function whose name is expanded is not read')
+    return ws.length > 0
+  }
+  const named = (ws: Word[]) => {
+    if (ps) return /^(?:function|filter)$/i.test(ws[0]?.text ?? '') && (ws.length === 2 || (ws.length === 3 && ws[2].text === '()')) && !ws[1].text.includes('=') && names([ws[1]])
+    const fn = ws[0]?.text === 'function'
+    if (ws.at(-1)?.text !== '()' || ws.at(-1)?.literal) return fn && ws.length === 2 && names([ws[1]])
+    const given = ws.slice(fn ? 1 : 0, -1)
+    // A body in parentheses is read as `()` too.
+    return !given.some(w => (!fn && w.text.includes('=')) || (w.text === '()' && !w.literal)) && names(given)
+  }
   let i = 0
   let open = -1
   const unclosed = (at: number) => {
@@ -498,7 +517,8 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
         commands.push({ words, at: base })
         if (ps && /^(?:function|filter)$/i.test(words[0].text) && words[1]) functions.add(psName(words[1].text))
         else if (words[0].text === 'function' && words[1]) functions.add(words[1].text)
-        if (words[1]?.text === '()') functions.add(words[0].text)
+        const p = words.findIndex(w => w.text === '()' && !w.literal)
+        if (!ps && p > 0 && named(words.slice(0, p + 1))) for (const w of words.slice(0, p)) functions.add(w.text)
         defining = named(words)
         if (functions.size || /^(?:repeat|foreach|coproc)$/.test(words[0].text)) reorder()
       }
@@ -618,7 +638,8 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
         // A PowerShell if, elseif, or else body runs in its place.
         if (c === '{' && !psIf(words)) reorder()
         i++
-        if ((ps ? c === '{' : c === '(') && (named(words) || (defining && !words.length && !after))) {
+        // A PowerShell parameter list may run a command where the function is called.
+        if ((ps ? c === '{' || named(words) : c === '(') && (named(words) || (defining && !words.length && !after))) {
           defining = false
           list(NOWHERE, c === '(' ? ')' : '}')
           if (words.length) words.push({ text: c === '(' ? '()' : '{}', literal: false, quoted: false })

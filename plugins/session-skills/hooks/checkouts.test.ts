@@ -1551,6 +1551,49 @@ test('a command in a function body is read in a directory that cannot be read', 
   for (const cmd of ['publish() git push origin HEAD', 'publish()\ngit push origin HEAD', 'f() if true; then git push; fi']) expect(() => pushTargets(cmd), cmd).toThrow()
 })
 
+// Each of these ran where the function was called, in zsh, bash, or pwsh (R542 verify pass).
+test('a function defined or called in a less common form is read where it cannot be read, or throws', () => {
+  const dir = (cmd: string, shell = 'Bash') => {
+    try {
+      return pushTargets(cmd, shell)[0]?.dir
+    } catch {
+      return null
+    }
+  }
+  for (const cmd of [
+    "'f'() { git push; }; cd /pub && f", '"f"() { git push; }; cd /pub && f', "f'g'() { git push; }; cd /pub && fg",
+    '\\f() { git push; }; cd /pub && f', "function 'f' { git push; }; cd /pub && f",
+    'n=f; $n() { git push; }; cd /pub && f', 'n=f; function $n { git push; }; cd /pub && f', 'function f$x { git push; }; cd /pub && f',
+    'function f=x { git push; }; cd /pub && "f=x"', '~f() { git push; }; cd /pub && ~f',
+    'f g () { git push; }; cd /pub && f', 'f g h () { git push; }; cd /pub && h',
+    'nocorrect f() { git push; }; cd /pub && f', 'noglob f() { git push; }; cd /pub && f',
+    'f() { cd /prv; }; fn=f; $fn; git push', 'f() { cd /pub; }; noglob f; git push', 'f() { cd /pub; }; eval f; git push',
+    "functions[f]='git push'; cd /pub; f", "functions+=(g 'cd /pub'); g; git push", 'f() { cd /pub; }; functions -c f g; g; git push',
+    'f g () { cd /pub; }; eval -- g; git push', 'function f=x { cd /pub; }; "f=x"; git push',
+    // zsh runs the command after `noglob`, and bash fails on it.
+    'noglob cd /prv; git push',
+  ]) expect(dir(cmd), cmd).toBeNull()
+  expect(hostWrite("'m'() { gh pr merge 3; }; cd /pub && m")?.dir).toBeNull()
+  for (const cmd of [
+    'function f($r = $(git push)) { "got $r" }; Set-Location /pub; f', 'function f([scriptblock]$s = { git push }) { & $s }; Set-Location /pub; f',
+    '${function:f} = { git push }; Set-Location /pub; f', 'Set-Item function:f { git push }; Set-Location /pub; f',
+    '${function:f}={ git push }; Set-Location /pub; f', "Set-Content function:f 'git push'; Set-Location /pub; f",
+    'Set-Item -Path:function:f -Value { git push }; Set-Location /pub; f', '$h = @{ Filter = (Set-Location /pub) }; git push',
+  ]) expect(dir(cmd, 'PowerShell'), cmd).toBeNull()
+  expect(hostWrites('function m($n = $(gh pr merge 3)) { }; Set-Location /pub; m', 'PowerShell')[0]?.dir).toBeNull()
+  // These define no function.
+  for (const cmd of [
+    'local a=(); git push', 'typeset -a a=() b=(); git push', 'eval "$(ssh-agent -s)" && git push',
+    'f() { :; }; (cd /prv && make); git push', 'f() { :; }; (( n = 1 )); git push',
+  ]) {
+    expect(pushTarget(cmd)?.dir, cmd).toBeUndefined()
+  }
+  expect(pushTargets('Get-ChildItem function:; git push', 'PowerShell')[0]?.dir).toBeUndefined()
+  expect(pushTarget('cd /pub; eval cd /prv; git push')?.dir).toBe('/prv')
+  // zsh's anonymous function runs in place, and is not read.
+  expect(() => pushTargets('function { cd /pub; }; git push')).toThrow()
+})
+
 test('a mirror or + refspec set in config, or any config set in the environment, forces the push', () => {
   for (const cmd of [
     'git -c remote.origin.mirror push origin',
