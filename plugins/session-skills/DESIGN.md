@@ -80,8 +80,11 @@ that cannot be read: the command given to `git submodule foreach`, `git bisect r
 runs where it is called. That includes zsh's definitions with a quoted name or several names, as
 in `'f'() { ... }` and `f g () { ... }`, and a PowerShell parameter's default value. A body that is
 not in braces or parentheses, as zsh allows in `f() git push`, is not read, and the hold asks. So is
-a function whose name is expanded, as in `$n() { ... }`, and one set in zsh's `functions` array or
-through PowerShell's `function:` drive. A subcommand git does not build in
+a function whose name is expanded, as in `$n() { ... }`, one set in zsh's `functions` array, and one
+set, copied, or renamed through PowerShell's `function:` or `alias:` drive, or aliased with
+`Set-Alias`. So is a function that runs with no call, as zsh's `TRAPZERR() { ... }`, `chpwd`, and
+`command_not_found_handler` do, or a `trap` on `DEBUG`, `ERR`, `RETURN`, `ZERR`, or `CHLD` whose action runs
+more than commands such as `echo` and `rm`. A subcommand git does not build in
 is read as an alias from `git config` in the push's directory, as `alias.<name>` and git 2.54's
 `alias.<name>.command`, and its expansion is checked in its place with the `-c` values given with
 it, for gh and glab writes as well as pushes. Where `GH_REPO` or `GITLAB_REPO` is set in the
@@ -143,9 +146,13 @@ The repo a push runs in is its `--git-dir` or an exported `GIT_DIR`, else its di
 clears a `GIT_DIR` set before it, and a `--work-tree` does not change the repo. A `cd` after `&&` from the start of its list has run by the time the push runs, but one
 after `||`, inside an `if` or a loop, or after a command that may have failed may not have, and
 where the push may run in more than one directory the hold asks. It asks too after `popd` or `cd -`,
-a call to a function the command defines, including one after `eval` or zsh's `noglob` and, once
-the command defines a function, any command whose name is not written out, a body in braces after a command's first word, as in
-zsh's `() { ... }` or `repeat 1 { ... }`, a `GIT_DIR` set without `export` or with a relative path,
+and after a call to a function the command defines, including one after `eval` or zsh's `noglob`,
+`-`, or `repeat N`. A push or host write in the call itself, as in `wrap git push`, is asked about
+too. Once the command defines a function, the hold asks after any command whose name is not written
+out or is brace-expanded, other than git, gh, or glab looked up on the PATH, and after PowerShell's
+`Invoke-Command`. It asks after a body in braces after a command's first word, as in
+zsh's `() { ... }` or `repeat 1 { ... }`, an `eval` of words the shell splits or expands again, as in
+`eval 'cd /x'` or `eval "$cmd"`, PowerShell's `Invoke-Expression`, a `GIT_DIR` set without `export` or with a relative path,
 a path that starts with `~` or `$HOME`, a path with a variable in it after a `cd`, a path with `..` in
 it, and a git subcommand that is not written out, such as `git $sub`. bash folds a `..` into the path
 as written and git into the path on disk, and the two differ after a link, as a worktree's
@@ -153,7 +160,7 @@ as written and git into the path on disk, and the two differ after a link, as a 
 `cd /x || exit 1; git push` is read in `/x`, unless the command defines a function named `exit`.
 A `return` outside a function fails in bash, which runs on, so it is read as running on. The Bash tool runs bash or zsh, which differ on three
 points: zsh runs the last command of a pipeline in the current shell, it sends only the last
-pipeline of a list to the background, and it runs the command after `noglob` or `nocorrect`, where
+pipeline of a list to the background, and it runs the command after `noglob`, `nocorrect`, `-`, or `repeat N`, where
 bash fails. Where the two readings differ, the hold asks. A PowerShell
 pipeline or subexpression, or the command after `$x =`, runs in the current runspace and can move
 the location. A variable path
@@ -252,7 +259,7 @@ submodule config that push reads. The PR is held when the default repo set with 
 cannot be read. A `GH_REPO` set in a
 shell profile is not seen, since the hook reads Claude Code's own environment. Each write in a
 chained command is checked, so a comment added after a PR opened unasked is still asked about. A push or write run through `bash -c`, `eval`,
-`Start-Process`, a `git-<name>` program on the PATH such as git-town, a user's own `gh alias`, or
+`Invoke-Expression`, `Start-Process`, a `git-<name>` program on the PATH such as git-town, a user's own `gh alias`, or
 brace expansion is not seen, and neither is a force option held
 in a variable, as in `git push $FORCE`. A PowerShell command with `--%` in it is asked about, since
 the rest of its line is passed on unread.

@@ -41,7 +41,7 @@ export const worktreeName = (name: string, id = '') => (id ? `${id.toLowerCase()
 // subshells, script blocks, and unquoted heredoc bodies are read as commands of
 // their own. The push and host-write gates read those words. A command that a
 // settings hook rewrote is not seen.
-// shortcut: a command run as `bash -c '...'`, `eval "..."`, `env -S '...'`, `Start-Process`, or a `git-<name>` program on the PATH that is not git's own is not read.
+// shortcut: a command run as `bash -c '...'`, `env -S '...'`, `Start-Process`, or a `git-<name>` program on the PATH that is not git's own is not read, nor is a push in the text of `eval` or `Invoke-Expression`, or a cd in one `eval "$(...)"`.
 
 // The directory a command runs in: a path, undefined for the session's repo,
 // or null where it cannot be read, and the hold then asks.
@@ -60,9 +60,9 @@ const CLOSE = new Set(['fi', 'done', 'esac'])
 // Every place a command may be, from the branches that lead to it.
 function union(...lists: Loc[][]): Loc[] {
   const seen = new Map<string, Loc>()
-  for (const l of lists.flat()) seen.set(JSON.stringify(l), l)
+  for (const l of lists.flat()) seen.set(JSON.stringify(l, (_, v) => (v === undefined ? '\0' : v)), l)
   // shortcut: past 16 possible directories the directory is unknown, and the hold asks.
-  return seen.size > 16 ? [{ dir: null, stack: [], gitDir: null }] : [...seen.values()]
+  return seen.size > 16 ? NOWHERE : [...seen.values()]
 }
 
 // A function body, which runs wherever the function is called.
@@ -95,43 +95,94 @@ function resolve(base: Dir, w: Word | undefined): Dir {
   return base.replace(/[\\/]+$/, '') + sep + p.replace(/^\.[\\/]/, '')
 }
 
+// eval joins its words and parses them again, so quoted text with a blank or an
+// operator in it, or an assignment before a command, is not read as written.
+// One substitution, as in `eval "$(ssh-agent -s)"`, is read as written.
+function reparsed(ws: Word[]): boolean {
+  if (ws[0]?.text === '--') ws = ws.slice(1)
+  if (ws.length === 1 && !ws[0].literal && /^(?:\$\((?:[^()]|\([^()]*\))*\)|`[^`]*`)$/.test(ws[0].text)) return false
+  return ws.some(w => !w.literal || (w.quoted && /[\s;&|()<>\\$`'"]/.test(w.text))) || (ws.length > 1 && /^[A-Za-z_]\w*=/.test(ws[0].text))
+}
+
 const valueOf = (w: Word): Word => ({ ...w, text: w.text.slice(w.text.indexOf('=') + 1) })
 const lastGitDir = (words: Word[]) => words.filter(w => /^GIT_DIR=/.test(w.text)).map(valueOf).pop()
 
 // Where each command leaves the shell: a cd, pushd, or popd, or a GIT_DIR
 // that later git commands read. A relative GIT_DIR is read where each git
 // command runs, so it is not read here. A call to a function defined in the
-// command, or a Bash or zsh body in braces after the first word, such as zsh's
-// `() { ... }` or `repeat 1 { ... }`, may run a cd, and so may a call after
-// `eval` or zsh's `noglob`. A function definition runs
-// nothing, and its body is read in a directory that cannot be read (see `NOWHERE`). `exit` reaches no later command. A `return` outside a function
-// fails in bash, which runs on, so it is read as running on.
-function effect(words: Word[], locs: Loc[], ps: boolean, functions: Set<string>): Loc[] {
+// command, a Bash or zsh body in braces after the first word, such as zsh's
+// `() { ... }` or `repeat 1 { ... }`, and PowerShell's Invoke-Expression may
+// run a cd, and so may the command after `eval`, zsh's `noglob`, `-`, or
+// `repeat N`. Where a call may run, the command's own words are read at
+// `NOWHERE` too, so `wrap git push` asks. A function definition runs nothing, and its body is read
+// in a directory that cannot be read. `exit` reaches no later command. A
+// `return` outside a function fails in bash, which runs on, so it is read as running on.
+function effect(words: Word[], locs: Loc[], ps: boolean, functions: Set<string>, invoked = false): Loc[] {
   const setGitDir = (w: Word | undefined) => locs.map(l => ({ ...l, gitDir: w?.literal && !ABSOLUTE.test(w.text) ? null : resolve(l.dir, w) }))
   let k = 0
   while (!ps && k < words.length && /^[A-Za-z_]\w*=/.test(words[k].text) && !functions.has(words[k].text)) k++
   // A GIT_DIR set without export is not read by git, unless it was exported before.
   if (k === words.length) return lastGitDir(words) ? locs.map(l => ({ ...l, gitDir: null })) : locs
-  // PowerShell runs the command after `$x =`.
-  if (ps && words[1]?.text === '=' && words.length > 2 && /^\$(?!\{?env:)/i.test(words[0].text)) k = 2
-  while (!ps && /^(?:builtin|command|eval)$/.test(words[k].text) && k + 1 < words.length) k += words[k + 1].text === '--' && k + 2 < words.length ? 2 : 1
-  // zsh's `noglob` runs the command after it, and bash fails on it.
-  if (!ps && /^(?:noglob|nocorrect)$/.test(words[k].text) && k + 1 < words.length) return union(locs, effect(words.slice(k + 1), locs, ps, functions))
+  // PowerShell runs the command after `$x =`, `$x +=`, or `[type]$x =`, and after `$x=` in one word.
+  let glued: string | undefined
+  const a = ps ? words.findIndex(w => w.text.includes('=')) : -1
+  const m = a >= 0 ? /^([\s\S]*?)(?:[-+*/%]|\?\?)?=(?!=)([\s\S]*)$/.exec(words[a].text) : null
+  if (m && /^(?:\[[^\]]*\]\s*)*\$(?!\{?env:)[^=]*$/i.test(`${words.slice(0, a).map(w => w.text).join(' ')} ${m[1]}`.trim())) {
+    if (!m[2]) k = a + 1 < words.length ? a + 1 : 0
+    else if (!words[a].quoted) [k, glued] = [a, m[2]]
+  }
+  while (!ps && /^(?:builtin|command|eval)$/.test(words[k].text) && !functions.has(words[k].text) && k + 1 < words.length) {
+    if (words[k].text === 'eval' && reparsed(words.slice(k + 1))) return NOWHERE
+    k += words[k + 1].text === '--' && k + 2 < words.length ? 2 : 1
+  }
+  // zsh's `noglob`, `nocorrect`, `-`, `coproc`, and `exec`, and bash's `time -p`, run the command after them, which may be a function, and the other shell fails on them or runs only a program.
+  if (!ps && /^(?:noglob|nocorrect|-|-p|coproc|exec)$/.test(words[k].text) && !functions.has(words[k].text)) {
+    let j = k + 1
+    if (words[k].text === 'exec') while (j < words.length && words[j].text.startsWith('-')) j += words[j].text === '-a' ? 2 : 1
+    // A body in braces after them is read as words here.
+    if (words[j]?.text === '{' && !words[j].quoted) return NOWHERE
+    if (j < words.length) return union(locs, effect(words.slice(j), locs, ps, functions))
+  }
   const args = words.slice(k + 1)
   // A PowerShell function may be dot-sourced, as in `. f`.
-  const name = ps ? psName((words[k].text === '.' && args[0]?.text) || words[k].text) : words[k].text
+  const name = ps ? psName((words[k].text === '.' && args[0]?.text) || glued || words[k].text) : words[k].text
   if (!ps && (args[0]?.text === '()' || name === 'function')) return locs
-  if (!ps && (words.some(w => /^functions(?:\[[^\]]*\])?\+?=/.test(w.text)) || (name === 'functions' && args.some(w => /^-\w*c/.test(w.text))))) {
-    throw new Error("a function set in zsh's functions array is not read")
+  if (!ps && (words.some(w => /^(?:functions(?:\[[^\]]*\])?|chpwd_functions)\+?=|\$\{functions\[[^\]]*\]:{0,2}=/.test(w.text)) || (name === 'functions' && args.some(w => /^-\w*c/.test(w.text))))) {
+    throw new Error("a function set in zsh's functions array or chpwd_functions is not read")
   }
-  const drive = (w: Word) => /(?:^|[\\:{$])function:/i.test(w.text)
-  if (ps && ((drive(words[0]) && (words[1]?.text === '=' || words[0].text.endsWith('='))) || (/^(?:set-item|si|new-item|ni|set-content|sc|add-content|ac)$/.test(name) && args.some(drive)))) {
-    throw new Error('a function set through the function: drive is not read')
+  if (!ps && name === 'trap') {
+    const [action, ...signals] = args[0]?.text === '--' ? args.slice(1) : args
+    // These actions run between later commands, where nothing calls them. One that only reports, such as `echo`, moves nothing.
+    if (action && action.text !== '' && !action.text.startsWith('-') && signals.some(w => !w.literal || /^(?:SIG)?(?:DEBUG|ERR|RETURN|ZERR|CHLD|CLD)$/i.test(w.text)) && !still(action.text, functions)) {
+      throw new Error('a trap that runs between commands is not read')
+    }
   }
-  // A command whose name is not written out may call a function.
-  // A subshell, arithmetic, or a body is read as a placeholder word that is not literal.
-  const unwritten = !words[k].literal && !/^(?:\(\)|\(…\)|\{\}|\(\(\)\))$/.test(words[k].text)
-  if (functions.has(name) || (!ps && ((functions.size && unwritten) || args.some(w => w.text === '{' && !w.quoted)))) return NOWHERE
+  const drive = (w: Word) => /(?:^|[\\:{$])(?:function|alias):/i.test(w.text)
+  const copies = /^(?:set-item|si|new-item|ni|set-content|sc|add-content|ac|rename-item|ren|rni|copy-item|copy|cp|cpi|move-item|move|mv|mi)$/
+  if (ps && ((drive(words[0]) && (words[1]?.text === '=' || /(?:function|alias):[^=]*=/i.test(words[0].text))) || (copies.test(name) && args.some(drive)) || /^(?:set-alias|sal|new-alias|nal|import-alias|ipal)$/.test(name))) {
+    throw new Error('a function or alias set through the function: or alias: drive, or with Set-Alias, is not read')
+  }
+  // A command whose name is not written out, or is brace-expanded in bash, may call a function,
+  // unless it is git, gh, or glab looked up on the PATH. A Bash subshell, arithmetic, or a body is
+  // read as a placeholder word that is not literal, and a PowerShell group may hold a command. A
+  // PowerShell value after `$x =` is not called: a call starts with `&`, which ends the command here.
+  const callee = ps && words[k].text === '.' && args[0] ? args[0] : words[k]
+  // A method call after the value, as in `$x = $sb.Invoke()`, may run a function.
+  const method = words.slice(k + 1).some(w => w.text === '()' && !w.literal)
+  const assigned = ps && callee === words[k] && !method && (k > 0 || /^\$[^=]*=/.test(words[0].text) || /^(?:[-+*/%]|\?\?)?=$/.test(words[1]?.text ?? ''))
+  const program = lookup(callee)
+  const unwritten = callee.literal
+    ? !ps && /\{[^}]*(?:,|\.\.)[^}]*\}/.test(callee.text)
+    : !assigned && !(program && !functions.has(program)) && !(ps ? /^\{\}$/ : /^(?:\(\)|\(…\)|\{\}|\(\(\)\))$/).test(callee.text) &&
+      // A PowerShell variable, property, array, subexpression, or group calls nothing unless `&` or `.` runs it.
+      !(ps && !invoked && callee === words[k] && !method && /^(?:\$[\w:?{}]+(?:\.\w+)*(?:\+\+|--)?|[@$]\([\s\S]*\)|\(\))$/.test(callee.text))
+  // zsh runs a group in braces with no blank after `{`, where bash runs a command named `{cd`.
+  if (!ps && words[k].literal && !words[k].quoted && /^\{[^\s}]/.test(words[k].text) && !/\{[^}]*(?:,|\.\.)[^}]*\}/.test(words[k].text)) return NOWHERE
+  // A method named Invoke, or one named by a variable, may run a function.
+  const called = functions.has(name) || (functions.size && (unwritten || (ps && (/^(?:invoke-command|icm)$/.test(name) || words.some(w => /^invoke\w*$|\.(?:invoke\w*|\$)/i.test(w.text))))))
+  if (called || (ps ? /^(?:invoke-expression|iex)$/.test(name) : args.some(w => w.text === '{' && !w.quoted))) return NOWHERE
+  // zsh's `repeat N` runs the command after it in place, and bash fails on it.
+  if (!ps && name === 'repeat' && k + 2 < words.length) return union(locs, effect(words.slice(k + (words[k + 2].text === 'do' ? 3 : 2)), locs, ps, functions))
   if (name === 'exit' || (ps && name === 'throw')) return []
   if (ps) {
     const m = /^\$(?:env:|\{env:)GIT_DIR\}?(?:=(.*))?$/is.exec(words[0].text)
@@ -169,6 +220,11 @@ function effect(words: Word[], locs: Loc[], ps: boolean, functions: Set<string>)
     return pushd ? { ...l, dir, stack: [l.dir, ...l.stack] } : { ...l, dir }
   })
 }
+
+// Commands that cannot move the shell, which a trap action may be made of.
+const STILL = /^(?::|true|false|echo|rm|rmdir|kill|wait|exit|return|logger)$/
+const still = (text: string, functions: Set<string>) =>
+  lexAll(text, false, NOWHERE, false, new Set(functions)).every(c => c.words[0]?.literal && STILL.test(c.words[0].text) && !functions.has(c.words[0].text))
 
 // The characters one command may be read through, across every pass, and the
 // directories copied onto pushd stacks. Text left open at each level of a nest
@@ -497,6 +553,8 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
     let pipe: Loc[] | null = null
     let words: Word[] = []
     let after: Loc[] | null = null
+    // Whether PowerShell's `&` runs the command being read.
+    let invoked = false
     let cases = 0
     // After `case`, until its subject is read, and where a case pattern comes next, whose leading `(` is not a subshell.
     let subject = false
@@ -515,13 +573,17 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
     // pipeline runs in this runspace.
     const finish = (op: string) => {
       const base = after ?? cur
-      const ran = words.length ? effect(words, base, ps, functions) : base
+      const ran = words.length ? effect(words, base, ps, functions, invoked) : base
+      invoked = false
       if (words.length) {
-        commands.push({ words, at: base })
+        commands.push({ words, at: ran.includes(NOWHERE[0]) ? NOWHERE : base })
         if (ps && /^(?:function|filter)$/i.test(words[0].text) && words[1]) functions.add(psName(words[1].text))
         else if (words[0].text === 'function' && words[1]) functions.add(words[1].text)
         const p = words.findIndex(w => w.text === '()' && !w.literal)
         if (!ps && p > 0 && named(words.slice(0, p + 1))) for (const w of words.slice(0, p)) functions.add(w.text)
+        if (!ps && [...functions].some(f => /^(?:TRAP[A-Z0-9]+|chpwd|command_not_found_handler)$/.test(f))) throw new Error('a zsh TRAP, chpwd, or command_not_found_handler function, which runs where nothing calls it, is not read')
+        // zsh's `repeat N do` may run its body no times.
+        if (!ps && words[0].text === 'repeat' && words[2]?.text === 'do') blocks.push(base)
         defining = named(words)
         if (functions.size || /^(?:repeat|foreach|coproc)$/.test(words[0].text)) reorder()
       }
@@ -620,9 +682,13 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
       const o = operator.exec(s)
       if (o) {
         i += o[0].length
-        // PowerShell's call operator.
-        if (ps && o[0] === '&' && !words.length && !after) continue
+        // PowerShell's call operator, also after `$x =`.
+        if (ps && o[0] === '&' && !words.length && !after) {
+          invoked = true
+          continue
+        }
         finish(o[0] === '\n' || o[0].startsWith(';') ? ';' : o[0])
+        if (ps && o[0] === '&') invoked = true
         if (o[0] === '\n') bodies()
         else if (cases && /^;[;&]/.test(o[0])) pattern = true
         continue

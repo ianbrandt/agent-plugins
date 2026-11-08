@@ -5,6 +5,14 @@ import { expect, test } from 'claude-code/testing'
 import { configWrites, hostWrites, pickBase, pushTargets, refLine, visibility, worktreeName } from './checkouts'
 
 const pushTarget = (cmd: string) => pushTargets(cmd)[0] ?? null
+// The directory of the first push, with a throw read as null, since the hook asks for either.
+const dir = (cmd: string, shell = 'Bash') => {
+  try {
+    return pushTargets(cmd, shell)[0]?.dir
+  } catch {
+    return null
+  }
+}
 
 test('a new branch starts from origin, except where the local default branch has everything origin has', () => {
   expect(pickBase('main', false, true, false, false)).toEqual({ base: 'main' })
@@ -1564,13 +1572,6 @@ test('a command in a function body is read in a directory that cannot be read', 
 
 // Each of these ran where the function was called, in zsh, bash, or pwsh (R542 verify pass).
 test('a function defined or called in a less common form is read where it cannot be read, or throws', () => {
-  const dir = (cmd: string, shell = 'Bash') => {
-    try {
-      return pushTargets(cmd, shell)[0]?.dir
-    } catch {
-      return null
-    }
-  }
   for (const cmd of [
     "'f'() { git push; }; cd /pub && f", '"f"() { git push; }; cd /pub && f', "f'g'() { git push; }; cd /pub && fg",
     '\\f() { git push; }; cd /pub && f', "function 'f' { git push; }; cd /pub && f",
@@ -1603,6 +1604,51 @@ test('a function defined or called in a less common form is read where it cannot
   expect(pushTarget('cd /pub; eval cd /prv; git push')?.dir).toBe('/prv')
   // zsh's anonymous function runs in place, and is not read.
   expect(() => pushTargets('function { cd /pub; }; git push')).toThrow()
+})
+
+// Each of these pushed in /pub in zsh, bash, or pwsh (R554).
+test('a push or host write among the words of a call to a function is read where the call cannot be read', () => {
+  for (const cmd of [
+    'wrap() { cd /pub; "$@"; }; wrap git push', 'in_repo() { cd /pub && "$@"; }; in_repo git push origin main',
+    'wrap() { cd /pub; "$@"; }; noglob wrap git push', 'f() { cd /pub; }; {f,x}; git push',
+  ]) expect(dir(cmd), cmd).toBeNull()
+  expect(pushTargets('git() { cd /pub; command git "$@"; }; git push').map(p => p.dir)).toEqual([null, null])
+  expect(hostWrite('wrap() { cd /pub; "$@"; }; wrap gh pr merge 3')?.dir).toBeNull()
+  // git looked up on the PATH, and a PowerShell value after `$x =`, call no function.
+  expect(pushTarget('f() { :; }; cd /prv; $(command -v git) push')?.dir).toBe('/prv')
+  expect(pushTargets('function f { }; $r = $LASTEXITCODE; $env:GIT_DIR = "/prv/.git"; git push', 'PowerShell')[0]?.dir).toBe('/prv/.git')
+})
+
+test("zsh's repeat and - modifier, and eval of words the shell splits again, are read where the command after them may run", () => {
+  for (const cmd of [
+    'repeat 1 cd /pub; git push', 'noglob f() { cd /pub; }; repeat 1 f; git push', 'repeat 1 do cd /pub; done; git push',
+    ':; - cd /pub; git push', 'f() { cd /pub; }; - f; git push',
+    'eval x=1 cd /pub; git push', "eval cd /pub '&&' git push", 'eval cd\\ /pub; git push', 'eval cd "/pub dir"; git push',
+    "eval 'cd /pub'; git push", 'eval "cd /pub"; git push',
+  ]) expect(dir(cmd), cmd).toBeNull()
+  for (const cmd of ['eval "$(ssh-agent -s)"; git push', 'eval $(ssh-agent -s); git push']) expect(pushTarget(cmd)?.dir, cmd).toBeUndefined()
+  expect(pushTarget("eval 'cd' /pub; git push")?.dir).toBe('/pub')
+})
+
+test('a function copied, renamed, or aliased, or called with no call site or through a name not written out, is read where it cannot be read, or throws', () => {
+  for (const cmd of [
+    'function f { Set-Location /pub }; Rename-Item function:f g; g; git push', 'function f { Set-Location /pub }; Copy-Item function:f function:g; g; git push',
+    'function f { Set-Location /pub }; ren function:f g; g; git push', 'function f { Set-Location /pub }; Set-Alias g f; g; git push',
+    'Set-Alias g git; Set-Location /pub; g push', 'New-Item alias:g -Value git; Set-Location /pub; g push',
+    'function f { Set-Location /pub }; $fn = Get-Command f; & $fn; git push', 'function f { Set-Location /pub }; & (Get-Command f); git push',
+    'function f { Set-Location /pub }; & $function:f; git push', 'function f { Set-Location /pub }; . $function:f; git push',
+    'function f { Set-Location /pub }; Invoke-Command -ScriptBlock ${function:f}; git push', 'function f { Set-Location /pub }; icm ${function:f}; git push',
+    "Invoke-Expression 'Set-Location /pub'; git push", "iex 'Set-Location /pub'; git push",
+  ]) expect(dir(cmd, 'PowerShell'), cmd).toBeNull()
+  for (const cmd of [
+    ': ${functions[g]::=cd /pub}; g; git push', ': ${functions[g]=cd /pub}; g; git push',
+    'TRAPZERR() { cd /pub; }; false; git push', 'TRAPDEBUG() { cd /pub; }; git push',
+    "trap 'cd /pub' DEBUG; git push", "trap 'cd /pub' debug; git push", "trap -- 'cd /pub' SIGDEBUG; git push", "trap 'cd /pub' ERR; false; git push",
+    "trap 'cd /pub' ZERR; false; git push", "f() { trap 'cd /pub' RETURN; }; f; git push",
+  ]) expect(dir(cmd), cmd).toBeNull()
+  // These run nothing before the push, or run the action only at exit.
+  for (const cmd of ["trap 'cd /pub' EXIT; git push", "trap - DEBUG; git push", "trap '' ERR; git push"]) expect(pushTarget(cmd)?.dir, cmd).toBeUndefined()
+  expect(pushTargets('function f { }; $x = git rev-parse HEAD; & git push', 'PowerShell')[0]?.dir).toBeUndefined()
 })
 
 test('a mirror or + refspec set in config, or any config set in the environment, forces the push', () => {
@@ -2071,4 +2117,68 @@ test('a call for help given to git before the subcommand is not a push or a conf
 test('the arguments of a git alias are not read as commands, but a git after an option may be its value', () => {
   expect(pushTargets('git lg --author git push').map(p => p.alias)).toEqual(['lg'])
   expect(pushTargets('sudo -u git -g staff git push -f').some(p => p.force)).toBe(true)
+})
+
+// Found in the R554 adversarial pass, each probed in bash 3.2, zsh 5.9, or pwsh 7.
+const WRAP = 'wrap() { cd /pub; "$@"; }; '
+const PSW = 'function wrap { Set-Location /pub; & $args[0] $args[1] | Write-Host }; '
+const PSF = 'function f { Set-Location /pub }; '
+
+test('a PowerShell call after a typed, compound, or unspaced assignment is read at the call', () => {
+  for (const c of ['[string]$x = wrap git push', '$x += wrap git push', '$x=wrap git push', '$x= wrap git push', '$x ??= wrap git push', '[int] $x = wrap git push']) expect(dir(PSW + c, 'PowerShell'), c).toBeNull()
+  for (const c of ['[string]$x = f; git push', '$x += f; git push', '$x=f; git push', '$x ??= f; git push']) expect(dir(PSF + c, 'PowerShell'), c).toBeNull()
+})
+
+test('an unspaced function: or alias: drive assignment with a string value is not read', () => {
+  for (const c of ["$function:f='Set-Location /pub'; f; git push", "${function:f}='Set-Location /pub'; f; git push", "$alias:g='git'; Set-Location /pub; g push"]) expect(dir(c, 'PowerShell'), c).toBeNull()
+})
+
+test('a function named like a precommand modifier is read as a call', () => {
+  for (const c of ['command() { cd /pub; "$@"; }; command git push', 'builtin() { cd /pub; "$@"; }; builtin git push', 'eval() { cd /pub; "$@"; }; eval git push', 'noglob() { cd /pub; "$@"; }; noglob git push', 'function nocorrect { cd /pub; "$@"; }; nocorrect git push', 'command() { cd /pub; }; command x; git push']) expect(dir(c), c).toBeNull()
+})
+
+test("a call after zsh's exec or coproc, or bash's time -p, is read as a call", () => {
+  for (const c of ['exec wrap git push', 'exec -a x wrap git push', 'exec -- wrap git push', 'coproc wrap git push', 'time -p wrap git push']) expect(dir(WRAP + c), c).toBeNull()
+  expect(dir('time -p cd /pub; git push')).toBeNull()
+  expect(pushTargets('exec >log 2>&1; git push')[0]?.dir).toBeUndefined()
+})
+
+test('a call past the 16-location cap is still read where it cannot be read', () => {
+  const p = '[ -d . ] && pushd . >/dev/null; '.repeat(15)
+  for (const c of ['noglob wrap git push', 'repeat 1 wrap git push']) expect(dir(WRAP + p + c), c).toBeNull()
+})
+
+test('eval of text the shell expands again is not read, except one substitution', () => {
+  for (const c of ['eval "$(:)cd /pub$(:)"; git push', "C=cd; eval '$C' /pub; git push", 'eval "cd$IFS/pub"; git push', 'eval eval cd\\\\ /pub; git push']) expect(dir(c), c).toBeNull()
+  for (const c of ['eval "$(ssh-agent -s)"; git push', 'eval $(ssh-agent -s); git push', 'eval "$(/opt/homebrew/bin/brew shellenv)"; git push', 'eval "$(pyenv init - "$(echo bash)")"; git push']) expect(pushTargets(c)[0]?.dir, c).toBeUndefined()
+})
+
+test('code that runs with no call site, such as TRAPUSR1, chpwd, a CHLD trap, or a signal in a variable, is not read', () => {
+  for (const c of ['TRAPUSR1() { cd /pub; }; kill -USR1 $$; git push', 'chpwd() { builtin cd /pub; }; cd .; git push', 'g() { builtin cd /pub; }; chpwd_functions=(g); cd .; git push',
+    'command_not_found_handler() { cd /pub; shift; "$@"; }; nosuchcmd git push', "trap 'cd /pub' CHLD; sleep 0 & wait; git push", "s=DEBUG; trap 'cd /pub' $s; git push"]) expect(dir(c), c).toBeNull()
+})
+
+test('an ERR trap that only reports, and PowerShell expressions after a function definition, run no call', () => {
+  for (const c of ["set -e; trap 'echo \"failed on line $LINENO\" >&2' ERR; npm test; git push", "trap 'rm -rf \"$tmpdir\"' EXIT ERR; tmpdir=$(mktemp -d); git push", "trap 'echo failed' ERR; git push"]) expect(pushTargets(c)[0]?.dir, c).toBeUndefined()
+  expect(pushTargets("trap 'echo failed' ERR; npm test")).toEqual([])
+  for (const c of ['if ($LASTEXITCODE -ne 0) { exit 1 }; git push', 'foreach ($p in $paths) { Write-Host $p }; git push', '$files | Where-Object { $_.Length -gt 0 }; git push',
+    '@(1) | Out-Null; git push', 'Write-Host "n=$($files.Count)"; git push', '$i++; git push', '(Get-Command f); git push']) expect(pushTargets("function f { 'x' }; " + c, 'PowerShell')[0]?.dir, c).toBeUndefined()
+  // These still call it.
+  for (const c of ['& $fn; git push', '& (Get-Command f); git push', '$function:f.Invoke(); git push', '(Get-Command f).ScriptBlock.Invoke(); git push', '$x = & $fn; git push', '$fn = Get-Command f; $x = & $fn; git push',
+    'Get-Command f | ForEach-Object { & $_ }; git push', '. $function:f; git push']) expect(dir(PSF + c, 'PowerShell'), c).toBeNull()
+})
+
+test('a stack entry for an unknown directory, a zsh brace group with no blank, and repeat N do are read as possibly moved', () => {
+  expect(dir('if true; then cd ~; fi; pushd /prv; popd; git push')).toBeNull()
+  expect(dir('{cd /pub}; git push')).toBeNull()
+  expect(dir('repeat 0 do :; cd /pub; done; git push')).toBeNull()
+})
+
+test('a PowerShell value after an assignment that invokes a script block runs the function', () => {
+  for (const c of ['$x = $function:f.Invoke(); git push', '$x = (Get-Command f).ScriptBlock.Invoke(); git push', '$x = @{ a = $function:f.Invoke() }; git push', '$m = "Invoke"; $function:f.$m(); git push', '${function:f} | % Invoke; git push']) expect(dir(PSF + c, 'PowerShell'), c).toBeNull()
+  for (const c of ['$sb = ${function:f}; $sb; git push', '$h.Keys | ForEach-Object { $_ }; git push']) expect(pushTargets(PSF + c, 'PowerShell')[0]?.dir, c).toBeUndefined()
+})
+
+test('a trap action that sets a variable is not read as one that only reports', () => {
+  expect(dir("export GIT_DIR=/prv/.git; trap 'printf -v GIT_DIR %s /pub/.git' ERR; false; git push")).toBeNull()
 })
