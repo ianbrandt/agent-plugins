@@ -79,9 +79,13 @@ that cannot be read: the command given to `git submodule foreach`, `git bisect r
 `git difftool -x`, or `git for-each-repo`, and a `trap` action. A subcommand git does not build in
 is read as an alias from `git config` in the push's directory, as `alias.<name>` and git 2.54's
 `alias.<name>.command`, and its expansion is checked in its place with the `-c` values given with
-it, for gh and glab writes as well as pushes. A `GH_REPO` or `GITLAB_REPO` set in the command
-holds a PR in each expansion as one aimed at another repo, and an alias that cannot be read is held
-as a host write too. A force push (a unique prefix of `--force`, `--force-with-lease`, `--mirror`, `--delete`, or
+it, for gh and glab writes as well as pushes. Where `GH_REPO` or `GITLAB_REPO` is set in the
+command, a PR in each expansion is held as one aimed at another repo. An alias that cannot be read
+is held as a host write too. An alias is not read where the command sets config in the environment, as with
+`GIT_CONFIG_COUNT` or `HOME`, or includes a file with `-c include.path`, so it is held as one that
+cannot be read. A name such as `pr:m` is read only as `alias.<name>.command`, since git refuses it
+as a key otherwise, and `gui`, `citool`, `instaweb`, and `send-email` are read as
+aliases, since git runs an alias of that name where the program is not installed. A force push (a unique prefix of `--force`, `--force-with-lease`, `--mirror`, `--delete`, or
 `--prune`, `-f` or `-d` in a short-flag group, a refspec that starts with `+` or deletes with a
 leading `:`, a `+` refspec or a mirror set with `-c` or in the remote's config, or any config set in
 the environment) is put to the user whatever the holds, because it replaces commits a reviewer may have read, and it is never refused
@@ -241,8 +245,7 @@ only those a session might write were fixed. These forms are not seen:
 - a NUL in `$'...'`, bash's `$"..."`, an unquoted glob in a command word, and PowerShell's
   `` `u{...} `` escape
 - an option value of `git` or `gh` before the real command, as in `env -u git git push`
-- a git 2.54 subsection alias that differs from another only in letter case, or has a space in
-  its name
+- a git 2.54 subsection alias that differs from another only in letter case
 - `NAME+=value`, a `GIT_DIR` cleared by a second `env`, and bash 5.3's `${ cd /x; }` in an
   assignment
 - a command git or the shell runs from a value: `--receive-pack`, `--upload-pack`, an editor such

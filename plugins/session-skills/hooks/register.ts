@@ -630,12 +630,14 @@ async function pushesIn($: any, pushes: Push[], hosts: HostWrite[], depth = 0): 
       found.push({ dir: p.dir, dryRun: false, force: p.force, remote: null, staged: p.staged })
       hosts.push({ what: `git ${p.alias}`, dir: p.dir, prCreate: false, otherRepo: false, pushes: false, unread: true })
     }
-    const dir = p.dir === null || depth > 3 ? null : await where($, p.dir).catch(() => null)
+    const dir = p.unread || p.dir === null || depth > 3 ? null : await where($, p.dir).catch(() => null)
     if (dir === null) {
       unread()
       continue
     }
-    for (const key of [`alias.${p.alias}`, `alias.${p.alias}.command`]) {
+    // A name such as `pr:m` can only be read in the subsection form: git refuses `alias.pr:m` as a key.
+    const keys = /^[a-z][a-z0-9-]*$/i.test(p.alias.split('.').at(-1)!) ? [`alias.${p.alias}`] : []
+    for (const key of [...keys, `alias.${p.alias}.command`]) {
       const v = await configValue($, dir, key).catch(() => null)
       if (v === null) unread()
       if (!v) continue

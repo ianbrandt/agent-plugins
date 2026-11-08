@@ -1048,6 +1048,44 @@ test('a PR through a git alias is held where the command sends it to another rep
   expect(deep.reason).toContain('a git alias that could not be read')
 })
 
+// Each was run by git 2.56.0 and 2.54.0, and allowed before R549.
+test('a git alias set in the environment or an included file is held as unread, and a subsection name or one named for a missing program is read', async ($: any, on: any) => {
+  const config: Record<string, string> = { 'session-skills.originVisibility': 'private', 'session-skills.holdPublicPush': 'false', 'alias.pr:m.command': '!gh pr merge', 'alias.ü.command': '!gh pr merge', 'alias.a b.command': '!gh pr merge', 'alias.gui': '!gh pr merge', 'alias.send-email': '!gh pr merge', 'alias.lg': 'log -1' }
+  on('tool.check', () => ({ decision: 'allow' }))
+  world(on, line => {
+    const url = /^remote get-url (?:--push --all )?(\S+)$/.exec(line)
+    if (url) return url[1] === 'origin' ? 'https://h/a/b.git' : 2
+    if (line === 'remote') return 'origin'
+    if (line === 'branch --show-current') return 'main'
+    if (line === 'ls-files -s :/') return ''
+    const key = /^config (?:--default= )?--get (.*)$/s.exec(line)?.[1]
+    // git refuses a key whose last part is not a variable name.
+    if (key && !/^[a-z][a-z0-9-]*$/i.test(key.split('.').at(-1)!)) return 1
+    if (key) return config[key] ?? (line.includes('--default=') ? '' : 1)
+  })
+  for (const cmd of [
+    "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.m GIT_CONFIG_VALUE_0='!gh pr merge' git m 3",
+    `GIT_CONFIG_PARAMETERS="'alias.m'='!gh pr merge'" git m 3`,
+    'git -c include.path=/repo/inc.cfg inc 3',
+    'GIT_CONFIG_GLOBAL=/repo/inc.cfg git inc 3',
+    'HOME=/repo/h git inc 3',
+    "HOME=/repo/h git -c alias.a='!git m' a 3",
+    'export HOME=/repo/h; git -c alias.a=m a 3',
+  ]) {
+    const held = await verdict($, cmd)
+    expect(held.decision, cmd).toBe('ask')
+    expect(held.reason, cmd).toContain('a git alias that could not be read')
+  }
+  const force = await verdict($, "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.m GIT_CONFIG_VALUE_0='push -f' git m")
+  expect(force.reason).toContain('Force push')
+  for (const cmd of ['git pr:m 3', 'git ü 3', "git 'a b' 3", 'git gui 3', 'git send-email 3']) {
+    const held = await verdict($, cmd)
+    expect(held.decision, cmd).toBe('ask')
+    expect(held.reason, cmd).toContain('Host write held: `gh pr merge`')
+  }
+  for (const cmd of ['git lg', 'git pr:x 3', 'git citool', 'HOME=/repo/h git status']) expect((await verdict($, cmd)).decision, cmd).toBe('allow')
+})
+
 const hostWrite = (cmd: string) => hostWrites(cmd)[0] ?? null
 test('a host write from gh or glab is read from the command, with its directory and whether it opens a PR', () => {
   expect(hostWrite('gh pr create --title x --body-file f')).toEqual({ what: 'gh pr create', dir: undefined, prCreate: true, otherRepo: false, pushes: true })

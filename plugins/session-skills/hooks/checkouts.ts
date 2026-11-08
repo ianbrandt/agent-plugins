@@ -713,14 +713,16 @@ const unique = <T>(found: T[]) => {
 }
 
 // git's built-in commands. Any other subcommand may be an alias, which the
-// hook reads from config.
+// hook reads from config. git-gui's `gui` and `citool`, `instaweb`, and
+// `send-email` are left out: git runs an alias of that name where the program
+// is not installed.
 const BUILTIN = new Set(`add am annotate apply archive backfill bisect blame branch bugreport bundle cat-file check-attr check-ignore
-check-mailmap check-ref-format checkout checkout-index cherry cherry-pick citool clean clone column commit commit-graph commit-tree
+check-mailmap check-ref-format checkout checkout-index cherry cherry-pick clean clone column commit commit-graph commit-tree
 config count-objects credential describe diagnose diff diff-files diff-index diff-tree difftool fast-export fast-import fetch fetch-pack
-filter-branch fmt-merge-msg for-each-ref for-each-repo format-patch fsck gc get-tar-commit-id grep gui hash-object help init init-db
-instaweb interpret-trailers last-modified log ls-files ls-remote ls-tree mailinfo mailsplit maintenance merge merge-base merge-file
+filter-branch fmt-merge-msg for-each-ref for-each-repo format-patch fsck gc get-tar-commit-id grep hash-object help init init-db
+interpret-trailers last-modified log ls-files ls-remote ls-tree mailinfo mailsplit maintenance merge merge-base merge-file
 merge-tree mergetool mktag mktree multi-pack-index mv name-rev notes pack-objects pack-refs prune prune-packed pull range-diff read-tree
-rebase reflog refs remote repack replace replay repo request-pull rerere reset restore rev-list rev-parse revert rm send-email
+rebase reflog refs remote repack replace replay repo request-pull rerere reset restore rev-list rev-parse revert rm
 shortlog show show-branch show-ref sparse-checkout stage stash status stripspace submodule switch symbolic-ref tag unpack-objects
 update-index update-ref var verify-commit verify-pack verify-tag version whatchanged worktree write-tree`.split(/\s+/))
 
@@ -729,7 +731,8 @@ update-index update-ref var verify-commit verify-pack verify-tag version whatcha
 // command says whether the push recurses into submodules, and is otherwise read
 // from config. `configs` are the -c values given with an alias the hook reads.
 // `staged` is set where another command in the line may have staged a gitlink.
-export type Push = { dir: Dir; dryRun: boolean; force: boolean; remote?: string | null; submodules?: boolean; alias?: string; rest?: string; configs?: Word[]; staged?: boolean; otherRepo?: boolean }
+// `unread` is set on an alias that may be set where the hook does not read it.
+export type Push = { dir: Dir; dryRun: boolean; force: boolean; remote?: string | null; submodules?: boolean; alias?: string; rest?: string; configs?: Word[]; staged?: boolean; otherRepo?: boolean; unread?: boolean }
 
 // The long options of a command, the ones that take a value, and its short
 // options that take one.
@@ -1226,6 +1229,8 @@ export function pushTargets(cmd: string, shell = 'Bash', outer?: Dir, inherited:
       const configForce = envConfig || configs.some(w => !w.literal || /^remote\..*\.(?:push=\+|mirror(?:$|=(?!(?:false|no|off|0*)$)))/is.test(w.text))
       const moved = envConfig || configs.some(w => !w.literal || TARGET_KEYS.test(w.text))
       // Recursion into submodules is set by the last -c for either key, read as git reads its value.
+      // An alias may be set in the environment or in a file included with -c, which the hook does not read.
+      const hidden = envConfig || configs.some(w => /^include(?:if)?\./i.test(w.text))
       const recursion = configs.filter(w => /^(?:push\.recursesubmodules|submodule\.recurse)(?:=|$)/i.test(w.text)).at(-1)
       const recurses = recursion && (!recursion.literal || /^push\.\w+=(?:on-demand|only)$|^submodule\.recurse(?:=(?:true|yes|on|-?[1-9]\d*))?$/i.test(recursion.text))
       const sub = words[j]?.text
@@ -1244,11 +1249,11 @@ export function pushTargets(cmd: string, shell = 'Bash', outer?: Dir, inherited:
       else if ((sub === 'subtree' || sub === 'lfs') && pushAt >= 0) found.push({ dir, ...flags(rest.slice(pushAt + 1), sub === 'subtree' ? SUBTREE : PUSH) })
       else if (typeof alias === 'string') {
         for (const p of pushTargets(expand(alias, joined(rest)), 'Bash', dir, configs, depth + 1)) {
-          found.push({ ...p, force: p.force || configForce, ...((moved || (afterUnknown && p.remote === undefined)) && { remote: null }), ...(staged && { staged }), ...(otherRepo && p.alias && { otherRepo }) })
+          found.push({ ...p, force: p.force || configForce, ...((moved || (afterUnknown && p.remote === undefined)) && { remote: null }), ...(staged && { staged }), ...(otherRepo && p.alias && { otherRepo }), ...(hidden && p.alias && { unread: true }) })
         }
       } else if (alias === null || (sub !== undefined && unread(configs) && !BUILTIN.has(sub))) found.push({ dir, dryRun: false, force: configForce, remote: null, ...(staged && { staged }) })
-      else if (sub !== undefined && !BUILTIN.has(sub) && /^[\w.-]+$/.test(sub)) {
-        found.push({ dir, dryRun: false, force: configForce, alias: sub, rest: joined(rest), ...(configs.length > 0 && { configs }), ...((moved || afterUnknown) && { remote: null }), ...(staged && { staged }), ...(otherRepo && { otherRepo }) })
+      else if (sub && !BUILTIN.has(sub)) {
+        found.push({ dir, dryRun: false, force: configForce, alias: sub, rest: joined(rest), ...(configs.length > 0 && { configs }), ...((moved || afterUnknown) && { remote: null }), ...(staged && { staged }), ...(otherRepo && { otherRepo }), ...(hidden && { unread: true }) })
       }
     }
   }
