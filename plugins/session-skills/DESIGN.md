@@ -192,7 +192,11 @@ a branch, as a `git rebase` given a branch with or without `--root` does, or one
 skips, or aborts, since HEAD is detached while the hook reads config and is back on the branch when
 the push runs. So does a `fetch` or `pull` with `--set-upstream`, and a `git rebase -x`
 that runs a command. Each of those options is read by any unique prefix, as git reads it. The push is asked about after any other command, such as
-`gh pr checkout`, a git alias, a variable set before git, or `npm install`. A list of commands that
+`gh pr checkout`, a git alias, a variable set before git, or `npm install`. After the same commands,
+a push to a remote that is written out is read as one whose remote is not written out where config
+has an `includeIf.onbranch` key, since a remote's URL can be set for one branch in a file included
+under that key. git 2.56.0 sent `git switch release && git push origin release` to the push URL
+set for `release` in such a file. A list of commands that
 move the branch was tried first, and each review found commands missing from it, the last of them
 `gh pr checkout`. An
 adversarial pass found 18 commands that got past these checks, among them a PR body that starts with

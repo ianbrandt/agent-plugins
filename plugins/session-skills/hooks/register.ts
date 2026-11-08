@@ -513,18 +513,20 @@ const TRUE = /^(?:true|yes|on|-?[1-9]\d*)$/i
 // remote group, and prefers a group to a remote of the same name, so a group
 // is read as a remote that is not written out. git prints a subsection in its
 // own case and matches the name in it, so the name is compared in any case.
-async function pushConfig($: any, dir: string, p: Push): Promise<{ force: boolean; submodules: boolean; group: boolean }> {
+// So is a remote after a command that may move the branch where config has an
+// onbranch include, since its URL can be set there for the branch moved to.
+async function pushConfig($: any, dir: string, p: Push): Promise<{ force: boolean; submodules: boolean; unread: boolean }> {
   const entries = await configList($, dir)
   const named = p.remote === undefined ? await pushRemote($, dir) : p.remote
-  const group = named !== null && entries.some(([k]) => k.toLowerCase() === `remotes.${named.toLowerCase()}`)
-  const name = group ? null : named
+  const unread = named !== null && entries.some(([k]) => k.toLowerCase() === `remotes.${named.toLowerCase()}` || (!!p.switched && /^includeif\.onbranch:/i.test(k)))
+  const name = unread ? null : named
   const remote = ([k]: [string, string], field: string) => (name === null ? k.startsWith('remote.') && k.endsWith(`.${field}`) : k === `remote.${name}.${field}`)
   const force = [...new Map(entries)].some(e => remote(e, 'mirror') && TRUE.test(e[1])) || entries.some(e => remote(e, 'push') && e[1].startsWith('+'))
   const [key, mode] = entries.filter(([k]) => k === 'push.recursesubmodules' || k === 'submodule.recurse').at(-1) ?? ['', '']
   const recurses = p.submodules ?? (key === 'push.recursesubmodules' ? /^(?:on-demand|only)$/i.test(mode) : TRUE.test(mode))
   // `:/` lists the whole index from a subdirectory too.
   // shortcut: the whole index is printed to find one gitlink, read only where recursion is set; filter in git if a large repo slows the hook.
-  return { force, submodules: recurses && (!!p.staged || /^160000 /m.test(await must($, dir, 'ls-files', '-s', ':/'))), group }
+  return { force, submodules: recurses && (!!p.staged || /^160000 /m.test(await must($, dir, 'ls-files', '-s', ':/'))), unread }
 }
 
 // Every URL a remote pushes to, or null where git has no such remote.
@@ -680,7 +682,7 @@ async function gate($: any, command: string, shell: string, outer: Dir, add: (re
         const config = await pushConfig($, dir, push)
         force ||= config.force
         submodules = config.submodules
-        why = await pushHold($, dir, config.group ? null : push.remote)
+        why = await pushHold($, dir, config.unread ? null : push.remote)
       } catch (err) {
         why = `the push hold could not be checked: ${(err as Error).message}`
       }

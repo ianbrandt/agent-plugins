@@ -769,7 +769,8 @@ update-index update-ref var verify-commit verify-pack verify-tag version whatcha
 // from config. `configs` are the -c values given with an alias the hook reads.
 // `staged` is set where another command in the line may have staged a gitlink.
 // `unread` is set on an alias that may be set where the hook does not read it.
-export type Push = { dir: Dir; dryRun: boolean; force: boolean; remote?: string | null; submodules?: boolean; alias?: string; rest?: string; configs?: Word[]; staged?: boolean; otherRepo?: boolean; unread?: boolean }
+// `switched` is set where another command in the line may have moved the branch.
+export type Push = { dir: Dir; dryRun: boolean; force: boolean; remote?: string | null; submodules?: boolean; alias?: string; rest?: string; configs?: Word[]; staged?: boolean; otherRepo?: boolean; unread?: boolean; switched?: boolean }
 
 // The long options of a command, the ones that take a value, and its short
 // options that take one.
@@ -1276,7 +1277,7 @@ export function pushTargets(cmd: string, shell = 'Bash', outer?: Dir, inherited:
       const pushAt = rest.findIndex(w => w.text === 'push')
       const flags = (args: Word[], o?: Options) => {
         const f = pushFlags(args, o)
-        return { ...f, force: f.force || configForce, ...(f.submodules === undefined && recursion && { submodules: !!recurses }), ...((moved || (afterUnknown && f.remote === undefined)) && { remote: null }), ...(staged && { staged }) }
+        return { ...f, force: f.force || configForce, ...(f.submodules === undefined && recursion && { submodules: !!recurses }), ...((moved || (afterUnknown && f.remote === undefined)) && { remote: null }), ...(staged && { staged }), ...(afterUnknown && { switched: true }) }
       }
       const alias = sub === undefined ? undefined : aliases.get(sub.toLowerCase())
       if (sub !== undefined && !words[j].literal) found.push({ dir: null, dryRun: false, force: false, remote: null })
@@ -1286,7 +1287,7 @@ export function pushTargets(cmd: string, shell = 'Bash', outer?: Dir, inherited:
       else if ((sub === 'subtree' || sub === 'lfs') && pushAt >= 0) found.push({ dir, ...flags(rest.slice(pushAt + 1), sub === 'subtree' ? SUBTREE : PUSH) })
       else if (typeof alias === 'string') {
         for (const p of pushTargets(expand(alias, joined(rest)), 'Bash', dir, configs, depth + 1)) {
-          found.push({ ...p, force: p.force || configForce, ...((moved || (afterUnknown && p.remote === undefined)) && { remote: null }), ...(staged && { staged }), ...(otherRepo && p.alias && { otherRepo }), ...(hidden && p.alias && { unread: true }) })
+          found.push({ ...p, force: p.force || configForce, ...((moved || (afterUnknown && p.remote === undefined)) && { remote: null }), ...(staged && { staged }), ...(otherRepo && p.alias && { otherRepo }), ...(hidden && p.alias && { unread: true }), ...(afterUnknown && { switched: true }) })
         }
       } else if (alias === null || (sub !== undefined && unread(configs) && !BUILTIN.has(sub))) found.push({ dir, dryRun: false, force: configForce, remote: null, ...(staged && { staged }) })
       else if (sub && !BUILTIN.has(sub)) {

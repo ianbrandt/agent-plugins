@@ -605,7 +605,7 @@ test('a push is read with the directory it runs in, from -C or the last cd befor
   expect(pushTarget('pushd /x && git push')?.dir).toBe('/x')
   expect(pushTarget('cd "$WT" && git push')?.dir).toBeUndefined()
   expect(pushTarget('echo "git push"')).toBeNull()
-  expect(pushTarget('claude -p "git -C /z push" && git push')).toEqual({ dir: undefined, dryRun: false, force: false, remote: null, staged: true })
+  expect(pushTarget('claude -p "git -C /z push" && git push')).toEqual({ dir: undefined, dryRun: false, force: false, remote: null, staged: true, switched: true })
   expect(pushTarget(`git commit -F - <<'EOF'\nThen git -C /z push it\nEOF\ncd /y && git push`)?.dir).toBe('/y')
 })
 
@@ -980,8 +980,8 @@ test('a force push is put to the user whatever the holds, but a dry run is not',
 test('every push in a command is read, each in its own directory', async ($: any, on: any) => {
   expect(pushTargets('git push origin a && git -C /fork push --force; git push -n')).toEqual([
     { dir: undefined, dryRun: false, force: false, remote: 'origin' },
-    { dir: '/fork', dryRun: false, force: true, remote: null, staged: true },
-    { dir: undefined, dryRun: true, force: false, remote: null, staged: true },
+    { dir: '/fork', dryRun: false, force: true, remote: null, staged: true, switched: true },
+    { dir: undefined, dryRun: true, force: false, remote: null, staged: true, switched: true },
   ])
   on('tool.check', () => ({ decision: 'allow' }))
   on('session.repo', () => ({ value: { root: '/repo', remote: null, internal: false } }))
@@ -1894,6 +1894,17 @@ test('a push to a remote group is read as a push to a remote that is not written
   expect((await verdict($, 'git push My.grp')).reason).toContain('Force push')
   expect(configWrites("git config remotes.publish 'a b'")).toEqual(['git config remotes.publish'])
   expect(pushTarget('git -c remotes.origin=pub push origin main')?.remote).toBeNull()
+})
+
+// git 2.56.0 pushed `git switch release && git push origin release` to the pushurl an onbranch include set for release.
+test('a push to a remote written out is read as unread after a command that may switch to a branch with an onbranch include', async ($: any, on: any) => {
+  const config: Record<string, string> = { 'session-skills.originVisibility': 'private' }
+  targetWorld(on, config)
+  expect((await verdict($, 'git switch release && git push origin release')).decision).toBe('allow')
+  config['includeif.onbranch:release.path'] = '/tmp/rel.inc'
+  expect((await verdict($, 'git switch release && git push origin release')).reason).toContain('the remote it pushes to could not be read')
+  expect((await verdict($, 'git push origin release')).decision).toBe('allow')
+  expect((await verdict($, 'git status && git push origin release')).decision).toBe('allow')
 })
 
 test('a variable set with env after a wrapper such as timeout is read', () => {
