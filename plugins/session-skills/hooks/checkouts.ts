@@ -879,11 +879,18 @@ const CONFIG_VARS = /^(?:GIT_CONFIG\w*|HOME|XDG_CONFIG_HOME|GIT_COMMON_DIR)$/i
 const REPO_VARS = /^(?:GH_REPO|GITLAB_REPO|GIT_DIR)$/i
 // Whether a command sets one of `names`: an assignment before its first word,
 // one given to env, export, or another command that takes assignments, after a
-// wrapper such as `timeout 60s` too, or PowerShell's $env:NAME. An argument such
-// as `-m 'HOME=/tmp'` sets nothing.
+// wrapper such as `timeout 60s` too, or PowerShell's $env:NAME, a cmdlet that
+// writes an Env: path, or [Environment]::SetEnvironmentVariable, whose arguments
+// are a command of their own. An argument such as `-m 'HOME=/tmp'` sets nothing.
 const SETTERS = /^(?:(?:.*\/)?env|export|declare|typeset|local|readonly|sudo)$/
+const ENV_CMDLETS = /^(?:set-item|new-item|set-content|si|ni|sc)$/i
 const sets = (cmds: Command[], names: RegExp) =>
+  (cmds.some(c => /::SetEnvironmentVariable$/i.test(c.words[0]?.text ?? '')) &&
+    cmds.some(c => c.words.some(w => w.text.split(',').some(n => names.test(n.trim()))))) ||
   cmds.some(c => {
+    if (ENV_CMDLETS.test(c.words[0]?.text ?? '') && c.words.some(w => /^env:/i.test(w.text))) {
+      return c.words.slice(1).some(w => names.test(w.text.replace(/^env:[\\/]?/i, '')))
+    }
     const first = c.words.findIndex(w => !ASSIGNMENT.test(w.text) && !/^\$\{?env:/i.test(w.text))
     const setter = c.words.findIndex(w => SETTERS.test(w.text))
     const scan = first < 0 ? c.words : [...c.words.slice(0, first), ...(setter < 0 ? [] : c.words.slice(setter))]

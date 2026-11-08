@@ -1788,6 +1788,18 @@ test('a variable is set for git only before a command or by env, export, or Powe
   expect(pushTargets("$env:HOME = '/tmp'; git push origin main", 'PowerShell')[0]).toMatchObject({ remote: null, force: true })
 })
 
+// Each setter ran `gh pr merge 3` through an alias in /h/.gitconfig in pwsh 7.
+test('a variable set by a PowerShell cmdlet on an Env: path or by [Environment]::SetEnvironmentVariable is set for git', () => {
+  for (const set of ['Set-Item Env:HOME /h', 'Set-Item -Path Env:GIT_CONFIG_GLOBAL -Value /h/c', 'New-Item -Path Env:GIT_CONFIG_GLOBAL -Value /h/c', 'ni -Path Env: -Name HOME -Value /h', 'Set-Content Env:\\home /h', '[Environment]::SetEnvironmentVariable("GIT_CONFIG_GLOBAL", "/h/c")', "[System.Environment]::SetEnvironmentVariable('HOME','/h')"]) {
+    expect(pushTargets(`${set}; git push origin main`, 'PowerShell')[0], set).toMatchObject({ remote: null, force: true })
+  }
+  for (const set of ['Set-Item Env:PATH /h', 'Get-Item Env:HOME', '[Environment]::GetEnvironmentVariable("HOME")']) {
+    expect(pushTargets(`${set}; git push origin main`, 'PowerShell')[0], set).toMatchObject({ remote: 'origin', force: false })
+  }
+  expect(hostWrites("Set-Item Env:GH_REPO o/other; gh pr create --fill", 'PowerShell')[0]?.otherRepo).toBe(true)
+  expect(hostWrites("[Environment]::SetEnvironmentVariable('GH_REPO', 'o/other'); gh pr create --fill", 'PowerShell')[0]?.otherRepo).toBe(true)
+})
+
 test('a mirror or + refspec in config forces a push whose remote is not written out, with the public hold lifted', async ($: any, on: any) => {
   const config: Record<string, string> = { 'session-skills.holdPublicPush': 'false' }
   targetWorld(on, config)
