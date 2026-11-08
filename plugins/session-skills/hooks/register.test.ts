@@ -301,3 +301,80 @@ test('a push after a commit message heredoc with an odd quote in it gets the req
     `git commit -m "$(cat <<'EOF'\nQuote a " here\nEOF\n)" && git push`,
   ]) expect(await bash($, command)).toHaveLength(1)
 })
+
+// The session's pre-push hook: the variable set at session start and on each
+// prompt, one notice where the self-check fails, and each lookup recorded.
+function backstop(on: any, list = 'sessionskills\n') {
+  const w = { set: [] as string[], deny: '', toasts: [] as string[], files: {} as Record<string, string>, config: {} as Record<string, string>, id: 's1' }
+  on('env.get', (_$: any, e: any) => ({ value: e.name === 'TMPDIR' ? '/tmp/' : e.name === 'GIT_CONFIG_PARAMETERS' ? w.set.at(-1) : undefined }))
+  on('env.set', (_$: any, e: any) => { w.set.push(e.value); return { value: w.deny ? { deny: w.deny } : {} } })
+  on('session.id', () => ({ value: w.id }))
+  on('session.repo', () => ({ value: { root: '/repo', remote: null, internal: false } }))
+  on('ui.toast', (_$: any, e: any) => { w.toasts.push(e.text ?? String(e)); return { value: undefined } })
+  on('fs.read', (_$: any, e: any) => ({ value: w.files[e.path] ?? '' }))
+  on('fs.write', (_$: any, e: any) => { w.files[e.path] = e.text; return { value: undefined } })
+  on('process.run', (_$: any, e: any) => {
+    const a = e.argv.join(' ')
+    if (a.includes('hook list')) return { value: { exitCode: 0, stdout: list, stderr: '' } }
+    if (a.includes('--show-scope')) { const v = w.config[e.argv.at(-1)]; return { value: { exitCode: v ? 0 : 1, stdout: v ?? '', stderr: '' } } }
+    if (a.includes('get-url upstream')) return { value: { exitCode: 2, stdout: '', stderr: '' } }
+    if (a.includes('get-url')) return { value: { exitCode: 0, stdout: 'https://u:t@github.com/o/r.git\n', stderr: '' } }
+    if (a.startsWith('gh repo view')) return { value: { exitCode: 0, stdout: 'private\n', stderr: '' } }
+    return { value: { exitCode: 0, stdout: '', stderr: '' } }
+  })
+  on('prompt.submit', (_$: any, e: any) => ({ text: e.text, context: e.context }))
+  on('tool.register', () => ({ value: undefined }))
+  on('session.start', (_$: any, e: any) => e)
+  return w
+}
+
+test('the hook is added to GIT_CONFIG_PARAMETERS at session start and again with each prompt', async ($: any, on: any) => {
+  const w = backstop(on)
+  await $.session.start({ cwd: '/repo' })
+  expect(w.set).toHaveLength(1)
+  expect(w.set[0]).toContain("'hook.sessionskills.event'='pre-push'")
+  expect(w.set[0]).toContain("/hooks/pre-push.sh'\\'' '\\''/tmp/session-skills-s1.visibility'\\'''")
+  await $.prompt.submit({ text: 'hi' })
+  expect(w.set).toHaveLength(2)
+  expect(w.set[1]).toBe(w.set[0])
+  expect(w.toasts).toEqual([])
+})
+
+test('the user is told once when git does not list the hook, or a hook setting turns it off', async ($: any, on: any) => {
+  const w = backstop(on, '')
+  await $.session.start({ cwd: '/repo' })
+  await $.prompt.submit({ text: 'hi' })
+  expect(w.toasts).toHaveLength(1)
+  expect(w.toasts[0]).toContain('pre-push')
+})
+
+test('a hook setting of false in a config file turns the backstop off, and one given with -c does not', async ($: any, on: any) => {
+  const w = backstop(on)
+  w.config = { 'hook.sessionskills.enabled': 'command\tfalse\n' }
+  await $.session.start({ cwd: '/repo' })
+  expect(w.toasts).toEqual([])
+  w.config = { 'hook.pre-push.enabled': 'command\tfalse\nglobal\tfalse\n' }
+  w.id = 's2'
+  await $.session.start({ cwd: '/repo' })
+  expect(w.toasts.join()).toContain('hook.pre-push.enabled')
+})
+
+test('the user is told when the variable cannot be set', async ($: any, on: any) => {
+  const w = backstop(on)
+  w.deny = 'managed settings'
+  await $.session.start({ cwd: '/repo' })
+  expect(w.toasts.join()).toContain('managed settings')
+})
+
+test('a visibility looked up for landing_facts is recorded for the hook, without the token', async ($: any, on: any) => {
+  const w = backstop(on)
+  await $.tool.call({ tool: 'mcp__session-skills__landing_facts' })
+  expect(w.files['/tmp/session-skills-s1.visibility']).toMatch(/^private \d+ https:\/\/github\.com\/o\/r\.git\n$/)
+})
+
+test("origin's visibility is looked up and recorded at session start", async ($: any, on: any) => {
+  const w = backstop(on)
+  await $.session.start({ cwd: '/repo' })
+  await new Promise(r => setTimeout(r, 50))
+  expect(w.files['/tmp/session-skills-s1.visibility']).toMatch(/^private \d+ https:\/\/github\.com\/o\/r\.git\n$/)
+})

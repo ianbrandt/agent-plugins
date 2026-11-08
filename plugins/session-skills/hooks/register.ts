@@ -2,7 +2,7 @@
 // run the git work of both skills, and the tool a worktree session calls to edit
 // a file that is only in the primary checkout.
 import type { Register } from 'claude-code'
-import { configWrites, type Dir, expand, type HostWrite, hostWrites, pickBase, type Push, pushTargets, refLine, visibility, type Word, worktreeName } from './checkouts'
+import { backstopConfig, configWrites, type Dir, expand, type HostWrite, hostWrites, pickBase, type Push, pushTargets, recorded, refLine, visibility, type Word, worktreeName } from './checkouts'
 import { splice } from './splice'
 
 const NONE = { type: 'object', properties: {} } as const
@@ -397,16 +397,39 @@ const setting = ($: any, dir: string, key: string) => out(git($, dir, 'config', 
 
 const VIEW = [['gh', ['--json', 'visibility', '-q', '.visibility']], ['glab', ['-F', 'json', '--jq', '.visibility']]] as const
 
+// The session's visibility records, which the pre-push hook reads. A hooks
+// module is given no data directory, so they are in the temp directory.
+async function recordsPath($: any): Promise<string> {
+  const tmp = (await $.env.get('TMPDIR').catch(() => '')) || (await $.env.get('TEMP').catch(() => '')) || '/tmp'
+  return `${tmp.replace(/[\\/]+$/, '')}/session-skills-${await $.session.id().catch(() => 'session')}.visibility`
+}
+
+// A URL's visibility from gh or glab, recorded for the hook whatever it is, so
+// an unknown or public answer replaces a private one. A record that is not
+// written leaves the hook to refuse the push.
+// shortcut: two lookups at once can each write the file and lose the other's line, which refuses a push; lock the file if that is seen.
+async function lookUp($: any, url: string): Promise<[string, string]> {
+  let found: [string, string] = ['', '']
+  for (const [from, argv] of VIEW) {
+    const read = visibility(await out(run($, [from, 'repo', 'view', url, ...argv])))
+    if (read) {
+      found = [read, from]
+      break
+    }
+  }
+  try {
+    const path = await recordsPath($)
+    await $.fs.write(path, recorded(await $.fs.read(path).catch(() => ''), url, found[0], Math.floor(Date.now() / 1000)))
+  } catch {}
+  return found
+}
+
 // origin's visibility and where it was read, or '' for both where it is unknown.
 async function originVisibility($: any, dir: string): Promise<[string, string]> {
   const url = (await remoteUrl($, dir, 'origin')) ?? ''
   const vis = visibility(await setting($, dir, 'originVisibility'))
   if (vis) return [vis, 'git config']
-  for (const [from, argv] of VIEW) {
-    const read = url && visibility(await out(run($, [from, 'repo', 'view', url, ...argv])))
-    if (read) return [read, from]
-  }
-  return ['', '']
+  return url ? lookUp($, url) : ['', '']
 }
 
 async function landingFacts($: any): Promise<string> {
@@ -544,8 +567,7 @@ const LOCAL_PATH = /^(?:file:\/\/|\/|\.{1,2}[\\/]|[A-Za-z]:[\\/])/
 async function urlsVisibility($: any, urls: string[]): Promise<string> {
   let worst = urls.length ? 'private' : ''
   for (const url of urls) {
-    let vis = LOCAL_PATH.test(url) ? 'private' : ''
-    for (const [from, argv] of VIEW) if (!vis) vis = visibility(await out(run($, [from, 'repo', 'view', url, ...argv])))
+    const vis = LOCAL_PATH.test(url) ? 'private' : (await lookUp($, url))[0]
     if (!vis) return ''
     if (vis !== 'private') worst = vis
   }
@@ -717,6 +739,49 @@ async function gate($: any, command: string, shell: string, outer: Dir, add: (re
   }
 }
 
+// The session's pre-push hook, added to GIT_CONFIG_PARAMETERS for every git
+// the session starts (DESIGN.md, "Pre-push backstop"). '' once it is set, else why not.
+async function installBackstop($: any): Promise<string> {
+  const current = (await $.env.get('GIT_CONFIG_PARAMETERS').catch(() => '')) ?? ''
+  const set = await $.env.set('GIT_CONFIG_PARAMETERS', backstopConfig(current, `${$.plugin.root}/hooks/pre-push.sh`, await recordsPath($))).catch((err: Error) => ({ deny: err.message }))
+  return set?.deny ? `GIT_CONFIG_PARAMETERS could not be set: ${set.deny}` : ''
+}
+
+// Why git in the session's repo will not run the hook, or ''. $.process.run adds
+// hook.pre-push.enabled=false to every git it starts, so the listing turns it
+// back on, and only a setting in a config file counts.
+async function checkBackstop($: any): Promise<string> {
+  const dir = (await $.session.repo().catch(() => null))?.root
+  if (!dir) return ''
+  const list = await git($, dir, '-c', 'hook.pre-push.enabled=true', 'hook', 'list', 'pre-push')
+  if (!list.stdout.split(/\r?\n/).some(l => l.trim() === 'sessionskills')) return `\`git hook list pre-push\` did not list it (${firstLine(list.stderr) || 'git 2.54 or later runs a hook set in config'})`
+  for (const key of ['hook.pre-push.enabled', 'hook.sessionskills.enabled']) {
+    const set = await git($, dir, 'config', '--type=bool', '--show-scope', '--get-all', key)
+    const off = set.stdout.split(/\r?\n/).find(l => /^(?!command\t)\S+\tfalse$/.test(l))
+    if (off) return `${key} is false in the ${off.split('\t')[0]} config`
+  }
+  return ''
+}
+
+// Setup on every event, and the self-check once a session.
+const checked = new Set<string>()
+async function backstop($: any) {
+  try {
+    let why = await installBackstop($)
+    const id = String(await $.session.id().catch(() => ''))
+    if (checked.has(id)) return
+    checked.add(id)
+    // Each URL origin pushes to is looked up once, unawaited, so a push that
+    // only the hook sees in a private session repo is allowed.
+    const main = (await $.session.repo().catch(() => null))?.root
+    if (main && !visibility(await setting($, main, 'originVisibility'))) {
+      void pushUrls($, main, 'origin').then(urls => Promise.all((urls ?? []).filter(u => !LOCAL_PATH.test(u)).map(u => lookUp($, u)))).catch(() => {})
+    }
+    why ||= await checkBackstop($)
+    if (why) $.ui.toast(`session-skills: the pre-push backstop is off, so a push inside another program, such as a release script, is not checked: ${why}.`)
+  } catch {}
+}
+
 const NEXT_STEP ='This command pushed work. End the reply with the next step, under the session rules: the hand-off block for the next unit of work, or one line stating that this session carries on with it. When nothing can start yet, write one line on what the next item waits on, then the block for when it can start. When nothing comes next at all, say so in one line.'
 
 const TITLE_RULES: Record<string, string> = { 'claude-desktop': 'title-desktop', cli: 'title-cli' }
@@ -768,6 +833,7 @@ export const register: Register = on => {
       isDeferred: false,
     })
     for (const [name, tool] of Object.entries(TOOLS)) await $.tool.register({ name, ...tool, isDeferred: false })
+    await backstop($)
     // The desktop app has a title tool of its own, and a session run with -p has
     // no title to set.
     if ((await $.env.get('CLAUDE_CODE_ENTRYPOINT').catch(() => '')) === 'cli') {
@@ -845,6 +911,7 @@ export const register: Register = on => {
   // The rules go with the first prompt, and again once the model no longer
   // reads them. A fork starts with its parent's context, where they already are.
   on('prompt.submit', async ($, e: any, next: any) => {
+    await backstop($)
     const rules = await readRules($)
     return next(rules && !(await isRead($, rules)) ? { ...e, context: [...(e.context ?? []), rules] } : e)
   })

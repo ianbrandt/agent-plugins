@@ -1572,3 +1572,41 @@ export function hostWrites(cmd: string, shell = 'Bash', outer?: Dir, inherited: 
   }
   return unique(found)
 }
+
+// A word quoted for sh, and for a value of GIT_CONFIG_PARAMETERS, which git
+// unquotes the same way.
+const shq = (s: string) => `'${s.replace(/'/g, "'\\''")}'`
+// One entry of GIT_CONFIG_PARAMETERS: `'key'` or `'key'='value'`, either part
+// with `'\''` or `'\!'` in it, as git writes them.
+const ENTRY = /'(?:[^']|'\\[!']')*'(?:='(?:[^']|'\\[!']')*')?/g
+// git reads the section and key in any case and the hook's name as written. An
+// inherited hook.pre-push.enabled=false would turn this hook off too.
+const OURS = /^'[Hh][Oo][Oo][Kk]\.(?:sessionskills\.|pre-push\.[Ee][Nn][Aa][Bb][Ll][Ee][Dd]['=])/
+
+// GIT_CONFIG_PARAMETERS with the session's pre-push hook added, and any entry
+// for it from before, such as a parent session's, removed. Every other entry is
+// kept. git for Windows runs the command in its own sh, which reads `/` paths.
+export function backstopConfig(current: string, script: string, records: string): string {
+  const kept = (current.match(ENTRY) ?? []).filter(e => !OURS.test(e))
+  const path = (p: string) => shq(/^[A-Za-z]:\\/.test(p) ? p.replace(/\\/g, '/') : p)
+  return [...kept, "'hook.sessionskills.event'='pre-push'", `'hook.sessionskills.command'=${shq(`sh ${path(script)} ${path(records)}`)}`].join(' ')
+}
+
+// A URL with its userinfo removed, as the hook script removes it, so a token is
+// never written to the records. An scp-style URL is kept as written, and so is
+// an ssh URL, where the userinfo is the login.
+export function cleanUrl(url: string): string {
+  const at = url.indexOf('://')
+  if (at < 0 || /^(?:ssh|git\+ssh|ssh\+git):\/\//.test(url)) return url
+  const rest = url.slice(at + 3)
+  const host = rest.split('/')[0]
+  return `${url.slice(0, at)}://${host.slice(host.lastIndexOf('@') + 1)}${rest.slice(host.length)}`
+}
+
+// The session's visibility records with one more lookup: a line of
+// `<visibility> <seconds> <url>` that replaces any earlier line for the URL.
+export function recorded(text: string, url: string, vis: string, seconds: number): string {
+  const key = cleanUrl(url)
+  const kept = text.split('\n').filter(l => l.trim() && l.split(' ').slice(2).join(' ') !== key)
+  return [...kept, `${vis || 'unknown'} ${seconds} ${key}`].join('\n') + '\n'
+}

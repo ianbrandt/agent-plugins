@@ -2,7 +2,7 @@
 // hold, and the host-write hold against a faked git. The costly errors are a branch opened without commits held on the
 // local default branch, and an unmerged branch deleted by the prune.
 import { expect, test } from 'claude-code/testing'
-import { configWrites, hostWrites, pickBase, pushTargets, refLine, visibility, worktreeName } from './checkouts'
+import { backstopConfig, cleanUrl, configWrites, hostWrites, pickBase, recorded, pushTargets, refLine, visibility, worktreeName } from './checkouts'
 
 const pushTarget = (cmd: string) => pushTargets(cmd)[0] ?? null
 // The directory of the first push, with a throw read as null, since the hook asks for either.
@@ -2184,4 +2184,35 @@ test('a PowerShell value after an assignment that invokes a script block runs th
 
 test('a trap action that sets a variable is not read as one that only reports', () => {
   expect(dir("export GIT_DIR=/prv/.git; trap 'printf -v GIT_DIR %s /pub/.git' ERR; false; git push")).toBeNull()
+})
+
+// The same entry pre-push.test.sh gives git for a path with a space and an apostrophe.
+test('the backstop entries replace their own, keep the rest, and are quoted for git and the shell', () => {
+  const current = "'safe.bareRepository=explicit' 'core.fsmonitor=' 'hook.sessionskills.command'='old' 'HOOK.sessionskills.event'='x' 'hook.SessionSkills.event'='y' 'a.b'='it'\\''s'"
+  const command = "'hook.sessionskills.command'='sh '\\''/p/it'\\''\\'\\'''\\''s here/pre-push.sh'\\'' '\\''/t/r.visibility'\\'''"
+  expect(backstopConfig(current, "/p/it's here/pre-push.sh", '/t/r.visibility')).toBe(
+    `'safe.bareRepository=explicit' 'core.fsmonitor=' 'hook.SessionSkills.event'='y' 'a.b'='it'\\''s' 'hook.sessionskills.event'='pre-push' ${command}`)
+  expect(backstopConfig('', 'C:\\Users\\a\\pre-push.sh', 'C:\\Temp\\r')).toBe(
+    "'hook.sessionskills.event'='pre-push' 'hook.sessionskills.command'='sh '\\''C:/Users/a/pre-push.sh'\\'' '\\''C:/Temp/r'\\'''")
+})
+
+test('a recorded URL has its userinfo removed, and its record replaces the earlier one', () => {
+  expect(cleanUrl('https://x:tok@github.com/o/r.git')).toBe('https://github.com/o/r.git')
+  expect(cleanUrl('git://u@host:22/o/r')).toBe('git://host:22/o/r')
+  expect(cleanUrl('https://github.com/o/r@v2')).toBe('https://github.com/o/r@v2')
+  expect(cleanUrl('git@github.com:o/r.git')).toBe('git@github.com:o/r.git')
+  const one = recorded('', 'https://t@github.com/o/r', 'private', 100)
+  expect(one).toBe('private 100 https://github.com/o/r\n')
+  expect(recorded(`${one}public 50 git@h:x\n`, 'https://github.com/o/r', '', 200)).toBe('public 50 git@h:x\nunknown 200 https://github.com/o/r\n')
+})
+
+test('an inherited setting that turns every pre-push hook off is dropped, and a backslash is kept outside Windows', () => {
+  expect(backstopConfig("'hook.pre-push.enabled'='false' 'HOOK.pre-push.ENABLED' 'hook.Pre-Push.enabled'='false' 'hook.pre-push.command'='x'", '/p/s.sh', '/t/r')).toBe(
+    "'hook.Pre-Push.enabled'='false' 'hook.pre-push.command'='x' 'hook.sessionskills.event'='pre-push' 'hook.sessionskills.command'='sh '\\''/p/s.sh'\\'' '\\''/t/r'\\'''")
+  expect(backstopConfig('', '/p/a\\b/s.sh', '/t/r')).toContain("/p/a\\b/s.sh")
+})
+
+test('an ssh URL keeps its user, which is the login', () => {
+  expect(cleanUrl('ssh://git@github.com/o/r.git')).toBe('ssh://git@github.com/o/r.git')
+  expect(cleanUrl('git+ssh://git@h/r')).toBe('git+ssh://git@h/r')
 })
