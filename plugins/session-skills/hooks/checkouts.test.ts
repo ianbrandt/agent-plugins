@@ -1031,6 +1031,21 @@ test('a gh or glab write in a git alias is held, whether the alias is read from 
   expect(hostWrites(`cd /x && git -c alias.m='!gh pr merge' m 3`)).toEqual([{ what: 'gh pr merge', dir: '/x', prCreate: false, otherRepo: false, pushes: false }])
   expect(hostWrites(`git -c alias.a='!git b' -c alias.b='!gh issue comment 1 -b x' a`).map(w => w.what)).toEqual(['gh issue comment'])
   expect(hostWrites(`git -c alias.l='log -1' l`)).toEqual([])
+  expect(hostWrites(`GH_REPO=o/x git -c alias.c='!gh pr create --fill' c`)[0]?.otherRepo).toBe(true)
+})
+
+test('a PR through a git alias is held where the command sends it to another repo, and an alias too deep to read is held as a host write', async ($: any, on: any) => {
+  const config: Record<string, string> = { originVisibility: 'private', holdPrText: 'false', holdPublicPush: 'false', prc: '!gh pr create --head b --fill', a1: 'a2', a2: 'a3', a3: 'a4', a4: 'a5', a5: '!gh pr merge 3' }
+  pushWorld(on, config)
+  expect((await verdict($, 'git prc')).decision).toBe('allow')
+  for (const cmd of ['GH_REPO=o/other git prc', 'export GH_REPO=o/other; git prc', 'GH_REPO=o/other git -c alias.v=prc v']) {
+    const held = await verdict($, cmd)
+    expect(held.decision, cmd).toBe('ask')
+    expect(held.reason, cmd).toContain('Host write held: `gh pr create`')
+  }
+  const deep = await verdict($, 'git a1')
+  expect(deep.decision).toBe('ask')
+  expect(deep.reason).toContain('a git alias that could not be read')
 })
 
 const hostWrite = (cmd: string) => hostWrites(cmd)[0] ?? null

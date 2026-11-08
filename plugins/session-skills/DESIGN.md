@@ -79,7 +79,9 @@ that cannot be read: the command given to `git submodule foreach`, `git bisect r
 `git difftool -x`, or `git for-each-repo`, and a `trap` action. A subcommand git does not build in
 is read as an alias from `git config` in the push's directory, as `alias.<name>` and git 2.54's
 `alias.<name>.command`, and its expansion is checked in its place with the `-c` values given with
-it, for gh and glab writes as well as pushes. A force push (a unique prefix of `--force`, `--force-with-lease`, `--mirror`, `--delete`, or
+it, for gh and glab writes as well as pushes. A `GH_REPO` or `GITLAB_REPO` set in the command
+holds a PR in each expansion as one aimed at another repo, and an alias that cannot be read is held
+as a host write too. A force push (a unique prefix of `--force`, `--force-with-lease`, `--mirror`, `--delete`, or
 `--prune`, `-f` or `-d` in a short-flag group, a refspec that starts with `+` or deletes with a
 leading `:`, a `+` refspec or a mirror set with `-c` or in the remote's config, or any config set in
 the environment) is put to the user whatever the holds, because it replaces commits a reviewer may have read, and it is never refused
@@ -238,7 +240,7 @@ only those a session might write were fixed. These forms are not seen:
 - an upstream set with an attached value, as in `git branch -upub/main`
 - PowerShell's `$null=Set-Location` with no spaces, a module-qualified `Set-Location`, `Set-Item
   env:`, and `& (Get-Command git)`
-- `"${GIT:-git}"`, a `-c` alias to gh, and a shell alias that runs a relative path, which git runs
+- `"${GIT:-git}"`, and a shell alias that runs a relative path, which git runs
   from the repo's top level
 - `-c` aliases nested so that each runs several more, which can take minutes to read, since each
   level is read with a work cap of its own

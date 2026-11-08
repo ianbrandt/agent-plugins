@@ -596,6 +596,7 @@ async function otherBase($: any, dir: string, what: string): Promise<string> {
 // opened in origin's repo, with holdPrText lifted and past the fork hold, goes
 // unasked, and one that may push the branch is held as that push too.
 async function hostHold($: any, w: HostWrite): Promise<string> {
+  if (w.unread) return `\`${w.what}\` runs a git alias that could not be read, which may write to the remote host.`
   const write = `\`${w.what}\` writes to the remote host`
   if (!w.prCreate || w.otherRepo) return `${write}.`
   if (w.dir === null) return `${write}, and the repo it runs in could not be read from the command.`
@@ -616,7 +617,8 @@ async function hostHold($: any, w: HostWrite): Promise<string> {
 // runs in, as `alias.<name>` and git 2.54's `alias.<name>.command`, and each
 // expansion checked in its place with the -c values given with the alias. The
 // gh and glab writes in each expansion are added to `hosts`. A subcommand with
-// no alias is not a push, and an alias that cannot be read is held as one.
+// no alias is not a push, and an alias that cannot be read is held as a push
+// and as a host write. A command that sends gh to another repo does so for each expansion.
 async function pushesIn($: any, pushes: Push[], hosts: HostWrite[], depth = 0): Promise<Push[]> {
   const found: Push[] = []
   for (const p of pushes) {
@@ -624,20 +626,24 @@ async function pushesIn($: any, pushes: Push[], hosts: HostWrite[], depth = 0): 
       found.push(p)
       continue
     }
-    const unread = { dir: p.dir, dryRun: false, force: p.force, remote: null, staged: p.staged }
+    const unread = () => {
+      found.push({ dir: p.dir, dryRun: false, force: p.force, remote: null, staged: p.staged })
+      hosts.push({ what: `git ${p.alias}`, dir: p.dir, prCreate: false, otherRepo: false, pushes: false, unread: true })
+    }
     const dir = p.dir === null || depth > 3 ? null : await where($, p.dir).catch(() => null)
     if (dir === null) {
-      found.push(unread)
+      unread()
       continue
     }
     for (const key of [`alias.${p.alias}`, `alias.${p.alias}.command`]) {
       const v = await configValue($, dir, key).catch(() => null)
-      if (v === null) found.push(unread)
+      if (v === null) unread()
       if (!v) continue
       const text = expand(v, p.rest ?? '')
-      for (const w of hostWrites(text, 'Bash', p.dir, p.configs)) hosts.push({ ...w, staged: w.staged || p.staged })
+      for (const w of hostWrites(text, 'Bash', p.dir, p.configs)) hosts.push({ ...w, otherRepo: w.otherRepo || !!p.otherRepo, staged: w.staged || p.staged })
+      const inner = pushTargets(text, 'Bash', p.dir, p.configs).map(e => (p.otherRepo && e.alias ? { ...e, otherRepo: true } : e))
       // A -c given with the alias that forces or moves the push holds for its expansion.
-      for (const e of await pushesIn($, pushTargets(text, 'Bash', p.dir, p.configs), hosts, depth + 1)) {
+      for (const e of await pushesIn($, inner, hosts, depth + 1)) {
         found.push({ ...e, force: e.force || p.force, ...(p.remote === null && { remote: null }), staged: e.staged || p.staged })
       }
     }

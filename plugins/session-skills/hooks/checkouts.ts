@@ -706,7 +706,7 @@ update-index update-ref var verify-commit verify-pack verify-tag version whatcha
 // command says whether the push recurses into submodules, and is otherwise read
 // from config. `configs` are the -c values given with an alias the hook reads.
 // `staged` is set where another command in the line may have staged a gitlink.
-export type Push = { dir: Dir; dryRun: boolean; force: boolean; remote?: string | null; submodules?: boolean; alias?: string; rest?: string; configs?: Word[]; staged?: boolean }
+export type Push = { dir: Dir; dryRun: boolean; force: boolean; remote?: string | null; submodules?: boolean; alias?: string; rest?: string; configs?: Word[]; staged?: boolean; otherRepo?: boolean }
 
 // The long options of a command, the ones that take a value, and its short
 // options that take one.
@@ -1142,6 +1142,8 @@ export function pushTargets(cmd: string, shell = 'Bash', outer?: Dir, inherited:
   const cmds = commands(cmd, shell, outer)
   const around = others(cmds, isPowerShell(shell), order.kept)
   const envConfig = sets(cmds, CONFIG_VARS)
+  // An alias the hook reads may run gh or glab, which these send to another repo.
+  const otherRepo = envConfig || sets(cmds, REPO_VARS)
   for (const [i, { words: all, at }] of cmds.entries()) {
     const { unknown: afterUnknown, staged } = around[i]
     for (const r of later(all)) for (const p of pushTargets(r.text, 'Bash', null, [...inherited, ...r.configs], depth + 1)) found.push({ ...p, dir: null })
@@ -1171,11 +1173,11 @@ export function pushTargets(cmd: string, shell = 'Bash', outer?: Dir, inherited:
       else if ((sub === 'subtree' || sub === 'lfs') && pushAt >= 0) found.push({ dir, ...flags(rest.slice(pushAt + 1), sub === 'subtree' ? SUBTREE : PUSH) })
       else if (typeof alias === 'string') {
         for (const p of pushTargets(expand(alias, joined(rest)), 'Bash', dir, configs, depth + 1)) {
-          found.push({ ...p, force: p.force || configForce, ...((moved || (afterUnknown && p.remote === undefined)) && { remote: null }), ...(staged && { staged }) })
+          found.push({ ...p, force: p.force || configForce, ...((moved || (afterUnknown && p.remote === undefined)) && { remote: null }), ...(staged && { staged }), ...(otherRepo && p.alias && { otherRepo }) })
         }
       } else if (alias === null || (sub !== undefined && unread(configs) && !BUILTIN.has(sub))) found.push({ dir, dryRun: false, force: configForce, remote: null, ...(staged && { staged }) })
       else if (sub !== undefined && !BUILTIN.has(sub) && /^[\w.-]+$/.test(sub)) {
-        found.push({ dir, dryRun: false, force: configForce, alias: sub, rest: joined(rest), ...(configs.length > 0 && { configs }), ...((moved || afterUnknown) && { remote: null }), ...(staged && { staged }) })
+        found.push({ dir, dryRun: false, force: configForce, alias: sub, rest: joined(rest), ...(configs.length > 0 && { configs }), ...((moved || afterUnknown) && { remote: null }), ...(staged && { staged }), ...(otherRepo && { otherRepo }) })
       }
     }
   }
@@ -1193,7 +1195,8 @@ const PR_CREATE: Record<string, string> = { gh: 'pr', glab: 'mr' }
 
 // `pushes` is set on a PR or MR that may push the branch: gh pushes unless
 // --head is given, and glab unless --push=false is.
-export type HostWrite = { what: string; dir: Dir; prCreate: boolean; otherRepo: boolean; pushes: boolean; staged?: boolean }
+// `unread` is set on a git alias the hook could not read, which may run one.
+export type HostWrite = { what: string; dir: Dir; prCreate: boolean; otherRepo: boolean; pushes: boolean; staged?: boolean; unread?: boolean }
 
 // The switches of `gh pr create` and `glab mr create`. Every other option takes
 // a value, so a value such as a body that starts with "-" is not read as one.
@@ -1259,7 +1262,7 @@ export function hostWrites(cmd: string, shell = 'Bash', outer?: Dir, inherited: 
       const alias = g[j]?.literal ? configAliases(configs).get(g[j].text.toLowerCase()) : undefined
       if (typeof alias !== 'string') continue
       for (const w of hostWrites(expand(alias, joined(g.slice(j + 1))), 'Bash', repoDir(at, g.slice(0, k), cs as Word[], gitDir), configs, depth + 1)) {
-        found.push({ ...w, ...(around[i].staged && { staged: true }) })
+        found.push({ ...w, otherRepo: w.otherRepo || envRepo, ...(around[i].staged && { staged: true }) })
       }
     }
     const k = cliAt(words)
