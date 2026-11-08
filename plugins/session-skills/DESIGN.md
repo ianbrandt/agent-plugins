@@ -164,13 +164,24 @@ remote is not read. `git push .` updates this repo and is not held.
 A push with no remote is read against the branch config as it is when the hook runs, so it is asked
 about where a command before it in the line is not known to leave the branch, its config, and the
 directory as they were. A command listed after the push counts too where the line has an unquoted
-heredoc body, a function, a loop, a pipe, a background job, or a PowerShell script block, since
-each can run it first. So `git push && gh pr checks --watch` goes unasked, and so does
-`git push | tee push.log`, since `tee` is on the known-safe list. The known-safe commands are a few git commands (`add`, `commit`,
-`status`, `diff`, `log`, `show`, `fetch`, `pull`, `merge`, `rebase`, and some reads such as
-`rev-parse`), a `cd` or `pushd` to a literal path with no `..`, reads such as `echo`, `cat`, and `tee`, a
-command that only sets variables, and a test runner such as `./gradlew`, `npm test`, or
-`claude plugin test`. A git command on that list still makes the remote unread where it checks out
+heredoc body, a function, a loop, a background job, a PowerShell script block, or a compound
+command in a pipeline, since each can run it first. A command in the same pipeline as the push
+counts as well, but bash, zsh, and PowerShell finish a pipeline before the next command, so
+`git push 2>&1 | tail -3 && git switch main` goes unasked. So does `git push && gh pr checks --watch`,
+and `git push | tee push.log`, since `tee` is on the known-safe list. The known-safe commands are a few git commands (`add`, `commit`,
+`status`, `diff`, `log`, `show`, `fetch`, `pull`, `merge`, `rebase`, `cherry-pick`, `revert`, `rm`, `mv`,
+`tag`, `stash` other than `stash branch`, and some reads such as `rev-parse`, `remote -v`, and
+`branch --show-current`), a push with no remote, refspec, `-u`, `--repo`, or `--receive-pack`, a `cd`
+or `pushd` to a literal path with no `..`, reads such as `echo`, `cat`, `tee`, `[[`, `exit`, and
+`Select-Object`, a gh or glab read such as `gh pr view` or `glab mr view`, a command that only sets
+variables, `set` with `-e`, `-u`, `-x`, or `-o pipefail`, a PowerShell `if` and a condition such as
+`$LASTEXITCODE -eq 0`, a test runner such as `./gradlew`, `npm test`, `npm run build`, or
+`claude plugin test`, and any of these after `timeout`. Each git form was run with git 2.56.0 and
+left the branch, its config, and the directory as they were, except that under
+`push.autoSetupRemote` a first push sets its branch's upstream to the remote it pushed to, which is
+the remote a later push reads. gh and glab run a built-in command before an alias of the same
+name. A `cd` to a path held in a variable, as in `cd "$WT" && git push`, still asks, since the
+directory cannot be read. A git command on that list still makes the remote unread where it checks out
 a branch, as a `git rebase` given a branch with or without `--root` does, or one that continues,
 skips, or aborts, since HEAD is detached while the hook reads config and is back on the branch when
 the push runs. So does a `fetch` or `pull` with `--set-upstream`, and a `git rebase -x`

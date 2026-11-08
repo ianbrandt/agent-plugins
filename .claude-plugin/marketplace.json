@@ -21,7 +21,7 @@
     {
       "name": "session-skills",
       "source": "./plugins/session-skills",
-      "version": "0.26.1",
+      "version": "0.26.2",
       "description": "Puts a session in its own git worktree and gets it back out again: adopt the worktree work is already in flight on or open a fresh one, and land the work by what the repo is rather than by a declared mode.",
       "keywords": ["worktree", "session", "landing", "wrap-up", "resume"]
     },

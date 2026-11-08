@@ -48,7 +48,8 @@ export const worktreeName = (name: string, id = '') => (id ? `${id.toLowerCase()
 export type Dir = string | null | undefined
 type Loc = { dir: Dir; stack: Dir[]; gitDir: Dir }
 export type Word = { text: string; literal: boolean; quoted: boolean }
-type Command = { words: Word[]; at: Loc[] }
+// `pipe` is shared by every command in one pipeline, which may run in any order.
+type Command = { words: Word[]; at: Loc[]; pipe?: object }
 
 // Bash's compound commands. A cd inside one may not have run after it ends.
 const OPEN = new Set(['if', 'while', 'until', 'for', 'case', 'select'])
@@ -160,8 +161,10 @@ const charge = (n: number) => {
 }
 
 // Whether every command in the line runs in the order it is listed: false after
-// an unquoted heredoc body, a function, a loop, a pipe, a job, or a PowerShell
-// script block, each of which can run a command before one listed before it.
+// an unquoted heredoc body, a function, a loop, a job, a PowerShell script
+// block, or a compound command in a pipeline, each of which can run a command
+// before one listed before it. The commands of a pipeline share a `pipe`, and
+// each shell waits for the whole pipeline before the next command.
 const order = { kept: true }
 const reorder = () => {
   order.kept = false
@@ -459,6 +462,9 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
     let cases = 0
     let expanded = 0
     const blocks: Loc[][] = []
+    // Where the command being read, and the pipeline it is in, start in `commands`.
+    let cmdStart = commands.length
+    let pipeStart: number | null = null
 
     // A cd after `&&` from the start of an and-or list has run when the next
     // command runs. One that may not have run leaves either directory. The
@@ -477,11 +483,21 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
       }
       // bash and zsh expand a command's arguments before its assignments, so
       // two words that run commands may run in either order.
-      if (op === '|' || op === '|&' || op === '&' || expanded > 1) reorder()
+      if (op === '&' || expanded > 1) reorder()
+      const piped = op === '|' || op === '|&'
+      // A compound command ended by `fi`, `esac`, or `done` is not one command here.
+      if (piped && !words.length && !after) reorder()
+      if (piped) pipeStart ??= cmdStart
+      else if (pipeStart !== null) {
+        const pipe = {}
+        for (const c of commands.slice(pipeStart)) c.pipe = pipe
+        pipeStart = null
+      }
+      cmdStart = commands.length
       expanded = 0
       words = []
       after = null
-      if (op === '|' || op === '|&') {
+      if (piped) {
         if (ps) cur = union(cur, ran)
         else {
           pipe ??= cur
@@ -578,7 +594,8 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
         i = st
       }
       if (c === '(' || (ps && c === '{')) {
-        if (c === '{') reorder()
+        // A PowerShell if, elseif, or else body runs in its place.
+        if (c === '{' && !psIf(words)) reorder()
         i++
         const inner = list(at, c === '(' ? ')' : '}')
         if (ps) after = union(at, inner)
@@ -622,6 +639,7 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
           continue
         }
         if (OPEN.has(w.text)) {
+          if (pipeStart !== null) reorder()
           if (w.text === 'case') cases++
           else if (w.text !== 'if') reorder()
           blocks.push(cur)
@@ -650,6 +668,11 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
 }
 
 const isPowerShell = (shell: string) => /powershell|pwsh/i.test(shell)
+
+// A PowerShell if statement, its parts read as `()` and `{}`.
+const PS_IF = /^(?:if|elseif|else)$/i
+const psIf = (words: Word[]) =>
+  words.length > 0 && PS_IF.test(words[0].text) && words.every(w => (w.literal ? !w.quoted && PS_IF.test(w.text) : /^(?:\(\)|\{\})$/.test(w.text)))
 
 // PowerShell reads curly quotes as straight ones.
 function commands(cmd: string, shell: string, outer: Dir): Command[] {
@@ -1061,25 +1084,64 @@ const moves = (sub: string, rest: Word[]) =>
 // they were, so that a later push with no remote is read against the config as
 // it is when the hook runs: a git command below with nothing left to run that
 // does not move the branch, a cd or pushd to a literal path with no `..`, a
-// read such as echo or cat, an assignment, a test runner, and a subshell or
-// script block, whose commands are read on their own. Anything else in the line
-// with such a push, such as `gh pr checkout`, a git alias, or `npm install`,
-// makes its remote unread, and the hold asks.
-const SAFE_GIT = new Set('add blame commit describe diff fetch grep log ls-files merge merge-base pull rebase rev-list rev-parse shortlog show status symbolic-ref'.split(' '))
-const READS = /^(?::|\[|true|test|echo|printf|cat|head|tail|tee|grep|wc|ls|pwd|write-output|write-host|get-content|get-location|get-childitem)$/i
-const RUNNERS = /^(?:(?:\.[\\/])?(?:gradlew(?:\.bat)?|mvnw|test\.sh)|gradle|mvn|pytest|(?:npm|pnpm|yarn|bun|cargo|go) test|claude plugin test)(?: |$)/i
+// read such as echo or cat, an assignment, a test runner, a gh or glab read,
+// any of these after `timeout`, and a subshell or script block, whose commands
+// are read on their own. Anything else in the line with such a push, such as
+// `gh pr checkout`, a git alias, or `npm install`, makes its remote unread, and
+// the hold asks. Each git form was probed with git 2.56.0.
+const SAFE_GIT = new Set('add blame cherry-pick commit describe diff fetch grep log ls-files merge merge-base mv pull rebase revert rev-list rev-parse rm shortlog show stash status symbolic-ref tag'.split(' '))
+const READS = /^(?::|\[\[?|true|test|exit|echo|printf|cat|head|tail|tee|grep|wc|ls|pwd|write-output|write-host|get-content|get-location|get-childitem|select-object)$/i
+const RUNNERS = /^(?:(?:\.[\\/])?(?:gradlew(?:\.bat)?|mvnw|test\.sh)|gradle|mvn|pytest|(?:npm|pnpm|yarn|bun|cargo|go) test|(?:npm|pnpm|yarn|bun) run (?:build|test|lint)|claude plugin test)(?: |$)/i
+// gh and glab run a built-in command before an alias of the same name (gh 2.103.3, glab 1.128.0).
+const HOST_READS = /^(?:gh (?:pr (?:view|list|status|checks|diff)|run (?:list|view|watch)|repo view)|glab (?:mr (?:view|list|diff)|ci (?:status|view|list)|repo view))$/
+// set's flags that only change how errors and tracing are handled; -k would read an assignment anywhere as one for the command.
+const SET_FLAGS = /^(?:[-+][euxvo]+|pipefail|errexit|nounset|xtrace|verbose)$/
+// timeout's options before its duration.
+const TIMEOUT_VALUED = /^(?:-[sk]|--signal|--kill-after)$/
+const TIMEOUT_FLAG = /^(?:--foreground|--preserve-status|-v|--verbose|--(?:signal|kill-after)=\S+)$/
+// A push that cannot set an upstream, name its remote, or run a program of its own.
+const pushStays = (rest: Word[]) =>
+  rest.every(w => w.literal && w.text.startsWith('-')) &&
+  !rest.some(w => (w.text.startsWith('--') ? longOf(w, ['set-upstream', 'repo', 'receive-pack', 'exec']) : /u/.test(w.text)))
+// Which git subcommands below leave the branch as it is depends on their arguments.
+function gitStays(sub: string, rest: Word[]): boolean {
+  const verb = rest.find(w => !w.text.startsWith('-'))
+  if (sub === 'stash') return !verb || (verb.literal && verb.text !== 'branch')
+  if (sub === 'push') return pushStays(rest)
+  if (sub === 'remote') return rest.every(w => w.literal && /^(?:-v|--verbose)$/.test(w.text))
+  if (sub === 'branch') {
+    const list = rest.some(w => /^(?:-l|--list)$/.test(w.text))
+    return rest.every(w => w.literal && (/^(?:--show-current|-l|--list|-a|--all|-r|--remotes|-v|-vv|--verbose)$/.test(w.text) || (list && !w.text.startsWith('-'))))
+  }
+  return SAFE_GIT.has(sub) && !moves(sub, rest)
+}
 function harmless(words: Word[], ps: boolean): boolean {
   const [first, ...args] = words
   if (words.length === 1 && !first.literal && /^(?:\(\)|\{\})$/.test(first.text)) return true
   if (!ps && words.every(w => ASSIGNMENT.test(w.text))) return true
+  if (ps && psIf(words)) return true
+  // A PowerShell condition such as `$LASTEXITCODE -eq 0`.
+  if (ps && /^\$(?:\w+|\?)$/.test(first.text) && (args.length === 0 || (args.length === 2 && args.every(w => w.literal && !w.quoted) && /^-(?:eq|ne|gt|ge|lt|le)$/i.test(args[0].text) && /^\w+$/.test(args[1].text)))) {
+    return true
+  }
+  if (!ps && first.literal && first.text === 'timeout') {
+    let n = 1
+    for (; n < words.length && words[n].literal && words[n].text.startsWith('-'); n++) {
+      if (TIMEOUT_VALUED.test(words[n].text)) n++
+      else if (!TIMEOUT_FLAG.test(words[n].text)) return false
+    }
+    return n + 1 < words.length && words[n].literal && /^\d+(?:\.\d+)?[smhd]?$/.test(words[n].text) && harmless(words.slice(n + 1), ps)
+  }
   const git = gitCommands(words)
   if (git.length) {
     if (git.length > 1 || git[0].k !== 0 || later(words).length) return false
     const { j } = gitOptions(git[0].words, 0)
     const sub = git[0].words[j]
-    return !sub || (sub.literal && SAFE_GIT.has(sub.text) && !moves(sub.text, git[0].words.slice(j + 1)))
+    return !sub || (sub.literal && gitStays(sub.text, git[0].words.slice(j + 1)))
   }
   if (!first.literal) return false
+  if (!ps && first.text === 'set') return args.every(w => w.literal && SET_FLAGS.test(w.text))
+  if (words.length >= 3 && words.slice(0, 3).every(w => w.literal) && HOST_READS.test(words.slice(0, 3).map(w => w.text).join(' '))) return true
   if ((ps ? /^(?:cd|chdir|sl|set-location|pushd|push-location)$/i : /^(?:cd|pushd)$/).test(first.text)) {
     return args.length > 0 && args.every(w => w.literal && w.text !== '-' && !UP.test(w.text))
   }
@@ -1091,7 +1153,7 @@ function harmless(words: Word[], ps: boolean): boolean {
 // 2.56.0 staged one where a nested repo replaced a tracked file, in a commit
 // with -a or with a pathspec that matched it, but not in a commit with neither.
 // A word read as a pathspec where it is an option's value only holds the push.
-const STAGES = new Set('add merge pull rebase'.split(' '))
+const STAGES = new Set('add cherry-pick merge pull rebase revert'.split(' '))
 const COMMIT_VALUED = /^(?:-[A-Za-z]*[mFcCtU]|--(?:message|file|reuse-message|reedit-message|template|author|date|cleanup|fixup|squash|trailer|unified|inter-hunk-context))$/
 const commitStages = (rest: Word[]) =>
   positional(rest, COMMIT_VALUED).length > 0 ||
@@ -1104,18 +1166,27 @@ const writesIndex = (words: Word[]) =>
   })
 // For each command, whether another command in the line may have moved the
 // branch, its config, or the directory, and whether one may have staged a
-// gitlink. A command listed after it counts only where the line is not run in
-// the order it is listed (see `order`).
+// gitlink. A command listed after it counts where it is in the same pipeline,
+// or where the line is not run in the order it is listed (see `order`).
 function others(cmds: Command[], ps: boolean, kept: boolean): { unknown: boolean; staged: boolean }[] {
   const unsafe = cmds.map(c => !harmless(c.words, ps))
   const writes = cmds.map((c, x) => unsafe[x] || writesIndex(c.words))
-  // Any flag before each command, and, out of order, any after it, in one pass each way.
+  // Any flag before each command, and any after it out of order or in its pipeline, in one pass each way.
   const around = (flags: boolean[]) => {
     const after = flags.map(() => false)
-    for (let x = flags.length - 2; x >= 0; x--) after[x] = after[x + 1] || flags[x + 1]
+    const piped = flags.map(() => false)
+    const seen = new Set<object>()
+    for (let x = flags.length - 1; x >= 0; x--) {
+      if (x < flags.length - 1) after[x] = after[x + 1] || flags[x + 1]
+      const pipe = cmds[x].pipe
+      if (pipe) {
+        piped[x] = seen.has(pipe)
+        if (flags[x]) seen.add(pipe)
+      }
+    }
     let before = false
     return flags.map((f, x) => {
-      const any = before || (!kept && after[x])
+      const any = before || (!kept && after[x]) || piped[x]
       before ||= f
       return any
     })

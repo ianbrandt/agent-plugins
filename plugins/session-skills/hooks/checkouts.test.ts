@@ -1529,6 +1529,33 @@ test('a push with no remote goes unasked only after commands known to leave its 
   expect(pushTargets('git add -A; git commit -m x; Set-Location C:\\repo; Write-Output done; git push', 'PowerShell')[0]?.remote).toBeUndefined()
 })
 
+// Each git form here left the branch, its local config, and the directory as
+// they were in git 2.56.0. Under
+// push.autoSetupRemote a first push sets the upstream to the remote it pushed to.
+test('a push with no remote goes unasked after a stash, a tag, a read, a timeout, or an earlier push', () => {
+  for (const cmd of [
+    'git stash && git pull --rebase && git stash pop && git push', 'git rm a && git commit -m x && git push', 'git mv a b && git commit -m x && git push',
+    'git remote -v && git push', 'git branch --show-current && git push', 'git branch --list "r*" && git push', 'git tag v1 && git push',
+    'git push && git push --tags', 'git cherry-pick abc123 && git push', 'git revert --no-edit HEAD && git push', 'set -e; git commit -m x; git push',
+    'set -euo pipefail; git push', '[[ -z "$(git status --porcelain)" ]] && git push', 'timeout 600 ./gradlew check && git push',
+    'timeout -k 5 60s git status && git push', 'npm run build && git push', 'gh pr view && git push', 'gh pr checks 12 && git push',
+    'glab mr view 7 && git push', 'gh run list -L 3 && git push', 'cd /repo/wt || exit 1; git push',
+  ]) expect(pushTargets(cmd).at(-1)?.remote, cmd).toBeUndefined()
+  expect(pushTarget('cd /repo/wt || exit 1; git push')?.dir).toBe('/repo/wt')
+  for (const cmd of [
+    'git stash branch pubb && git push', 'git branch -u pub/main && git push', 'git branch pubb && git push', 'git remote add pub /p && git push',
+    'git push --set-up pub feat && git push', 'git push -fu pub feat && git push', 'git push --repo=pub && git push', 'git push pub && git push',
+    'git push --receive-pack=x && git push', 'set -k; git push', 'timeout 60 git checkout other && git push', 'timeout 60 sudo git status && git push',
+    'timeout "$T" ./gradlew check && git push', 'npm run deploy && git push', 'gh pr checkout 3 && git push', 'gh api -X POST /x && git push',
+  ]) expect(pushTargets(cmd).at(-1)?.remote, cmd).toBeNull()
+  for (const cmd of [
+    'git commit -m x; if ($LASTEXITCODE -eq 0) { git push }', 'git push 2>&1 | Select-Object -Last 5', 'if ($?) { git push } else { Write-Output no }',
+  ]) expect(pushTargets(cmd, 'PowerShell')[0]?.remote, cmd).toBeUndefined()
+  for (const cmd of ['if ($LASTEXITCODE -eq 0) { git checkout other }; git push', 'if ((git checkout other)) { }; git push', 'if ($x -eq (git checkout other)) { }; git push']) {
+    expect(pushTargets(cmd, 'PowerShell').at(-1)?.remote, cmd).toBeNull()
+  }
+})
+
 // A heredoc body, a function, a loop, a pipe, and a background job can run a
 // command before a push that is listed after it. Where the line has none of
 // them, a command listed after the push runs after it.
@@ -1553,8 +1580,18 @@ test('a command listed after a push with no remote is read where it can run firs
   for (const cmd of [
     'git push 2>&1 | grep -v remote:', 'git push 2>&1 | tail -3', 'git push 2>&1 | tee push.log', 'git push && echo done',
     'git push && gh pr checks --watch', 'git push && gh pr view --web', 'git push; git switch main',
+    // bash and zsh wait for a whole pipeline before the next command (R541 verify pass).
+    'git push 2>&1 | tail -3 && git switch main', 'git push && gh pr checks --watch 2>&1 | tail -20', '(git push | tail -3) && git switch main',
   ]) expect(pushTarget(cmd)?.remote, cmd).toBeUndefined()
-  expect(pushTargets('git push; git switch main', 'PowerShell')[0]?.remote).toBeUndefined()
+  for (const cmd of ['git push; git switch main', 'git push 2>&1 | Select-Object -Last 5; git switch main', 'git push; if ($LASTEXITCODE -eq 0) { Write-Output ok }']) {
+    expect(pushTargets(cmd, 'PowerShell')[0]?.remote, cmd).toBeUndefined()
+  }
+  // A compound command in a pipeline runs beside the push.
+  for (const cmd of [
+    'git push | if true; then git switch pubb; fi', 'git push | case x in x) git switch pubb;; esac', 'git push | { git switch pubb; }',
+    'git push | cat "$(git switch pubb)"', 'git push | (git switch pubb)',
+  ]) expect(pushTarget(cmd)?.remote, cmd).toBeNull()
+  expect(pushTargets('git push | git switch pubb; Write-Output ok', 'PowerShell')[0]?.remote).toBeNull()
 })
 
 // In a worktree, notes.local links into the primary checkout. bash 3.2's
