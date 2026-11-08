@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Every check that needs no model call: each plugin's `claude plugin test` suite, the eval regex
-# graders against known texts, and a version in marketplace.json that differs from origin/main's
-# for each plugin changed since then. Needs `claude` and `node` on the PATH.
+# Every check that needs no model call: each plugin's `claude plugin test` suite and shell tests,
+# the eval regex graders against known texts, and a version in marketplace.json that differs from
+# origin/main's for each plugin changed since then. Needs `claude` and `node` on the PATH.
 set -uo pipefail
 cd "$(dirname "$0")"
 failed=0
@@ -13,6 +13,16 @@ for hooks in plugins/*/hooks/hooks.json; do
   else
     printf '%s\n' "$out"
     echo "FAIL  $plugin"
+    failed=1
+  fi
+done
+
+for t in plugins/*/hooks/*.test.sh; do
+  if out=$(sh "$t" 2>&1); then
+    echo "ok    $t: $(printf '%s\n' "$out" | tail -1)"
+  else
+    printf '%s\n' "$out"
+    echo "FAIL  $t"
     failed=1
   fi
 done
@@ -38,7 +48,7 @@ if ! why=$(MSYS_NO_PATHCONV=1 git show origin/main:.claude-plugin/marketplace.js
   echo "skip  versions: $why"
 elif base=$(versions "$old"); then
   while read -r name version; do
-    MSYS_NO_PATHCONV=1 git diff --quiet origin/main -- "plugins/$name" ":(exclude)plugins/$name/evals" ":(exclude)plugins/$name/hooks/*.test.ts" \
+    MSYS_NO_PATHCONV=1 git diff --quiet origin/main -- "plugins/$name" ":(exclude)plugins/$name/evals" ":(exclude)plugins/$name/hooks/*.test.ts" ":(exclude)plugins/$name/hooks/*.test.sh" \
       ":(exclude)plugins/$name/README.md" ":(exclude)plugins/$name/DESIGN.md" && continue
     if printf '%s\n' "$base" | grep -qxF "$name $version"; then
       echo "FAIL  plugins/$name differs from origin/main and its version is still $version"
