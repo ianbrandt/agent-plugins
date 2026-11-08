@@ -82,10 +82,11 @@ git config session-skills.holdFork false          # a fork lands as a PR against
 git config session-skills.holdPrText false        # open a PR without first showing its text
 ```
 
-A push that a hold applies to, every force push, every write to the host through `gh` or `glab`,
-and every `git config` write to a remote or a `session-skills` key is put to the user in the
-permission prompt by this plugin's hook. So a step the user already approved in chat, such as
-recording the visibility above, is asked about once more there. A PR or MR opened with `holdPrText`
+A push that a hold applies to and every force push are refused by this plugin's hook unless they
+are written in the form below, and then they are put to the user in the permission prompt. Every
+write to the host through `gh` or `glab`, and every `git config` write to a remote, a hook, or a
+`session-skills` key, is put to the user there too. So a step the user already approved in chat,
+such as recording the visibility above, is asked about once more there. A PR or MR opened with `holdPrText`
 lifted, in a clone whose only remote is `origin`, is the one write that goes unasked, unless the
 branch push it may make is held.
 
@@ -93,8 +94,10 @@ The plugin also adds a `pre-push` hook to every git the session starts. It refus
 remote not known to be private, a fork's push, and any force push, except to a path on this machine.
 So **write a held push, and any force push, with `-c hook.sessionskills.enabled=false` after
 `git`**, as in `git -C "$MAIN" -c hook.sessionskills.enabled=false push origin "$DEFAULT"`. That
-form is the one printed when the hook refuses a push, and a held push written that way is still put
-to the user in the permission prompt.
+form is the one printed when a push is refused, and every command written that way is put to the
+user in the permission prompt, whatever the holds. It is accepted on `git push` itself, not on an
+alias or a tool such as `git town`. Push the branch before a PR is opened: a `gh pr create` without
+`--head`, or a `glab mr create` without `--push=false`, is refused where its own push would be held.
 
 These are independent of the backlog. A repo you own can track its work in an untracked, local-only
 roadmap and still merge into its default branch; that combination needs no special handling.
@@ -195,7 +198,7 @@ With `session-skills.holdFork false`, a fork lands like `pr` mode with the PR ai
 push the branch to `origin` under the visibility rule, then the same wait on the text. A fork of a
 public project is usually public too, so its push still holds unless `holdPublicPush` is also
 lifted. Open it with `gh pr create --repo <upstream owner/repo> --head <fork owner>:"$BRANCH"`, or
-`glab mr create -R <upstream project> -H <fork project>`. The fork's branch is named for its
+`glab mr create -R <upstream project> -H <fork project> --push=false`. The fork's branch is named for its
 destination in `work-in-worktree` §3, before the first push. The steps below are the default.
 
 1. **Commit atomically on the feature branch**—decomposition-ordered, past-tense, one logical change
