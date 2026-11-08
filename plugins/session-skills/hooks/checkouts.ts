@@ -498,6 +498,9 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
     let words: Word[] = []
     let after: Loc[] | null = null
     let cases = 0
+    // After `case`, until its subject is read, and where a case pattern comes next, whose leading `(` is not a subshell.
+    let subject = false
+    let pattern = false
     let expanded = 0
     const blocks: Loc[][] = []
     // Where the command being read, and the pipeline it is in, start in `commands`.
@@ -621,6 +624,12 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
         if (ps && o[0] === '&' && !words.length && !after) continue
         finish(o[0] === '\n' || o[0].startsWith(';') ? ';' : o[0])
         if (o[0] === '\n') bodies()
+        else if (cases && /^;[;&]/.test(o[0])) pattern = true
+        continue
+      }
+      if (!ps && c === '(' && pattern) {
+        i++
+        pattern = false
         continue
       }
       // A Bash subshell, which leaves the directory as it was, or a PowerShell
@@ -698,8 +707,10 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
         }
         if (OPEN.has(w.text)) {
           if (pipeStart !== null) reorder()
-          if (w.text === 'case') cases++
-          else if (w.text !== 'if') reorder()
+          if (w.text === 'case') {
+            cases++
+            subject = true
+          } else if (w.text !== 'if') reorder()
           blocks.push(cur)
           continue
         }
@@ -710,10 +721,13 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
         }
         if (CLOSE.has(w.text)) {
           if (w.text === 'esac' && cases) cases--
+          pattern = false
           cur = union(cur, blocks.pop() ?? [])
           continue
         }
       }
+      pattern = subject && words.length === 1 && !w.quoted && w.text === 'in'
+      if (words.length) subject = false
       words.push(w)
     }
     finish(';')

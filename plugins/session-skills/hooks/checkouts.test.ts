@@ -757,6 +757,17 @@ test('a heredoc closed as EOF), a quote in ${...}, arithmetic, or a case pattern
   expect(pushTarget('x=$(case a in a) cd /pub;; esac); git push')?.dir).toBeUndefined()
 })
 
+// zsh 5.9 runs each of these as read here, and bash 3.2 does too except for `;&`, which it rejects.
+test('a case pattern written with a leading parenthesis is a pattern, not a subshell', () => {
+  expect(pushTarget('case 1 in (1) cd /pub;; esac; git push')?.dir).toBeNull()
+  expect(pushTarget('case 1 in (1) cd /pub && git push;; esac')?.dir).toBe('/pub')
+  expect(pushTarget('case x in (a) :;; (x) cd /pub && git push;; esac')?.dir).toBe('/pub')
+  expect(pushTarget('case x in (a) :;& (x) cd /pub && git push;; esac')?.dir).toBe('/pub')
+  expect(pushTarget('case x in\n  (x) cd /pub && git push;;\nesac')?.dir).toBe('/pub')
+  expect(pushTarget('case x in (x) (cd /pub); git push;; esac')?.dir).toBeUndefined()
+  expect(pushTarget('case x in x) :;; esac; (cd /pub); git push')?.dir).toBeUndefined()
+})
+
 test('a subcommand that is not written out is a push or write whose repo cannot be read', () => {
   expect(pushTarget('args=(push -f origin main); git "${args[@]}"')?.dir).toBeNull()
   expect(pushTarget('sub=push; git $sub -f')?.dir).toBeNull()
