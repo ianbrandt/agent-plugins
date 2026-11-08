@@ -292,6 +292,86 @@ carries on with R104", and it cost a turn.
 
 No hook adds the rules to a subagent, because a subagent doesn't end a session.
 
+## Pre-push backstop
+
+The lexer cannot see a push run inside another program: `bash -c 'git push'`, `npm run release`,
+`./gradlew release`, `git town ship`, or a script. So the module also adds a git `pre-push` hook,
+`hooks/pre-push.sh`, to every git the session starts. On `session.start` and each `prompt.submit` it
+sets `GIT_CONFIG_PARAMETERS` with `$.env.set` to its current value plus
+`hook.sessionskills.event=pre-push` and `hook.sessionskills.command=sh <script> <records>`. Any
+earlier `hook.sessionskills.*` entry, such as a parent session's in a nested `claude -p`, is
+removed, and so is an inherited `hook.pre-push.enabled`, which would turn every pre-push hook off.
+Every other entry is kept. It is set at session start for a `!` command typed before the first
+prompt, and on each prompt so that a plugin update that moves the script is picked up. Both paths
+are quoted for the shell and for `GIT_CONFIG_PARAMETERS`, and a Windows path is written with `/`,
+which Git for Windows' `sh` reads. `GIT_CONFIG_PARAMETERS` survives a command's own
+`GIT_CONFIG_COUNT` and `git -c`, and a config-based hook runs beside the repo's own hooks,
+`core.hooksPath` included.
+
+The script reads config from the repo, global, and system files only, so a `-c`, a
+`GIT_CONFIG_PARAMETERS`, or a `GIT_CONFIG` on the push does not count, and makes no network call. A
+push with no ref to update is allowed. Otherwise, in this order:
+
+1. A URL that is a path on this machine, or names `localhost`, `127.0.0.1`, or `::1`, is allowed,
+   force included. A drive letter such as `C:/repos/x` is a path only under Git for Windows, since
+   git elsewhere reads it as an ssh host named `C`.
+2. A forced update is refused: a delete, an update whose remote sha is not an ancestor of the local
+   sha (an unknown one included), and any update to an existing tag.
+3. A repo with an `upstream` remote is refused, unless `holdFork` is `false`.
+4. With `holdPublicPush` set to `false`, the push is allowed.
+5. A URL that `git remote get-url --push --all origin` prints is allowed where `originVisibility` is
+   `private`. git passes the hook the URL after `insteadOf` and `pushInsteadOf`, as that command
+   prints it.
+6. A URL recorded as private in the last hour is allowed.
+7. Anything else is refused.
+
+A refused push is reported with the repo, the remote's name or its URL without userinfo, each ref
+update, and the command that asks the user: `git -C <dir> -c hook.sessionskills.enabled=false push
+<remote> <refspecs>`, with `--force-with-lease=<ref>:<sha the hook saw>` for a forced update, so a
+remote that moved before the retry is not overwritten.
+
+The records are one file per session, `session-skills-<session id>.visibility` in `TMPDIR` or
+`TEMP`, since a hooks module is given no data directory. Each line is `<visibility> <seconds>
+<url>`, with the userinfo removed from a URL other than an ssh one, where it is the login, and the
+last line for a URL is the one read. A line is written for every gh or glab lookup, public and
+unknown included: the lookup of origin's push URLs at session start, where `originVisibility` is not
+set, `landing_facts`, and each lookup the lexer makes. Where a line is not written, the hook refuses
+the push. One file per URL, named by `git hash-object`, was not used because the hash depends on the
+repo's object format.
+
+Once a session, `git -c hook.pre-push.enabled=true hook list pre-push` must list `sessionskills`:
+`$.process.run` adds `hook.pre-push.enabled=false` to every git it starts, and a later `-c` turns it
+back on. Then `hook.pre-push.enabled` and `hook.sessionskills.enabled` must not be `false` in a
+config file. git 2.54 added config-based hooks, and 2.55 added `hook.<event>.enabled`. Where
+`$.env.set` is refused or the check fails, the reason is shown once, in a toast.
+
+The lexer still asks about each push it reads. A held push approved as a plain `git push` is then
+refused by the hook, and the retry with the bypass is asked about again. In `land-and-wrap`, a held
+push is written with the bypass from the start, so it is asked about once.
+
+`hooks/pre-push.test.sh` runs the script as git runs it, against a scratch repo, and once through
+`git push` with the entry Setup writes for a path with a space and an apostrophe. `test.sh` runs it,
+since a test under `claude plugin test` cannot start a process.
+
+Not covered:
+
+- `--no-verify`, or the bypass, inside another program, such as a script an agent wrote earlier.
+- An approved bypass turns the hook off for every push its git process starts, including one from
+  the repo's own pre-push hook.
+- A process that does not get the variable: the desktop app's terminal panel, which the app starts
+  itself, an IDE terminal, a container, ssh, `sudo`, and a shell profile that replaces the
+  variable. Another plugin's push through `$.process.run` runs no pre-push hook at all.
+- A push made with a git library such as JGit, a write through gh, glab, or an API from inside
+  another program, and publishing to a package registry.
+- LFS objects uploaded by a refused push: the repo's `git lfs` hook runs after ours refuses.
+- A dry run to a held remote is refused too, since the hook cannot tell it from a push.
+- A visibility change on the host within the hour a record is kept.
+- `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM`, or `HOME` set on the push, which change the files the
+  script reads, and an inherited `GIT_CONFIG_COUNT` entry that turns pre-push hooks off.
+- A second push URL on `origin` is allowed with the first where `originVisibility` is `private`.
+- A local bare repo whose own hook pushes onward: git clears `GIT_CONFIG_PARAMETERS` for it.
+- A loopback address other than the three above, such as `127.0.0.2`, is refused.
+
 ## Native events only
 
 Every hook is on a native event. Under managed settings, or a Team or Enterprise sign-in,
