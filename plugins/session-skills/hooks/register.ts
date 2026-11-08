@@ -2,7 +2,7 @@
 // run the git work of both skills, and the tool a worktree session calls to edit
 // a file that is only in the primary checkout.
 import type { Register } from 'claude-code'
-import { configWrites, type HostWrite, hostWrites, pickBase, type Push, pushTargets, refLine, visibility, worktreeName } from './checkouts'
+import { configWrites, type Dir, type HostWrite, hostWrites, pickBase, type Push, pushTargets, refLine, visibility, worktreeName } from './checkouts'
 import { splice } from './splice'
 
 const NONE = { type: 'object', properties: {} } as const
@@ -643,6 +643,49 @@ async function pushesIn($: any, pushes: Push[], depth = 0): Promise<Push[]> {
   return found
 }
 
+// Each tool that runs a shell command, with the shells its command is read in
+// and the directory it starts in: undefined for the Bash tool's, null where the
+// hook cannot read it. A terminal tab starts in `cwd` or the session's directory,
+// and a reused one wherever its shell was left. The IDE terminal starts in its
+// project, in the IDE's shell, which may be PowerShell.
+const SHELLS: Record<string, (input: any) => { shells: string[]; dir: Dir }> = {
+  Bash: () => ({ shells: ['Bash'], dir: undefined }),
+  PowerShell: () => ({ shells: ['PowerShell'], dir: undefined }),
+  Monitor: () => ({ shells: ['Bash'], dir: undefined }),
+  // shortcut: a tab with no cwd, or a relative one, is read against the Bash tool's directory, not the session's starting one; read the start directory if a session that cd'd elsewhere pushes from a tab.
+  mcp__terminal__run_in_terminal: i => ({ shells: ['Bash'], dir: i.tab_id ? null : typeof i.cwd !== 'string' || !i.cwd ? undefined : i.cwd.startsWith('~') ? null : i.cwd }),
+  mcp__idea__execute_terminal_command: () => ({ shells: ['Bash', 'PowerShell'], dir: null }),
+}
+
+// Adds why each push, config write, and host write in a command waits for the user.
+async function gate($: any, command: string, shell: string, outer: Dir, add: (reason: string) => void) {
+  for (const push of (await pushesIn($, pushTargets(command, shell, outer))).filter(p => !p.dryRun)) {
+    let force = push.force
+    let submodules = !!push.submodules
+    let why = "the repo it runs in could not be read from the command, so the push waits for the user's go."
+    if (push.dir !== null) {
+      try {
+        const dir = await where($, push.dir)
+        const config = await pushConfig($, dir, push)
+        force ||= config.force
+        submodules = config.submodules
+        why = await pushHold($, dir, config.group ? null : push.remote)
+      } catch (err) {
+        why = `the push hold could not be checked: ${(err as Error).message}`
+      }
+    }
+    if (force) add('Force push: this replaces commits on the remote branch that a reviewer may already have read.')
+    if (submodules) add("Push held: it may push submodules to their own remotes, which are not checked, so the push waits for the user's go.")
+    if (why) add(`Push held: ${why}`)
+  }
+  // Each of these can move a later push or PR, which the hold reads before it runs.
+  for (const what of configWrites(command, shell, outer)) add(`Config write held: \`${what}\` can change where a push or a PR goes, run one unseen, or lift a hold, so it waits for the user's go.`)
+  for (const w of hostWrites(command, shell, outer)) {
+    const why = await hostHold($, w).catch(err => `the hold on \`${w.what}\` could not be checked: ${(err as Error).message}`)
+    if (why) add(`Host write held: ${why}`)
+  }
+}
+
 const NEXT_STEP ='This command pushed work. End the reply with the next step, under the session rules: the hand-off block for the next unit of work, or one line stating that this session carries on with it. When nothing can start yet, write one line on what the next item waits on, then the block for when it can start. When nothing comes next at all, say so in one line.'
 
 const TITLE_RULES: Record<string, string> = { 'claude-desktop': 'title-desktop', cli: 'title-cli' }
@@ -729,7 +772,7 @@ export const register: Register = on => {
   // since it replaces commits a reviewer may have read. A write to the host
   // with gh or glab, such as a comment or a merge, is put to the user too. Where
   // nobody can be asked, the command is refused. A subagent's is held too.
-  for (const tool of ['Bash', 'PowerShell']) {
+  for (const [tool, start] of Object.entries(SHELLS)) {
     on('tool.check', { tool }, async ($, e: any, next: any) => {
       const verdict = await next(e)
       if (verdict.decision === 'deny') return verdict
@@ -738,31 +781,8 @@ export const register: Register = on => {
       const add = (reason: string) => reasons.includes(reason) || reasons.push(reason)
       // The engine skips a hook that throws, and the command would run unasked.
       try {
-        for (const push of (await pushesIn($, pushTargets(command, tool))).filter(p => !p.dryRun)) {
-          let force = push.force
-          let submodules = !!push.submodules
-          let why = "the repo it runs in could not be read from the command, so the push waits for the user's go."
-          if (push.dir !== null) {
-            try {
-              const dir = await where($, push.dir)
-              const config = await pushConfig($, dir, push)
-              force ||= config.force
-              submodules = config.submodules
-              why = await pushHold($, dir, config.group ? null : push.remote)
-            } catch (err) {
-              why = `the push hold could not be checked: ${(err as Error).message}`
-            }
-          }
-          if (force) add('Force push: this replaces commits on the remote branch that a reviewer may already have read.')
-          if (submodules) add("Push held: it may push submodules to their own remotes, which are not checked, so the push waits for the user's go.")
-          if (why) add(`Push held: ${why}`)
-        }
-        // Each of these can move a later push or PR, which the hold reads before it runs.
-        for (const what of configWrites(command, tool)) add(`Config write held: \`${what}\` can change where a push or a PR goes, run one unseen, or lift a hold, so it waits for the user's go.`)
-        for (const w of hostWrites(command, tool)) {
-          const why = await hostHold($, w).catch(err => `the hold on \`${w.what}\` could not be checked: ${(err as Error).message}`)
-          if (why) add(`Host write held: ${why}`)
-        }
+        const { shells, dir: outer } = start(e.input ?? {})
+        for (const shell of shells) await gate($, command, shell, outer, add)
       } catch (err) {
         add(`The command could not be checked for a push or a host write: ${(err as Error).message}.`)
       }

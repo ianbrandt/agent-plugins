@@ -899,6 +899,44 @@ test('the hold is read in the directory the push runs in, and a failed read hold
   expect(failed.reason).toContain('could not be checked')
 })
 
+test('a push or host write sent through Monitor, the terminal panel, or the IDE terminal is held too', async ($: any, on: any) => {
+  const config: Record<string, string> = { originVisibility: 'public' }
+  pushWorld(on, config)
+  const check = (tool: string, input: any = {}) => $.tool.check({ tool, input: { command: 'git push origin main', ...input } })
+  for (const tool of ['Monitor', 'mcp__terminal__run_in_terminal', 'mcp__idea__execute_terminal_command']) {
+    expect((await check(tool)).reason).toContain('Push held')
+    expect((await check(tool, { command: 'gh pr merge 1' })).reason).toContain('Host write held')
+    expect((await check(tool, { command: 'git config remote.origin.url x' })).reason).toContain('Config write held')
+  }
+  config.originVisibility = 'private'
+  expect((await check('Monitor')).decision).toBe('allow')
+  expect((await check('mcp__terminal__run_in_terminal')).decision).toBe('allow')
+  // A reused tab, a ~ path, and the IDE terminal run in a directory the hook cannot read.
+  for (const [tool, input] of [['mcp__terminal__run_in_terminal', { tab_id: '3' }], ['mcp__terminal__run_in_terminal', { cwd: '~/pub' }], ['mcp__idea__execute_terminal_command', {}]] as const) {
+    expect((await check(tool, input)).reason).toContain('could not be read')
+  }
+  // The IDE terminal may be PowerShell, where a backtick continues the line.
+  expect((await check('mcp__idea__execute_terminal_command', { command: 'git push `\n-f origin main', projectPath: '/repo' })).reason).toContain('Force push')
+})
+
+test('a push in a new terminal tab is read in the tab\'s directory', async ($: any, on: any) => {
+  on('tool.check', () => ({ decision: 'allow' }))
+  on('session.repo', () => ({ value: { root: '/repo', remote: null, internal: false } }))
+  on('session.cwd', () => ({ value: '/repo' }))
+  const dirs: string[] = []
+  on('process.run', (_$: any, e: any) => {
+    dirs.push(e.argv[2])
+    const line = e.argv.slice(3).join(' ')
+    if (line === 'remote get-url upstream') return { value: { exitCode: 2, stdout: '', stderr: '' } }
+    return { value: { exitCode: 0, stdout: line.includes('originVisibility') ? 'private\n' : 'https://example.com/a/b.git\n', stderr: '' } }
+  })
+  expect((await $.tool.check({ tool: 'mcp__terminal__run_in_terminal', input: { command: 'git push', cwd: '/other repo' } })).decision).toBe('allow')
+  expect(new Set(dirs)).toEqual(new Set(['/other repo']))
+  dirs.length = 0
+  await $.tool.check({ tool: 'mcp__terminal__run_in_terminal', input: { command: 'git push', cwd: 'sub' } })
+  expect(new Set(dirs)).toEqual(new Set(['/repo/sub']))
+})
+
 test('a held push never reaches the shell when nobody can allow it', async ($: any, on: any) => {
   pushWorld(on, { originVisibility: 'public' })
   let ran = 0

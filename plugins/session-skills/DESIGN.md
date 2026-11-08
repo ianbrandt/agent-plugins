@@ -69,7 +69,11 @@ The holds in `land-and-wrap` are read from the skill text, so a session that pus
 skill pushes anyway: on 2026-11-06 a session pushed a cleared TODO to this public repo. A
 `tool.check` hook on `Bash` and `PowerShell` reads the holds for the repo each push in a command
 runs in, and puts a held push to the user in the permission prompt with the `git config` line that
-lifts the hold. `git send-pack`, `git http-push`, `git subtree push`, and `git lfs push` are pushes
+lifts the hold. The same hook reads the command given to `Monitor`, which runs where the Bash
+tool does, and to two tools that run one in a terminal. `mcp__terminal__run_in_terminal` is read
+in its `cwd`, or in an unknown directory when it reuses a tab or `cwd` starts with `~`.
+`mcp__idea__execute_terminal_command` runs in the IDE's project with the IDE's shell, so its
+directory is unknown and the command is read as both bash and PowerShell. `git send-pack`, `git http-push`, `git subtree push`, and `git lfs push` are pushes
 too, and so is `git-push` run directly. A push in a command left to run later is read in a directory
 that cannot be read: the command given to `git submodule foreach`, `git bisect run`, `git rebase -x`,
 `git difftool -x`, or `git for-each-repo`, and a `trap` action. A subcommand git does not build in
