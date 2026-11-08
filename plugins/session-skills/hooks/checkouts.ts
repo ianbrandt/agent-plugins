@@ -1084,9 +1084,21 @@ function harmless(words: Word[], ps: boolean): boolean {
 }
 
 // Whether a git command in a command writes the index, so that `git add -A`
-// may stage a nested repo as a gitlink that a later push recurses into.
-const STAGES = new Set('add commit merge pull rebase'.split(' '))
-const writesIndex = (words: Word[]) => gitCommands(words).some(g => STAGES.has(g.words[gitOptions(g.words, g.k).j]?.text ?? ''))
+// may stage a nested repo as a gitlink that a later push recurses into. git
+// 2.56.0 staged one where a nested repo replaced a tracked file, in a commit
+// with -a or with a pathspec that matched it, but not in a commit with neither.
+// A word read as a pathspec where it is an option's value only holds the push.
+const STAGES = new Set('add merge pull rebase'.split(' '))
+const COMMIT_VALUED = /^(?:-[A-Za-z]*[mFcCtU]|--(?:message|file|reuse-message|reedit-message|template|author|date|cleanup|fixup|squash|trailer|unified|inter-hunk-context))$/
+const commitStages = (rest: Word[]) =>
+  positional(rest, COMMIT_VALUED).length > 0 ||
+  rest.some(w => (w.text.startsWith('--') ? longOf(w, ['all', 'patch', 'interactive', 'pathspec-from-file']) : /^-[A-Za-z]*[ap]/.test(w.text)))
+const writesIndex = (words: Word[]) =>
+  gitCommands(words).some(g => {
+    const { j } = gitOptions(g.words, g.k)
+    const sub = g.words[j]?.text ?? ''
+    return STAGES.has(sub) || (sub === 'commit' && commitStages(g.words.slice(j + 1)))
+  })
 // For each command, whether another command in the line may have moved the
 // branch, its config, or the directory, and whether one may have staged a
 // gitlink. A command listed after it counts only where the line is not run in

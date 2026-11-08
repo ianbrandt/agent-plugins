@@ -82,9 +82,11 @@ the environment) is put to the user whatever the holds, because it replaces comm
 outright, because it is a normal step after a rebase. A push that may recurse into submodules, by
 `--recurse-submodules=on-demand` or `only`, `push.recurseSubmodules`, or `submodule.recurse`, is
 held too where the index has a gitlink, since the submodules' remotes are not checked. The hook
-reads the index before the command runs, so the push is held as well where another command in
-the line may stage one, such as `git add -A` with a nested repo in the tree, or any command not on
-the known-safe list below. The gitlink
+reads the index before the command runs, so the push is held as well where a command that may run
+before it may stage one: `git add -A` with a nested repo in the tree, a `git commit` with `-a`, `-p`,
+or a pathspec where a nested repo replaced a tracked file, or any command not on the known-safe list
+below. A `git commit` with none of those stages no nested repo, unless a pre-commit hook stages
+one, which is not read. The gitlink
 is checked rather than `.gitmodules`, because git also pushes a nested repo that has no entry there.
 A recursion or mirror setting is read from its last value, as git reads it, so a push is not held
 for a global `true` that a local `false` overrides. Where both recursion keys are set, git uses the

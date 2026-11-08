@@ -1645,13 +1645,23 @@ test('a push or a PR that may push is not held for submodules in a repo with no 
 
 // git 2.56.0 pushed a nested repo's commit to its own remote after `git add`
 // staged it as a gitlink in the same command, where the index the hook read had none.
+// `git commit` staged one where a nested repo replaced a tracked file, with -a
+// or a pathspec that matched it, but not with neither.
 test('a push or a PR that may recurse is held where the same command may stage a gitlink', async ($: any, on: any) => {
   targetWorld(on, { 'session-skills.originVisibility': 'private', 'session-skills.holdPrText': 'false', 'session-skills.holdFork': 'false', 'submodule.recurse': 'true' })
-  for (const cmd of ['git add -A && git commit -m "Add lib" && git push', 'git submodule add ../lib.git lib && git push origin main', 'git commit -am x && gh pr create --fill']) {
+  for (const cmd of [
+    'git add -A && git commit -m "Add lib" && git push', 'git submodule add ../lib.git lib && git push origin main', 'git commit -am x && gh pr create --fill',
+    'git commit --all -m x && git push origin main', 'git commit --al -m x && git push origin main', 'git commit -p && git push origin main',
+    'git commit -m x lib && git push origin main', 'git commit -m x -- lib && git push origin main', 'git commit -m x . && git push origin main',
+    'git commit -i -m x lib && git push origin main', 'git commit -qm x lib && gh pr create --fill', 'git commit --pathspec-from-file=p -m x && git push origin main',
+    'git commit --amend --no-edit lib && git push origin main', 'git commit -C HEAD lib && git push origin main',
+  ]) {
     expect((await verdict($, cmd)).reason, cmd).toContain('submodules')
   }
   for (const cmd of [
     'git status && git push', 'git push origin main', 'git fetch && gh pr create --fill', 'git push && gh pr checks --watch', 'git push 2>&1 | tee push.log',
+    'git commit -m "Fix typo" && git push origin main', 'git commit -qm x && git push origin main', 'git commit --allow-empty -m x && gh pr create --fill',
+    'git commit --author "A <a@b.c>" -m x && git push origin main', 'git commit -F msg.txt && git push origin main', 'git commit --amend --no-edit && git push origin main',
   ]) expect((await verdict($, cmd)).decision, cmd).toBe('allow')
 })
 
