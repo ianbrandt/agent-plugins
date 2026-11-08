@@ -2161,6 +2161,9 @@ test('code that runs with no call site, such as TRAPUSR1, chpwd, a CHLD trap, or
 test('an ERR trap that only reports, and PowerShell expressions after a function definition, run no call', () => {
   for (const c of ["set -e; trap 'echo \"failed on line $LINENO\" >&2' ERR; npm test; git push", "trap 'rm -rf \"$tmpdir\"' EXIT ERR; tmpdir=$(mktemp -d); git push", "trap 'echo failed' ERR; git push"]) expect(pushTargets(c)[0]?.dir, c).toBeUndefined()
   expect(pushTargets("trap 'echo failed' ERR; npm test")).toEqual([])
+  // A substitution in the action runs in a subshell.
+  for (const c of ["trap 'echo \"$(date) failed\" >&2' ERR; npm test", "trap 'echo \"$(basename \"$0\"): $(cd /pub; pwd)\"' ERR; npm test"]) expect(pushTargets(c), c).toEqual([])
+  for (const c of ["trap '$(echo cd) /pub' ERR; git push", "trap 'echo x; cd /pub' ERR; git push"]) expect(() => pushTargets(c), c).toThrow()
   for (const c of ['if ($LASTEXITCODE -ne 0) { exit 1 }; git push', 'foreach ($p in $paths) { Write-Host $p }; git push', '$files | Where-Object { $_.Length -gt 0 }; git push',
     '@(1) | Out-Null; git push', 'Write-Host "n=$($files.Count)"; git push', '$i++; git push', '(Get-Command f); git push']) expect(pushTargets("function f { 'x' }; " + c, 'PowerShell')[0]?.dir, c).toBeUndefined()
   // These still call it.

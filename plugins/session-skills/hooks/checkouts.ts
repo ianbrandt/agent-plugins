@@ -49,7 +49,8 @@ export type Dir = string | null | undefined
 type Loc = { dir: Dir; stack: Dir[]; gitDir: Dir }
 export type Word = { text: string; literal: boolean; quoted: boolean }
 // `pipe` is shared by every command in one pipeline, which may run in any order.
-type Command = { words: Word[]; at: Loc[]; pipe?: object }
+// `nested` marks a Bash command read from a substitution, which runs in a subshell.
+type Command = { words: Word[]; at: Loc[]; pipe?: object; nested?: boolean }
 
 // Bash's compound commands. A cd inside one may not have run after it ends.
 const OPEN = new Set(['if', 'while', 'until', 'for', 'case', 'select'])
@@ -221,10 +222,10 @@ function effect(words: Word[], locs: Loc[], ps: boolean, functions: Set<string>,
   })
 }
 
-// Commands that cannot move the shell, which a trap action may be made of.
+// Commands that cannot move the shell, which a trap action may be made of, besides any in a substitution.
 const STILL = /^(?::|true|false|echo|rm|rmdir|kill|wait|exit|return|logger)$/
 const still = (text: string, functions: Set<string>) =>
-  lexAll(text, false, NOWHERE, false, new Set(functions)).every(c => c.words[0]?.literal && STILL.test(c.words[0].text) && !functions.has(c.words[0].text))
+  lexAll(text, false, NOWHERE, false, new Set(functions)).every(c => c.nested || (c.words[0]?.literal && STILL.test(c.words[0].text) && !functions.has(c.words[0].text)))
 
 // The characters one command may be read through, across every pass, and the
 // directories copied onto pushd stacks. Text left open at each level of a nest
@@ -279,7 +280,14 @@ function lexAll(s: string, ps: boolean, start: Loc[], quoted = false, functions 
 function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: Set<string>): { commands: Command[]; open: number } {
   const commands: Command[] = []
   const add = (found: Command[]) => {
-    for (const c of found) commands.push(c)
+    for (const c of found) commands.push(ps ? c : { ...c, nested: true })
+  }
+  // A Bash command or process substitution, read in its subshell.
+  const subshell = (at: Loc[]) => {
+    const n = commands.length
+    const inner = list(at, ')')
+    if (!ps) for (const c of commands.slice(n)) c.nested = true
+    return inner
   }
   // Where a PowerShell subexpression in the word being read leaves the location.
   let side: Loc[] = []
@@ -320,7 +328,7 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
     }
     if (n === '(') {
       i += 2
-      const inner = list(at, ')')
+      const inner = subshell(at)
       if (ps) side = union(side, inner)
     } else if (n === '{' && !ps && /[\s|]/.test(s[i + 2] ?? '')) {
       // bash 5.3's `${ cmd; }` runs its commands in this shell.
@@ -494,7 +502,7 @@ function lex(s: string, ps: boolean, start: Loc[], quoted: boolean, functions: S
         // which runs beside the command rather than before it.
         if (!ps) reorder()
         i += 2
-        const inner = list(at, ')')
+        const inner = subshell(at)
         if (ps) side = union(side, inner)
         text += s.slice(st, i)
         literal = false
