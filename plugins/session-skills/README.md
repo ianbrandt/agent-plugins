@@ -68,9 +68,10 @@ in the marketplace's README.
 
 The skills call six tools that the plugin registers as `mcp__session-skills__<tool>`, and the session
 rules in [`hooks/rules.md`](hooks/rules.md) are added to the first prompt, and again after
-`/clear` and compaction. A force push, a push that a hold in `land-and-wrap` applies to, and a write
-to the host through `gh` or `glab`, such as a comment or a merge, is put to the user in the
-permission prompt, in any permission mode. A push run inside another program, such as a release
+`/clear` and compaction. A force push or a push that a hold in `land-and-wrap` applies to is
+refused with the command to run instead, which turns the session's `pre-push` hook off for that
+push and is put to the user in the permission prompt. A write to the host through `gh` or `glab`,
+such as a comment or a merge, is put to the user there too, in any permission mode. A push run inside another program, such as a release
 script, meets a `pre-push` hook the plugin adds for the session, which refuses it unless the remote
 is on this machine or known to be private. The result of a `git push` includes a request for the
 next step, so the reply is written with it in view. In the terminal the session title is set with `/rename` when the

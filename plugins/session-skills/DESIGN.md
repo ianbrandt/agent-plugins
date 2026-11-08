@@ -101,8 +101,10 @@ through `xargs` is held as one whose remote cannot be read, since xargs adds its
 push's arguments. A force push (a unique prefix of `--force`, `--force-with-lease`, `--mirror`, `--delete`, or
 `--prune`, `-f` or `-d` in a short-flag group, a refspec that starts with `+` or deletes with a
 leading `:`, a `+` refspec or a mirror set with `-c` or in the remote's config, or any config set in
-the environment) is put to the user whatever the holds, because it replaces commits a reviewer may have read, and it is never refused
-outright, because it is a normal step after a rebase. A push that may recurse into submodules, by
+the environment) is held whatever the holds, because it replaces commits a reviewer may have read,
+and so is a push with `--no-verify`, which skips every pre-push hook. Neither is held for a push to
+this machine. A force push after a rebase is written with the bypass described in "Pre-push
+backstop", and is then asked about. A push that may recurse into submodules, by
 `--recurse-submodules=on-demand` or `only`, `push.recurseSubmodules`, or `submodule.recurse`, is
 held too where the index has a gitlink, since the submodules' remotes are not checked. The hook
 reads the index before the command runs, so the push is held as well where a command that may run
@@ -115,7 +117,8 @@ A recursion or mirror setting is read from its last value, as git reads it, so a
 for a global `true` that a local `false` overrides. Where both recursion keys are set, git uses the
 one set last, in config or with `-c`, whichever key it is. A mirror set with `-c` to a value git
 reads as false does not force the push, but a mirror set in config is still read in that case, and
-the push is asked about. A hook's ask reaches a person in every
+the push is held. A held push is refused with the command to run instead, and that command is asked
+about ("Pre-push backstop"). A hook's ask reaches a person in every
 permission mode, and where nobody can be asked, as under `claude -p`, the push is refused. Every
 push but a dry run or a call for help, `git --help push` included, is checked, a subagent's included. The hook asks when it cannot
 read a command at all: the engine skips a hook that throws, and the command would run unasked.
@@ -207,8 +210,8 @@ only lifecycle phases up to `verify`, and any of these after `timeout`. A Maven 
 left the branch, its config, and the directory as they were, except that under
 `push.autoSetupRemote` a first push sets its branch's upstream to the remote it pushed to, which is
 the remote a later push reads. gh and glab run a built-in command before an alias of the same
-name. A `cd` to a path held in a variable, as in `cd "$WT" && git push`, still asks, since the
-directory cannot be read. A git command on that list still makes the remote unread where it checks out
+name. A `cd` to a path held in a variable, as in `cd "$WT" && git push`, is read as the session's
+repo, so the hold reads that repo's config, and the pre-push hook checks the push where it runs. A git command on that list still makes the remote unread where it checks out
 a branch, as a `git rebase` given a branch with or without `--root` does, or one that continues,
 skips, or aborts, since HEAD is detached while the hook reads config and is back on the branch when
 the push runs. So does a `fetch` or `pull` with `--set-upstream`, and a `git rebase -x`
@@ -226,7 +229,7 @@ and each has a regression test.
 
 The hold reads git config before the command runs, so a write that changes where a later push goes
 is put to the user too: a `git config` write to a key under `remote`, `remotes`, `url`, `branch`, `include`,
-`includeIf`, or `alias`, to `push.recurseSubmodules` or `submodule.recurse`, a removed or renamed
+`includeIf`, `alias`, or `hook`, to `push.recurseSubmodules` or `submodule.recurse`, a removed or renamed
 `push` or `submodule` section, `git remote add`, `rename`, `remove`, `rm`, or `set-url`, and `git submodule
 set-url` or `sync`. So is a write to a `session-skills` key, since setting `holdPublicPush` or
 `originVisibility` would lift a hold without the user, and `gh alias set` or `import`, since a gh
@@ -273,6 +276,9 @@ only those a session might write were fixed. These forms are not seen:
   `` `u{...} `` escape
 - an option value of `git` or `gh` before the real command, as in `env -u git git push`
 - a git 2.54 subsection alias that differs from another only in letter case
+- a hook key split by quotes, as in `hook.session''skills.command`
+- a push in a directory held in a variable, as in `git -C "$OTHER" push`, read against the
+  session's repo, though the pre-push hook checks it where it runs
 - `NAME+=value`, a `GIT_DIR` cleared by a second `env`, and bash 5.3's `${ cd /x; }` in an
   assignment
 - a command git or the shell runs from a value: `--receive-pack`, `--upload-pack`, an editor such
@@ -345,9 +351,39 @@ back on. Then `hook.pre-push.enabled` and `hook.sessionskills.enabled` must not 
 config file. git 2.54 added config-based hooks, and 2.55 added `hook.<event>.enabled`. Where
 `$.env.set` is refused or the check fails, the reason is shown once, in a toast.
 
-The lexer still asks about each push it reads. A held push approved as a plain `git push` is then
-refused by the hook, and the retry with the bypass is asked about again. In `land-and-wrap`, a held
-push is written with the bypass from the start, so it is asked about once.
+The lexer reads every push it can see, as before, but refuses a held push that does not carry the
+bypass, since the hook would refuse it after an approval. The command given instead is the same push
+with `-c hook.sessionskills.enabled=false` after `git` and every option kept, so `--force-with-lease
+--force-if-includes` stays in the retry, and so do the variables assigned before `git`, such as
+`HUSKY=0`. A push read through a git alias is given as `push` with the alias's expanded arguments.
+A directory held in a variable is given as `<dir>`, since it is read as the session's repo, and a
+retry run there pushes that repo's branch. A Windows directory is written with `/`,
+since Git Bash drops an unquoted backslash. Where the repo or the remote cannot be read, the form `git -C <dir>
+push <remote>` is given too, with both written out. A command with the bypass is asked about
+whatever the holds, with the usual reasons added. The bypass is accepted on a push git reads itself
+(`push`, `send-pack`, `http-push`, `subtree push`, and `lfs push`). On an alias or any other
+subcommand, such as `git town`, the command is refused, since its push is not shown in the prompt. A
+push whose every URL is a path on this machine or a loopback host gets no force line and no hold, a
+fork's included, by the same test as the hook's first rule. `land-and-wrap` writes a held push and
+every force push with the bypass from the start, so each is asked about once.
+
+These are asked about in any command, whatever its program, since each can turn the hook off or
+replace it: a hook key (`hook.<name>.enabled`, `.command`, or `.event`, in any letter case)
+anywhere in the command's text, eval text and quotes included, and a write, unset, or clear of
+`GIT_CONFIG_PARAMETERS` or `GIT_CONFIG_COUNT`. The second covers an assignment, an argument to
+`export` or another setter, `unset`, `env -u`, `env -i`, and `env -`, and in PowerShell a `$env:`
+assignment, `Remove-Item` or `Clear-Item` on an `Env:` path under any built-in alias, and
+`[Environment]::SetEnvironmentVariable`. They are read as words, so `git commit -m "Fix
+GIT_CONFIG handling"` is not held, and neither is `git add src/webhook.ts`.
+
+A `gh pr create` without `--head`, a `glab mr create` without `--push=false`, and a `gh repo create
+--push` are refused where the branch push they may make would be held by the same rules as a push,
+since the hook would refuse that push after the PR is approved. This is checked before any other
+hold on the PR. A `--head` given a quoted variable, as in `land-and-wrap`'s `--head "$BRANCH"`, may
+be empty, so such a PR is asked about with the push's reason instead of refused. The instruction given is to push first with the bypass and then open the PR with
+`--head` or `--push=false`, or to create the repo and push it as two commands. A Bash or PowerShell
+result with the hook's refusal in it gets no request for the next step, and neither does one with
+git's `failed to push some refs`, which a pipe through `tail` leaves after cutting the hook's lines.
 
 `hooks/pre-push.test.sh` runs the script as git runs it, against a scratch repo, and once through
 `git push` with the entry Setup writes for a path with a space and an apostrophe. `test.sh` runs it,
