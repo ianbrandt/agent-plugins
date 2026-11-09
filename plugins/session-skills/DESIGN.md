@@ -417,3 +417,9 @@ Every hook is on a native event. Under managed settings, or a Team or Enterprise
 hook was skipped, every session. On a managed Windows machine on 2.1.311 the native paths reached
 the model in every run, so the classic hooks were removed on every machine, leaving one path to
 test.
+
+On the managed Windows machine on 2.1.319, `cc-plugin-sec-default` sent the native `tool.check`
+past this plugin too (2026-11-08), so no command is held or asked about there. A held push still
+meets the pre-push hook, but its bypass is asked about only as the session's permission mode asks
+about any command, and in auto mode it was denied before any prompt. A write to the host through gh
+or glab, and a write to a hook key, are not held on such a machine.

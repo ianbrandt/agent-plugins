@@ -88,7 +88,9 @@ write to the host through `gh` or `glab`, and every `git config` write to a remo
 `session-skills` key, is put to the user there too. So a step the user already approved in chat,
 such as recording the visibility above, is asked about once more there. A PR or MR opened with `holdPrText`
 lifted, in a clone whose only remote is `origin`, is the one write that goes unasked, unless the
-branch push it may make is held.
+branch push it may make is held. Under managed settings, if this plugin's `tool.check` hook is
+shown as skipped in a toast at startup, none of these prompts appear: get the user's go in chat
+first.
 
 The plugin also adds a `pre-push` hook to every git the session starts. It refuses a push to a
 remote not known to be private, a fork's push, and any force push, except to a path on this machine.
