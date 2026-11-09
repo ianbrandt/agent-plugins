@@ -67,6 +67,35 @@ the retry note added. No step pushes to a real remote.
 
 Bring the versions and each result back to the Mac as a results item under this heading.
 
+## Check a pinned plugin install on Windows
+
+Since `d791d59`, each plugin is installed from a tagged commit of this repo through a
+`git-subdir` source, not from a relative path. On the Mac, `writing-conventions` 0.55.0 and
+`ghostwriting-skills` 0.13.0 were installed from commit `04c4238` that way. Nothing is known yet
+about how managed settings treat a `git-subdir` source.
+
+1. In PowerShell 7, update the marketplace and the two released plugins, and paste the output of
+   each command:
+
+   ```powershell
+   claude plugin marketplace update ianbrandt
+   claude plugin update writing-conventions@ianbrandt
+   claude plugin update ghostwriting-skills@ianbrandt
+   ```
+
+2. Record the version and commit of each install. Both should show the version above and
+   `gitCommitSha` `04c4238bd7693ee7b38f528015f70bf2c75df269`:
+
+   ```powershell
+   Get-Content "$HOME\.claude\plugins\installed_plugins.json" | Select-String -Context 0,8 'writing-conventions@|ghostwriting-skills@'
+   ```
+
+3. Start `claude` in any directory and ask it to print the last paragraph of
+   `writing-conventions`' rule list. In it, installed sessions should get an edit after the
+   plugin's next release, with no `version` bump.
+
+Bring the output back to the Mac as a results item under this heading.
+
 ## File a Claude Code bug on cc-plugin-sec-default's per-tool asymmetry
 
 On a managed Windows machine running Claude Code 2.1.319, the native `tool.check` event is
