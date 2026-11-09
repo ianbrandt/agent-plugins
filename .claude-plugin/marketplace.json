@@ -62,10 +62,10 @@
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/coding-skills.git",
         "path": "plugins/writing-conventions",
-        "ref": "writing-conventions-v0.54.0",
-        "sha": "09d12c8a4d824a2d51c4494749fe8cf43b1074b2"
+        "ref": "writing-conventions-v0.55.0",
+        "sha": "04c4238bd7693ee7b38f528015f70bf2c75df269"
       },
-      "version": "0.54.0",
+      "version": "0.55.0",
       "description": "Always-on rules for plain prose without AI tells—in chat, in repo docs, and in anything published under your name—with a lint that reports each miss in the next turn.",
       "keywords": ["register", "summary", "prose", "style", "lint"]
     },
@@ -75,10 +75,10 @@
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/coding-skills.git",
         "path": "plugins/ghostwriting-skills",
-        "ref": "ghostwriting-skills-v0.12.0",
-        "sha": "09d12c8a4d824a2d51c4494749fe8cf43b1074b2"
+        "ref": "ghostwriting-skills-v0.13.0",
+        "sha": "04c4238bd7693ee7b38f528015f70bf2c75df269"
       },
-      "version": "0.12.0",
+      "version": "0.13.0",
       "description": "Drafts text that ships under your name—issues, PRs, comments, commit messages, docs—in your voice, from a spec derived from your writing, and keeps that spec current from your edits.",
       "keywords": ["ghostwriting", "voice", "writing", "style", "pull-request"]
     },
