@@ -79,7 +79,7 @@ git push origin main gradle-skills-v1.12.0
 
 ## Checks
 
-`test.sh` runs every check that needs no model call, in about seven seconds. It needs `claude` and
+`test.sh` runs every check that needs no model call, in about 30 seconds. It needs `claude` and
 `node` on the `PATH`.
 
 ```bash
@@ -89,6 +89,7 @@ git push origin main gradle-skills-v1.12.0
 - `claude plugin test` in each plugin that has a hooks module.
 - [`graders.test.mjs`](graders.test.mjs): each regex grader in an eval suite, against one text it
   has to match and one it must not. A regex grader with no texts fails.
+- `claude plugin validate` on each plugin, and Confer's typecheck.
 - For each entry in `.claude-plugin/marketplace.json`, a `<plugin>-v<version>` tag at the pinned
   commit, and the plugin's directory in that commit.
 

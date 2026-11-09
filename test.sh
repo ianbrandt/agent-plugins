@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Every check that needs no model call: each plugin's `claude plugin test` suite and shell tests,
-# the eval regex graders against known texts, and each marketplace.json entry's tag and commit.
+# the eval regex graders against known texts, `claude plugin validate` on each plugin, Confer's
+# typecheck, and each marketplace.json entry's tag and commit.
 # Needs `claude` and `node` on the PATH.
 set -uo pipefail
 cd "$(dirname "$0")"
@@ -32,6 +33,25 @@ if out=$(node --test graders.test.mjs 2>&1); then
 else
   printf '%s\n' "$out"
   echo "FAIL  eval regex graders"
+  failed=1
+fi
+
+invalid=0
+for plugin in plugins/*/; do
+  if ! out=$(claude plugin validate "$plugin" 2>&1); then
+    printf '%s\n' "$out"
+    echo "FAIL  claude plugin validate $plugin"
+    invalid=1
+  fi
+done
+[ $invalid = 0 ] && echo "ok    claude plugin validate on each plugin" || failed=1
+
+# Confer's TypeScript compiler is a dev dependency.
+if out=$(cd plugins/confer && npm ci --silent && npm run -s typecheck 2>&1); then
+  echo "ok    plugins/confer: typecheck"
+else
+  printf '%s\n' "$out"
+  echo "FAIL  plugins/confer: typecheck"
   failed=1
 fi
 
