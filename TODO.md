@@ -1,48 +1,47 @@
 # To do
 
-## Analyze the Windows pre-push backstop probe results
+## Check the pre-push hook's Windows path fix and the tool.call hooks
 
-Run on 2026-11-08, Windows 11, session-skills 0.27.1, Claude Code 2.1.319,
-git 2.56.0.windows.4.
+session-skills 0.27.2 prints the refused push's repo with `pwd -W` under Git for Windows. Check
+that, and whether the plugin's `tool.call` hooks run where `cc-plugin-sec-default` skips its
+`tool.check`. No step pushes to a real remote.
 
-### Matched the probe
+1. In PowerShell 7, pull the coding-skills clone, update the plugin, and record the versions.
+   `claude plugin list` should show session-skills 0.27.2:
 
-No `the pre-push backstop is off` toast at startup. `git hook list pre-push`
-and `git config --get-all hook.sessionskills.command` read as documented
-under the Bash, PowerShell, and Monitor tools, with forward slashes in the
-command path. `git hook run` on the `held` remote was refused with exit 1
-under Bash and PowerShell, and silent with exit 0 on `o ../o.git`.
-`sh plugins/session-skills/hooks/pre-push.test.sh` in Git Bash: `49 pass,
-0 fail`.
+   ```powershell
+   claude plugin marketplace update ianbrandt
+   claude plugin update session-skills@ianbrandt
+   claude plugin list
+   ```
 
-### Differed from the probe
+2. In Git Bash, from the coding-skills clone, run the hook's tests. The last line should be
+   `49 pass, 0 fail`:
 
-1. The `Repo:` line in the refusal differs by shell. Same hook, same
-   working directory, but the path is shown as `C:/Dev/Temp/backstopprobe/w`
-   under Bash and `/tmp/backstopprobe/w` under PowerShell. The second is
-   Git for Windows' MSYS translation of the same path. Decide whether to
-   pin the shown path to a canonical form.
+   ```bash
+   sh plugins/session-skills/hooks/pre-push.test.sh
+   ```
 
-2. `git push held …` was refused up front under both shells, with no
-   permission prompt. The refusal text includes a bypass command of the
-   form `git -C C:/Dev/Temp/backstopprobe/w -c hook.sessionskills.enabled=false
-   push held HEAD:refs/heads/main`, and that bypass is then denied by the
-   auto-mode classifier before any permission prompt. The step 6
-   instruction to "decline at the permission prompt" no longer applies:
-   update the probe wording, or change how the bypass is surfaced.
+3. Set up the probe repo again:
 
-3. The `tool.check` hook is shadowed by `cc-plugin-sec-default` on this
-   machine. The toast reads `session-skills: its tool.check hook was
-   skipped. "cc-plugin-sec-default" runs first and sent the event on past
-   it.`. Separate from the pre-push hook under test, but relevant to how
-   pushes are stopped before git runs.
+   ```powershell
+   $d = Join-Path $env:TEMP backstopprobe; Remove-Item -Recurse -Force $d -ErrorAction Ignore
+   New-Item -ItemType Directory $d | Out-Null; Set-Location $d
+   git init -q --bare o.git; git init -q w; Set-Location w; git commit -q --allow-empty -m x
+   git remote add held https://github.com/ianbrandt/no-such-backstop-probe.git
+   $sha = git rev-parse HEAD
+   [IO.File]::WriteAllText("$PWD\refs.txt", "refs/heads/main $sha refs/heads/main 0000000000000000000000000000000000000000`n")
+   ```
 
-### Open: step 7
+4. Start `claude` in `w`. Ask Claude to run this with the PowerShell tool, then with the Bash tool,
+   and paste both outputs. The `Repo:` line should be `C:/...` in both:
 
-Inconclusive. After `claude plugin disable session-skills@ianbrandt` and
-`claude --plugin-dir "$env:TEMP\it's here\session-skills"`, no pre-push
-hook was registered: `git hook list pre-push` returned `warning: no hooks
-found` and the config value was empty. The `--plugin-dir` form did not
-inject the backstop in that session, so the copy's path under `it's here`
-was never exercised. Does `--plugin-dir` run the plugin's hooks at all,
-or does backstop registration depend on the installed-plugin code path?
+   ```
+   git hook run --to-stdin=refs.txt pre-push -- held https://github.com/ianbrandt/no-such-backstop-probe.git
+   ```
+
+5. Ask Claude to run `git push ../o.git HEAD:refs/heads/main` with the Bash tool, then ask whether
+   the tool result included a request to end the reply with the next step. Note any toast that
+   says a `tool.call` hook was skipped.
+
+Bring the versions and each result back to the Mac, then remove this item from the file.
