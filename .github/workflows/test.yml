@@ -9,7 +9,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        # 2.1.317 is Confer's minClaudeCodeVersion, the newest version any plugin here needs.
+        claude-code: [2.1.317, latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -18,6 +20,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install --global @anthropic-ai/claude-code
+      - run: npm install --global @anthropic-ai/claude-code@${{ matrix.claude-code }}
       - run: ./test.sh
         shell: bash

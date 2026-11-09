@@ -97,8 +97,8 @@ git push origin main gradle-skills-v1.12.0
 - For each entry in `.claude-plugin/marketplace.json`, a `<plugin>-v<version>` tag at the pinned
   commit, and the plugin's directory in that commit.
 
-The same script runs in GitHub Actions on Linux and Windows for each push and pull request
-([`test.yml`](.github/workflows/test.yml)). A pass on Windows does not replace a live run there: the
+The same script runs in GitHub Actions on Linux, macOS, and Windows for each push and pull request,
+under Claude Code 2.1.317 and the latest release ([`test.yml`](.github/workflows/test.yml)). A pass on Windows does not replace a live run there: the
 unit tests run against mocked file and git calls. Checks that need another machine are listed in
 `TODO.md` at the root, and each is removed from it once its results are back.
 

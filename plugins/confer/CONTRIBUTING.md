@@ -33,8 +33,8 @@ You need Node.js and Claude Code 2.1.317 or later. Run these commands in this fo
    claude plugin validate .
    ```
 
-`test.sh` at the repo root runs the same checks for every plugin, and CI runs it on Linux and
-Windows.
+`test.sh` at the repo root runs the same checks for every plugin, and CI runs it on Linux, macOS,
+and Windows, under Claude Code 2.1.317 and the latest release.
 
 The plugin API of Claude Code 2.1.317 is declared in `types/claude-code/index.d.ts`. To update
 that file, replace it with `.claude-plugin/types/claude-code/index.d.ts`, which Claude Code
