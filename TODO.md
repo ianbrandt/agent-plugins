@@ -1,25 +1,71 @@
 # To do
 
-## Watch for the per-tool skip firing in a live session
+## Check the per-tool skipped-check refusal on Windows
 
-Session-skills 0.27.5 was probed on Windows on 2026-11-08 in Claude Code 2.1.319. At session
-start a toast fired saying `cc-plugin-sec-default` had sent `tool.check` past this plugin, and
-yet a fresh PowerShell `git push` to a public remote in the same session was refused with the
-plain `Push refused: Push held: origin is public [...]` text—no `Command refused:
-session-skills' permission check did not run` prefix and no `Retry through the Bash tool` line.
-So the skip fires for one event at session start but not for every PowerShell shell call on
-this build, and the 0.27.5 observation-based retry had nothing to prepend.
+The 0.27.5 run on 2026-11-08 could not show a skip. A held push without the bypass is refused in
+`tool.call` before `tool.check` runs, so its plain `Push refused` text is the same whether or not
+the check would be skipped. A skip is also learned only after a call of that tool has run without
+its check, and no PowerShell call ran before the push. The `permission check did not run` refusal
+appears only on a command the check would ask about, such as a `git config` write to a remote,
+after an earlier PowerShell call. The steps below are the 0.27.4 probe, which was not run, with
+the retry note added. No step pushes to a real remote.
 
-What to watch for in later Windows sessions, and record under this heading on the Mac:
+1. In PowerShell 7, pull the coding-skills clone, update the plugin, and record the versions.
+   `claude plugin list` should show session-skills 0.27.5:
 
-- A `git push`, `gh pr`, or `git config` refusal in PowerShell that starts with `Command
-  refused: session-skills' permission check did not run`—the skipped-check path firing for a
-  real shell call. Note whether `Retry through the Bash tool` is in the refusal.
-- A refusal that starts with `Retry through the PowerShell tool` on a Bash call—the reverse
-  skip, which has never been observed on 2.1.319.
-- A session where the toast fires repeatedly rather than once at start.
+   ```powershell
+   claude plugin marketplace update ianbrandt
+   claude plugin update session-skills@ianbrandt
+   claude plugin list
+   ```
 
-No fresh probe to script until one of these shows up.
+2. In the clone, run the tests. All 217 pass on the Mac. Paste the full output of any test that
+   fails:
+
+   ```powershell
+   claude plugin test ./plugins/session-skills
+   ```
+
+3. Set up the probe repo:
+
+   ```powershell
+   $d = Join-Path $env:TEMP backstopprobe; Remove-Item -Recurse -Force $d -ErrorAction Ignore
+   New-Item -ItemType Directory $d | Out-Null; Set-Location $d
+   git init -q w; Set-Location w; git commit -q --allow-empty -m x
+   git remote add held https://github.com/ianbrandt/no-such-backstop-probe.git
+   ```
+
+4. Start `claude` in `w`, in the default permission mode. Ask Claude to run these two with the
+   PowerShell tool, in order, and to paste each tool result. Note when the toast about a skipped
+   `tool.check` hook appears, and on which call:
+
+   ```
+   git status
+   git config remote.held.url https://example.com/x.git
+   ```
+
+   `git status` should run. Where the toast appeared on it, the config write should be refused,
+   starting with `Command refused: session-skills' permission check did not run` and including
+   `Retry through the Bash tool`. If a permission prompt appears instead, answer No and record
+   that.
+
+5. Ask Claude to run the same config write with the Bash tool. A permission prompt should appear:
+   answer No, and record whether it appeared.
+
+6. In PowerShell, outside Claude, check that neither config write ran. It should print the GitHub
+   URL:
+
+   ```powershell
+   git config --local --get remote.held.url
+   ```
+
+7. Remove the probe directory:
+
+   ```powershell
+   Set-Location $env:TEMP; Remove-Item -Recurse -Force (Join-Path $env:TEMP backstopprobe)
+   ```
+
+Bring the versions and each result back to the Mac as a results item under this heading.
 
 ## File a Claude Code bug on cc-plugin-sec-default's per-tool asymmetry
 
@@ -29,6 +75,11 @@ routed to user plugins for `Bash` tool calls and short-circuited for `PowerShell
 arbitrary shell commands, and both run `git push`. The side effect for user plugins is that a
 `tool.check` hook that would raise a native permission prompt is bypassed on PowerShell on this
 machine, and session-skills' `tool.call` backstop falls back to a chat / `!` refusal instead.
+
+Held until the probe above has results. The 0.27.5 push refusal is decided before `tool.check`
+runs, so it is not evidence that later calls reach `tool.check` normally, as stated in the draft.
+The same statement is in the session-skills DESIGN.md paragraph on 2.1.319, to correct on the Mac
+with the probe results.
 
 Draft to file at <https://github.com/anthropics/claude-code/issues>:
 
@@ -49,14 +100,3 @@ Expected: either the skip fires consistently (every call to the affected tool, s
 
 Context: session-skills (<https://github.com/ianbrandt/coding-skills/tree/main/plugins/session-skills>) is a plugin whose `tool.check` hook asks the user before a push to a public remote. The plugin's DESIGN.md "Native events only" section records the measurements.
 ```
-
-## Out of scope, worth filing
-
-Two tests fail on `claude plugin test ./plugins/session-skills` as of 2026-11-08, unrelated to the
-0.27.5 edits above:
-
-- `a visibility looked up for landing_facts is recorded for the hook, without the token`
-- `origin's visibility is looked up and recorded at session start`
-
-Both expect a recorded line to match `/^private \d+ https:\/\/github\.com\/o\/r\.git\n$/` and
-receive `undefined`. The visibility recording path has drifted. Worth a lane of its own.
