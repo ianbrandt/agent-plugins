@@ -67,34 +67,38 @@ the retry note added. No step pushes to a real remote.
 
 Bring the versions and each result back to the Mac as a results item under this heading.
 
-## Check a pinned plugin install on Windows
+## Analyze the pinned plugin install results
 
-Since `d791d59`, each plugin is installed from a tagged commit of this repo through a
-`git-subdir` source, not from a relative path. On the Mac, `writing-conventions` 0.55.0 and
-`ghostwriting-skills` 0.13.0 were installed from commit `04c4238` that way. Nothing is known yet
-about how managed settings treat a `git-subdir` source.
+Run on Windows 11, Claude Code 2.1.319, PowerShell 7.
 
-1. In PowerShell 7, update the marketplace and the two released plugins, and paste the output of
-   each command:
+### What matched
 
-   ```powershell
-   claude plugin marketplace update ianbrandt
-   claude plugin update writing-conventions@ianbrandt
-   claude plugin update ghostwriting-skills@ianbrandt
-   ```
+- `claude plugin marketplace update ianbrandt` refreshed the cache cleanly.
+- `claude plugin update writing-conventions@ianbrandt` and `claude plugin update
+  ghostwriting-skills@ianbrandt` each reported already at the latest version, 0.55.0 and 0.13.0.
+- `installed_plugins.json` on this machine is at
+  `C:\Dev\.claude\plugins\installed_plugins.json`, not under `$HOME\.claude`, because
+  `CLAUDE_CONFIG_DIR` is redirected to `C:\Dev\.claude`. In both entries:
+  - `writing-conventions@ianbrandt` 0.55.0, `gitCommitSha`
+    `04c4238bd7693ee7b38f528015f70bf2c75df269`.
+  - `ghostwriting-skills@ianbrandt` 0.13.0, `gitCommitSha`
+    `04c4238bd7693ee7b38f528015f70bf2c75df269`.
+- The last paragraph of
+  `C:\Dev\.claude\plugins\cache\ianbrandt\writing-conventions\0.55.0\hooks\rules.md`
+  ends: "Make that edit in the marketplace repo this plugin ships from, never in the installed
+  cache. Installed sessions get it after the plugin's next release, so apply the correction from
+  memory for the rest of the session." No `version`-bump instruction remains.
 
-2. Record the version and commit of each install. Both should show the version above and
-   `gitCommitSha` `04c4238bd7693ee7b38f528015f70bf2c75df269`:
+### What differed
 
-   ```powershell
-   Get-Content "$HOME\.claude\plugins\installed_plugins.json" | Select-String -Context 0,8 'writing-conventions@|ghostwriting-skills@'
-   ```
+- The default `installed_plugins.json` path in step 2 of the probe was written for
+  `$HOME\.claude`; on this machine it is redirected to `C:\Dev\.claude` through
+  `CLAUDE_CONFIG_DIR`. Worth noting in the probe where it is re-run elsewhere.
 
-3. Start `claude` in any directory and ask it to print the last paragraph of
-   `writing-conventions`' rule list. In it, installed sessions should get an edit after the
-   plugin's next release, with no `version` bump.
+### What is still open
 
-Bring the output back to the Mac as a results item under this heading.
+Nothing. On this machine, the `git-subdir` source is allowed for both plugins in managed
+settings, and each is pinned to the expected commit.
 
 ## File a Claude Code bug on cc-plugin-sec-default's per-tool asymmetry
 
