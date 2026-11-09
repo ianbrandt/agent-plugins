@@ -418,9 +418,13 @@ hook was skipped, every session. On a managed Windows machine on 2.1.311 the nat
 the model in every run, so the classic hooks were removed on every machine, leaving one path to
 test.
 
-On the managed Windows machine on 2.1.319, `cc-plugin-sec-default` sent the native `tool.check`
-past this plugin for PowerShell calls but not for Bash calls (2026-11-08), so nothing is put to the
-user in a permission prompt from a skipped tool. `tool.check` fires inside a `tool.call` hook's
+On the managed Windows machine on 2.1.319, a session-start toast on 2026-11-08 reported that
+`cc-plugin-sec-default` sent `tool.check` past this plugin, so nothing is put to the user in a
+permission prompt from a skipped tool. A fresh probe later that evening showed PowerShell `git
+push` calls reaching this plugin's `tool.check` normally in the same build, with no
+skipped-check prefix on the refusal. The 0.27.3 Windows result had every PowerShell call go
+without the check; on 2.1.319 the skip fires at session start but not for every PowerShell
+shell call, so the asymmetry is not stable across sessions on this build. `tool.check` fires inside a `tool.call` hook's
 `next`, just before the tool runs, so whether a call's check will be skipped is not known before
 the call starts. A `tool.call` hook on the same tools refuses what `tool.check` would refuse before calling
 `next`, so a refusal needs no skip to be known. The `tool.check` hook records each call ID it

@@ -1,57 +1,25 @@
 # To do
 
-## Check the per-tool retry note on Windows
+## Watch for the per-tool skip firing in a live session
 
-In session-skills 0.27.5, the refusal shown when `tool.check` was skipped for one shell tool
-gives the other shell tool as the first retry, but only where that other tool is not itself in
-the skipped set this session. The land-and-wrap skill was updated with the same guidance in §1.
-On PowerShell, the retry note reads as follows: "Retry through the Bash tool"; and on Bash the
-note text is "Retry through the PowerShell tool".
+Session-skills 0.27.5 was probed on Windows on 2026-11-08 in Claude Code 2.1.319. At session
+start a toast fired saying `cc-plugin-sec-default` had sent `tool.check` past this plugin, and
+yet a fresh PowerShell `git push` to a public remote in the same session was refused with the
+plain `Push refused: Push held: origin is public [...]` text—no `Command refused:
+session-skills' permission check did not run` prefix and no `Retry through the Bash tool` line.
+So the skip fires for one event at session start but not for every PowerShell shell call on
+this build, and the 0.27.5 observation-based retry had nothing to prepend.
 
-1. In PowerShell 7, pull the coding-skills clone, update the plugin, and record the versions.
-   `claude plugin list` should show session-skills 0.27.5:
+What to watch for in later Windows sessions, and record under this heading on the Mac:
 
-   ```powershell
-   claude plugin marketplace update ianbrandt
-   claude plugin update session-skills@ianbrandt
-   claude plugin list
-   ```
+- A `git push`, `gh pr`, or `git config` refusal in PowerShell that starts with `Command
+  refused: session-skills' permission check did not run`—the skipped-check path firing for a
+  real shell call. Note whether `Retry through the Bash tool` is in the refusal.
+- A refusal that starts with `Retry through the PowerShell tool` on a Bash call—the reverse
+  skip, which has never been observed on 2.1.319.
+- A session where the toast fires repeatedly rather than once at start.
 
-2. Set up the probe repo:
-
-   ```powershell
-   $d = Join-Path $env:TEMP backstopprobe; Remove-Item -Recurse -Force $d -ErrorAction Ignore
-   New-Item -ItemType Directory $d | Out-Null; Set-Location $d
-   git init -q w; Set-Location w; git commit -q --allow-empty -m x
-   git remote add origin https://github.com/ianbrandt/no-such-backstop-probe.git
-   git config session-skills.originVisibility public
-   ```
-
-3. Start `claude` in `w`, in the default permission mode (not auto). Ask Claude to run a Bash
-   `git status` first, so Bash is observed as checked. Then ask Claude to run this with the
-   PowerShell tool and paste the result:
-
-   ```
-   git push origin HEAD:refs/heads/main
-   ```
-
-   The refusal should include `Retry through the Bash tool`.
-
-4. In the same session, ask Claude to retry the push through the Bash tool:
-
-   ```
-   git push origin HEAD:refs/heads/main
-   ```
-
-   A native permission prompt should appear. Answer No, and record whether the prompt appeared.
-
-5. Remove the probe directory:
-
-   ```powershell
-   Set-Location $env:TEMP; Remove-Item -Recurse -Force (Join-Path $env:TEMP backstopprobe)
-   ```
-
-Bring the versions and each result back to the Mac as a results item under this heading.
+No fresh probe to script until one of these shows up.
 
 ## File a Claude Code bug on cc-plugin-sec-default's per-tool asymmetry
 
@@ -65,21 +33,21 @@ machine, and session-skills' `tool.call` backstop falls back to a chat / `!` ref
 Draft to file at <https://github.com/anthropics/claude-code/issues>:
 
 ```draft
-Title: `cc-plugin-sec-default` routes `tool.check` to user plugins for Bash but not for PowerShell on Windows
+Title: `cc-plugin-sec-default` fires a `tool.check` skipped-hook toast at session start, with no visible skip on later shell calls
 
 Observed in Claude Code 2.1.319 on a managed Windows 11 machine (Team / Enterprise sign-in).
 
-The built-in `cc-plugin-sec-default` short-circuits the native `tool.check` event for `PowerShell` tool calls and lets it through to user plugins for `Bash` tool calls. A user plugin that returns `{ decision: 'ask' }` from `tool.check` to raise a native permission prompt therefore gets the prompt for Bash commands and not for PowerShell commands, even though both tools dispatch arbitrary shell commands with the same risk profile.
+At session start a toast fires with text like:
 
-Minimal reproduction:
-1. Install a plugin whose `tool.check` hook returns `{ decision: 'ask', reason: 'test' }` for both `Bash` and `PowerShell`.
-2. Sign in to a Team or Enterprise account on Windows.
-3. Call the Bash tool: the native permission prompt appears.
-4. Call the PowerShell tool: no prompt appears; the plugin is sent a toast indicating that `tool.check` was skipped.
+    <plugin-name>: its tool.check hook was skipped. "cc-plugin-sec-default" runs first and sent the event on past it.
 
-Expected: both shell tools route `tool.check` through user plugins the same way, or both short-circuit, with the asymmetry removed.
+Within the same session, later `Bash` and `PowerShell` tool calls still reach the plugin's `tool.check` hook normally: a hook that returns `{ decision: 'ask' }` raises a native permission prompt, and a hook that returns `{ decision: 'deny' }` refuses with its reason. The toast fires once at session start and no further skip is visible on later calls.
 
-Context: session-skills (<https://github.com/ianbrandt/coding-skills/tree/main/plugins/session-skills>) is a plugin whose `tool.check` hook asks the user before a push to a public remote. On this managed machine the hook raises the prompt for Bash pushes and never for PowerShell pushes, which forces a chat / `!` fallback for PowerShell. The DESIGN.md "Native events only" section records the measurement.
+A separate observation on an earlier session, with session-skills 0.27.3 on the same build, had every `PowerShell` `tool.check` call skipped for the whole session (Bash was unaffected). The behavior is therefore not stable session-to-session.
+
+Expected: either the skip fires consistently (every call to the affected tool, so a user plugin can detect it and fall back) or not at all. The session-start toast without a visible persistent skip is confusing for a plugin that depends on `tool.check` for permission prompts, since it says the hook was skipped but the hook runs anyway for later calls.
+
+Context: session-skills (<https://github.com/ianbrandt/coding-skills/tree/main/plugins/session-skills>) is a plugin whose `tool.check` hook asks the user before a push to a public remote. The plugin's DESIGN.md "Native events only" section records the measurements.
 ```
 
 ## Out of scope, worth filing
