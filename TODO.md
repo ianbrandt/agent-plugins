@@ -1,47 +1,34 @@
 # To do
 
-## Check the pre-push hook's Windows path fix and the tool.call hooks
+## Analyze the Windows 0.27.2 probe results
 
-session-skills 0.27.2 prints the refused push's repo with `pwd -W` under Git for Windows. Check
-that, and whether the plugin's `tool.call` hooks run where `cc-plugin-sec-default` skips its
-`tool.check`. No step pushes to a real remote.
+session-skills 0.27.2. Probe worktree: `C:/Dev/Temp/backstopprobe/w`.
 
-1. In PowerShell 7, pull the coding-skills clone, update the plugin, and record the versions.
-   `claude plugin list` should show session-skills 0.27.2:
+### What matched
 
-   ```powershell
-   claude plugin marketplace update ianbrandt
-   claude plugin update session-skills@ianbrandt
-   claude plugin list
-   ```
+- Step 4, PowerShell tool: push refused; `Repo: C:/Dev/Temp/backstopprobe/w`.
+- Step 4, Bash tool: push refused; `Repo: C:/Dev/Temp/backstopprobe/w`.
+  Both report a `C:/...` path, so the `pwd -W` fix holds under both shells.
+- Step 5, Bash tool: `git push ../o.git HEAD:refs/heads/main` succeeded
+  (`* [new branch] HEAD -> main`).
 
-2. In Git Bash, from the coding-skills clone, run the hook's tests. The last line should be
-   `49 pass, 0 fail`:
+### What differed
 
-   ```bash
-   sh plugins/session-skills/hooks/pre-push.test.sh
-   ```
+- Step 5, the Bash tool result for the push carried no "end the reply with
+  the next step" injection and no visible toast about a skipped `tool.call`
+  hook. The only extra line was the harness's `Shell cwd was reset to
+  C:\Dev\Temp\backstopprobe\w`.
+- One oddity worth flagging: at session start, before any tool ran, the
+  initial system context already included a `tool.call hook additional
+  context: This command pushed work. End the reply with the next step...`
+  line. It fired on prompt submit, not after the push, and it did not
+  reappear on the actual push call.
 
-3. Set up the probe repo again:
+### Still open
 
-   ```powershell
-   $d = Join-Path $env:TEMP backstopprobe; Remove-Item -Recurse -Force $d -ErrorAction Ignore
-   New-Item -ItemType Directory $d | Out-Null; Set-Location $d
-   git init -q --bare o.git; git init -q w; Set-Location w; git commit -q --allow-empty -m x
-   git remote add held https://github.com/ianbrandt/no-such-backstop-probe.git
-   $sha = git rev-parse HEAD
-   [IO.File]::WriteAllText("$PWD\refs.txt", "refs/heads/main $sha refs/heads/main 0000000000000000000000000000000000000000`n")
-   ```
-
-4. Start `claude` in `w`. Ask Claude to run this with the PowerShell tool, then with the Bash tool,
-   and paste both outputs. The `Repo:` line should be `C:/...` in both:
-
-   ```
-   git hook run --to-stdin=refs.txt pre-push -- held https://github.com/ianbrandt/no-such-backstop-probe.git
-   ```
-
-5. Ask Claude to run `git push ../o.git HEAD:refs/heads/main` with the Bash tool, then ask whether
-   the tool result included a request to end the reply with the next step. Note any toast that
-   says a `tool.call` hook was skipped.
-
-Bring the versions and each result back to the Mac, then remove this item from the file.
+- Whether that prompt-submit-time "pushed work" injection is a stale
+  carry-over from a prior session or a new misfire of the `tool.call` hook
+  under `cc-plugin-sec-default`'s skip path.
+- No `tool.call`-skipped toast was observed; unclear whether that means the
+  hook ran, was silently skipped, or the toast surface is suppressed in
+  this harness.
