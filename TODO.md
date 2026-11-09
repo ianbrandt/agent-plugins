@@ -1,72 +1,72 @@
 # To do
 
-## Analyze the per-tool skipped-check refusal results
+## Check the per-tool skipped-check refusal on Windows in the default permission mode
 
-Run on 2026-11-08, Windows 11, Claude Code 2.1.319, PowerShell 7. `session-skills@ianbrandt`
-0.27.5 installed; all 217 plugin tests pass.
+The 2026-11-08 run on 0.27.5 was intercepted by auto mode, the default for a fresh `claude` on
+this machine, before session-skills' `tool.call` backstop ran. These are the same steps, run in
+the default permission mode on 0.28.0. No step pushes to a real remote.
 
-### What matched
+1. In PowerShell 7, pull the coding-skills clone, update the plugin, and record the versions.
+   `claude plugin list` should show session-skills 0.28.0:
 
-- `git status` ran unprompted and clean.
-- Neither `git config remote.held.url https://example.com/x.git` write landed; after the probe,
-  `git config --local --get remote.held.url` printed the GitHub URL set in step 3.
-- A toast about `cc-plugin-sec-default` short-circuiting `tool.check` fired in the fresh session,
-  as predicted in the draft for item 3.
+   ```powershell
+   claude plugin marketplace update ianbrandt
+   claude plugin update session-skills@ianbrandt
+   claude plugin list
+   ```
 
-### What differed
+2. In the clone, run the tests. All 218 pass on the Mac. Paste the full output of any test that
+   fails:
 
-- The default permission mode in a freshly started `claude` on this machine is "auto mode", not
-  the probe's "default". The PowerShell `git config` write was intercepted by auto mode with
-  "Blocked by auto mode ∙ /permissions to review ∙ Auto mode: No reason provided", before any
-  "Command refused: session-skills' permission check did not run / Retry through the Bash tool"
-  text was reached in session-skills' `tool.call` backstop.
-- The toast fired on the second PowerShell call, not at session start. In an earlier session on
-  this machine the toast was recorded at session start, so the moment it first fires is not
-  stable.
-- The Bash call was interrupted (user answered No), so it is not clear whether the prompt came
-  from the plugin's `tool.check` or from auto mode.
+   ```powershell
+   claude plugin test ./plugins/session-skills
+   ```
 
-### What is still open
+3. Set up the probe repo:
 
-- The 0.27.5 chat / `!` fallback refusal text was not observed, because auto mode intercepted the
-  test. A re-run in the default permission mode (switch via `/permissions` or
-  `claude --permission-mode default`) is needed to confirm the backstop message.
-- The question called out in item 3's draft—whether later Bash and PowerShell `tool.check`
-  calls reach the plugin normally after the session-start toast—remains unresolved for the same
-  reason.
+   ```powershell
+   $d = Join-Path $env:TEMP backstopprobe; Remove-Item -Recurse -Force $d -ErrorAction Ignore
+   New-Item -ItemType Directory $d | Out-Null; Set-Location $d
+   git init -q w; Set-Location w; git commit -q --allow-empty -m x
+   git remote add held https://github.com/ianbrandt/no-such-backstop-probe.git
+   ```
 
-## Analyze the pinned plugin install results
+4. Start Claude in `w` in the default permission mode:
 
-Run on Windows 11, Claude Code 2.1.319, PowerShell 7.
+   ```powershell
+   claude --permission-mode default
+   ```
 
-### What matched
+   Ask Claude to run these two with the PowerShell tool, in order, and to paste each tool result.
+   Note when the toast about a skipped `tool.check` hook appears, and on which call:
 
-- `claude plugin marketplace update ianbrandt` refreshed the cache cleanly.
-- `claude plugin update writing-conventions@ianbrandt` and `claude plugin update
-  ghostwriting-skills@ianbrandt` each reported already at the latest version, 0.55.0 and 0.13.0.
-- `installed_plugins.json` on this machine is at
-  `C:\Dev\.claude\plugins\installed_plugins.json`, not under `$HOME\.claude`, because
-  `CLAUDE_CONFIG_DIR` is redirected to `C:\Dev\.claude`. In both entries:
-  - `writing-conventions@ianbrandt` 0.55.0, `gitCommitSha`
-    `04c4238bd7693ee7b38f528015f70bf2c75df269`.
-  - `ghostwriting-skills@ianbrandt` 0.13.0, `gitCommitSha`
-    `04c4238bd7693ee7b38f528015f70bf2c75df269`.
-- The last paragraph of
-  `C:\Dev\.claude\plugins\cache\ianbrandt\writing-conventions\0.55.0\hooks\rules.md`
-  ends: "Make that edit in the marketplace repo this plugin ships from, never in the installed
-  cache. Installed sessions get it after the plugin's next release, so apply the correction from
-  memory for the rest of the session." No `version`-bump instruction remains.
+   ```
+   git status
+   git config remote.held.url https://example.com/x.git
+   ```
 
-### What differed
+   `git status` should run. Where the toast appeared on it, the config write should be refused,
+   starting with `Command refused: session-skills' permission check did not run` and including
+   `Retry through the Bash tool`. If a permission prompt appears instead, answer No and record
+   that: it means the PowerShell `tool.check` ran.
 
-- The default `installed_plugins.json` path in step 2 of the probe was written for
-  `$HOME\.claude`; on this machine it is redirected to `C:\Dev\.claude` through
-  `CLAUDE_CONFIG_DIR`. Worth noting in the probe where it is re-run elsewhere.
+5. Ask Claude to run the same config write with the Bash tool. A permission prompt should appear:
+   answer No, and record whether it appeared.
 
-### What is still open
+6. In PowerShell, outside Claude, check that neither config write ran. It should print the GitHub
+   URL:
 
-Nothing. On this machine, the `git-subdir` source is allowed for both plugins in managed
-settings, and each is pinned to the expected commit.
+   ```powershell
+   git config --local --get remote.held.url
+   ```
+
+7. Remove the probe directory:
+
+   ```powershell
+   Set-Location $env:TEMP; Remove-Item -Recurse -Force (Join-Path $env:TEMP backstopprobe)
+   ```
+
+Bring the versions and each result back to the Mac as a results item under this heading.
 
 ## File a Claude Code bug on cc-plugin-sec-default's per-tool asymmetry
 
@@ -79,9 +79,8 @@ machine, and session-skills' `tool.call` backstop falls back to a chat / `!` ref
 
 Still held. The 2026-11-08 probe was intercepted by auto mode before session-skills' `tool.call`
 backstop ran, so the draft's claim that "later `Bash` and `PowerShell` tool calls still reach
-the plugin's `tool.check` hook normally" is not yet backed by observation on 2.1.319. A re-run
-of the probe in the default permission mode (switch via `/permissions` or
-`claude --permission-mode default`) is needed before the draft is filed. The same unconfirmed
+the plugin's `tool.check` hook normally" is not yet backed by observation on 2.1.319. The draft
+waits for the results of the probe item above. The same unconfirmed
 claim appears in the session-skills DESIGN.md paragraph on 2.1.319, to correct on the Mac with
 the probe results.
 
