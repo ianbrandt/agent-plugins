@@ -332,9 +332,11 @@ push with no ref to update is allowed. Otherwise, in this order:
 7. Anything else is refused.
 
 A refused push is reported with the repo, the remote's name or its URL without userinfo, each ref
-update, and the command that asks the user: `git -C <dir> -c hook.sessionskills.enabled=false push
+update, and the command to run so the user is asked: `git -C <dir> -c hook.sessionskills.enabled=false push
 <remote> <refspecs>`, with `--force-with-lease=<ref>:<sha the hook saw>` for a forced update, so a
-remote that moved before the retry is not overwritten.
+remote that moved before the retry is not overwritten. Under Git for Windows the repo is written as
+`C:/...`, since `pwd` there can print an MSYS path such as `/tmp/x`, which git run from PowerShell
+reads as `C:/tmp/x`.
 
 The records are one file per session, `session-skills-<session id>.visibility` in `TMPDIR` or
 `TEMP`, since a hooks module is given no data directory. Each line is `<visibility> <seconds>

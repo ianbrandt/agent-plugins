@@ -125,7 +125,9 @@ fi
 # git passes a URL as the remote's name where the push named no remote, before
 # any insteadOf rewrite.
 case $remote in *://*) remote=$(clean "$remote") ;; esac
-dir=$(pwd)
+# Under Git for Windows, pwd can print an MSYS path such as /tmp/x, which git
+# run from PowerShell reads as C:/tmp/x.
+{ [ -n "$drive" ] && dir=$(pwd -W 2> /dev/null); } || dir=$(pwd)
 {
   echo "session-skills: push refused by the session's pre-push hook: $why."
   echo "Repo: $dir"

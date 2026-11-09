@@ -78,9 +78,12 @@ for url in 'http://127.0.0.2:9?x@localhost/r.git' 'http://127.0.0.2#@localhost/r
   check "a host after ? or # in $url is not the host" 1 x "$url" "(delete) $zero refs/heads/main $b"
 done
 
+# Under Git for Windows the directory is printed as C:/..., which git reads the
+# same from PowerShell and from Git Bash.
+case $drive in 0) dir=$(pwd -W) ;; *) dir=$repo ;; esac
 check 'a push to a remote of unknown visibility is refused' 1 origin "$gh" "$ff" \
-  'Repo: ' 'Remote: origin' 'refs/heads/main:refs/heads/main' \
-  "git -C $repo -c hook.sessionskills.enabled=false push origin refs/heads/main:refs/heads/main" 'holdPublicPush false' 'dry run'
+  "Repo: $dir" 'Remote: origin' 'refs/heads/main:refs/heads/main' \
+  "git -C $dir -c hook.sessionskills.enabled=false push origin refs/heads/main:refs/heads/main" 'holdPublicPush false' 'dry run'
 check 'a new branch is not forced' 1 origin "$gh" "refs/heads/x $b refs/heads/x $zero" '!--force-with-lease'
 check 'a push with nothing to update is allowed' 0 origin "$gh" ''
 check 'a source with spaces is read from the end of the line' 1 origin "$gh" ":/fix the bug $b refs/heads/x $zero" \
