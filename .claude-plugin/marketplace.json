@@ -8,7 +8,7 @@
       "name": "gradle-skills",
       "source": {
         "source": "git-subdir",
-        "url": "https://github.com/ianbrandt/coding-skills.git",
+        "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/gradle-skills",
         "ref": "gradle-skills-v1.11.0",
         "sha": "09d12c8a4d824a2d51c4494749fe8cf43b1074b2"
@@ -21,7 +21,7 @@
       "name": "roadmap-skills",
       "source": {
         "source": "git-subdir",
-        "url": "https://github.com/ianbrandt/coding-skills.git",
+        "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/roadmap-skills",
         "ref": "roadmap-skills-v0.22.1",
         "sha": "09d12c8a4d824a2d51c4494749fe8cf43b1074b2"
@@ -34,7 +34,7 @@
       "name": "session-skills",
       "source": {
         "source": "git-subdir",
-        "url": "https://github.com/ianbrandt/coding-skills.git",
+        "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/session-skills",
         "ref": "session-skills-v0.28.0",
         "sha": "e5ae3ef85467b1c29be5e26239a6f3735d65061d"
@@ -47,7 +47,7 @@
       "name": "parallel-session-skills",
       "source": {
         "source": "git-subdir",
-        "url": "https://github.com/ianbrandt/coding-skills.git",
+        "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/parallel-session-skills",
         "ref": "parallel-session-skills-v0.3.12",
         "sha": "09d12c8a4d824a2d51c4494749fe8cf43b1074b2"
@@ -60,7 +60,7 @@
       "name": "writing-conventions",
       "source": {
         "source": "git-subdir",
-        "url": "https://github.com/ianbrandt/coding-skills.git",
+        "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/writing-conventions",
         "ref": "writing-conventions-v0.55.0",
         "sha": "04c4238bd7693ee7b38f528015f70bf2c75df269"
@@ -73,7 +73,7 @@
       "name": "ghostwriting-skills",
       "source": {
         "source": "git-subdir",
-        "url": "https://github.com/ianbrandt/coding-skills.git",
+        "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/ghostwriting-skills",
         "ref": "ghostwriting-skills-v0.13.0",
         "sha": "04c4238bd7693ee7b38f528015f70bf2c75df269"
@@ -86,7 +86,7 @@
       "name": "orchestration-skills",
       "source": {
         "source": "git-subdir",
-        "url": "https://github.com/ianbrandt/coding-skills.git",
+        "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/orchestration-skills",
         "ref": "orchestration-skills-v0.5.2",
         "sha": "09d12c8a4d824a2d51c4494749fe8cf43b1074b2"

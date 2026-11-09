@@ -101,7 +101,7 @@ A separate observation on an earlier session, with session-skills 0.27.3 on the 
 
 Expected: either the skip fires consistently (every call to the affected tool, so a user plugin can detect it and fall back) or not at all. The session-start toast without a visible persistent skip is confusing for a plugin that depends on `tool.check` for permission prompts, since it says the hook was skipped but the hook runs anyway for later calls.
 
-Context: session-skills (<https://github.com/ianbrandt/coding-skills/tree/main/plugins/session-skills>) is a plugin whose `tool.check` hook asks the user before a push to a public remote. The plugin's DESIGN.md "Native events only" section records the measurements.
+Context: session-skills (<https://github.com/ianbrandt/agent-plugins/tree/main/plugins/session-skills>) is a plugin whose `tool.check` hook asks the user before a push to a public remote. The plugin's DESIGN.md "Native events only" section records the measurements.
 ```
 
 ## Run `/confer:review` once on the Windows machine

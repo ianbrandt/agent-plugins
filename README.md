@@ -1,4 +1,4 @@
-# coding-skills
+# agent-plugins
 
 A personal [Claude Code](https://claude.ai/code) plugin marketplace: topic-scoped
 skills for software work, published under the `ianbrandt` marketplace.
@@ -10,7 +10,7 @@ without the commands. Claude Code 2.1.308 is the oldest version supported, and `
 needs 2.1.314: hooks and tools run in hooks modules, which are Claude Code mods.
 
 ```sh
-/plugin marketplace add IanBrandt/coding-skills
+/plugin marketplace add IanBrandt/agent-plugins
 ```
 
 ### Start here
