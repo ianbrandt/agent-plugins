@@ -1,53 +1,32 @@
 # To do
 
-## Check that held commands are refused where `tool.check` is skipped
+## Analyze the Windows backstop refusal probe results
 
-session-skills 0.27.3 refuses a held push, a gh or glab write, and a hook-key write from a
-`tool.call` hook once a shell call has run without its `tool.check` hook. Check that the refusal
-takes effect on the managed machine. No step pushes to a real remote, and gh is not installed, so a
-command that runs anyway fails harmlessly.
+Ran on Claude Code 2.1.319, PowerShell 7.6.9, session-skills 0.27.3 (already latest in the
+marketplace).
 
-1. In PowerShell 7, pull the coding-skills clone, update the plugin, and record the versions.
-   `claude plugin list` should show session-skills 0.27.3:
+### What matched
 
-   ```powershell
-   claude plugin marketplace update ianbrandt
-   claude plugin update session-skills@ianbrandt
-   claude plugin list
-   ```
+- The Bash `git push held HEAD:refs/heads/main` call was refused. The deniers were listed as
+  cc-plugin-sec-default, session-skills, and cc-plugin-privacy, with the normal held-push message:
+  "Push refused: Push held: the visibility of the remote `held` is unknown…". No backstop wording
+  appeared. On Bash, session-skills' own `tool.check` ran normally.
 
-2. Set up the probe repo:
+### What differed
 
-   ```powershell
-   $d = Join-Path $env:TEMP backstopprobe; Remove-Item -Recurse -Force $d -ErrorAction Ignore
-   New-Item -ItemType Directory $d | Out-Null; Set-Location $d
-   git init -q w; Set-Location w; git commit -q --allow-empty -m x
-   git remote add held https://github.com/ianbrandt/no-such-backstop-probe.git
-   ```
+- The PowerShell `gh pr merge 1` call ran to completion. A task notification was shown mid-call:
+  "session-skills: its `tool.check` hook was skipped. `cc-plugin-sec-default` runs first and sent
+  the event on past it." No `tool.call` refusal followed; the command exited 1 only because gh is
+  not on PATH.
+- The Bash `git config hook.sessionskills.enabled false` call ran. The write landed, confirmed
+  outside Claude: `git config --local --get hook.sessionskills.enabled` returned `false` with
+  exit 0. No `tool.call` refusal.
 
-3. Start `claude` in `w`, in the permission mode you usually use. Ask Claude to run `git status`
-   with the Bash tool. Nothing is refused until a call has run without the `tool.check` hook.
+### What is still open
 
-4. Ask Claude to run each of these, the first and last with the Bash tool and the second with the
-   PowerShell tool, and to paste each tool result. Each should start with `Command refused:
-   session-skills' permission check did not run`, and the second should not mention gh missing:
-
-   ```
-   git push held HEAD:refs/heads/main
-   gh pr merge 1
-   git config hook.sessionskills.enabled false
-   ```
-
-5. In PowerShell, outside Claude, check that the config write did not run. It should print nothing:
-
-   ```powershell
-   git config --local --get hook.sessionskills.enabled
-   ```
-
-6. Remove the probe directory:
-
-   ```powershell
-   Set-Location $env:TEMP; Remove-Item -Recurse -Force (Join-Path $env:TEMP backstopprobe)
-   ```
-
-Bring the versions and each result back to the Mac, then remove this item from the file.
+- Why no backstop refusal appears in `tool.call` on this managed Windows setup even when
+  `tool.check` is observed as skipped. On the PowerShell call the skip was reported in the same
+  turn, yet the command still ran.
+- Whether the backstop's state is scoped per tool kind rather than per session. On Bash, both
+  `git status` and `git push held` had `tool.check` running normally, with no "skip" recorded for
+  the Bash side, so the later `git config` write went through unflagged.
