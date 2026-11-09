@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Every check that needs no model call: each plugin's `claude plugin test` suite and shell tests,
-# the eval regex graders against known texts, and a version in marketplace.json that differs from
-# origin/main's for each plugin changed since then. Needs `claude` and `node` on the PATH.
+# the eval regex graders against known texts, and each marketplace.json entry's tag and commit.
+# Needs `claude` and `node` on the PATH.
 set -uo pipefail
 cd "$(dirname "$0")"
 failed=0
@@ -35,31 +35,25 @@ else
   failed=1
 fi
 
-# Evals, tests, README.md, and DESIGN.md are not loaded in a session that installs the plugin, so
-# they need no new version.
-versions() {
-  node -e 'for (const p of JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).plugins) console.log(p.name, p.version)' "$1"
+# Each entry is pinned to the commit tagged <name>-v<version>, and that commit has the plugin in it.
+# Git Bash rewrites an argument with a colon in it as a list of Windows paths, and
+# <sha>:<path> reached git as <sha>;<path>. MSYS_NO_PATHCONV turns that off.
+pins() {
+  node -e 'for (const p of JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).plugins) console.log(p.name, p.version, p.source.ref, p.source.sha, p.source.path)' "$1"
 }
 stale=0
-# Git Bash rewrites an argument with a colon in it as a list of Windows paths, and
-# origin/main:<path> reached git as origin\main;<path>. MSYS_NO_PATHCONV turns that off.
-old=$(mktemp)
-if ! why=$(MSYS_NO_PATHCONV=1 git show origin/main:.claude-plugin/marketplace.json 2>&1 > "$old"); then
-  echo "skip  versions: $why"
-elif base=$(versions "$old"); then
-  while read -r name version; do
-    MSYS_NO_PATHCONV=1 git diff --quiet origin/main -- "plugins/$name" ":(exclude)plugins/$name/evals" ":(exclude)plugins/$name/hooks/*.test.ts" ":(exclude)plugins/$name/hooks/*.test.sh" \
-      ":(exclude)plugins/$name/README.md" ":(exclude)plugins/$name/DESIGN.md" && continue
-    if printf '%s\n' "$base" | grep -qxF "$name $version"; then
-      echo "FAIL  plugins/$name differs from origin/main and its version is still $version"
-      stale=1
-    fi
-  done < <(versions .claude-plugin/marketplace.json)
-  [ $stale = 0 ] && echo "ok    versions checked against origin/main"
-else
-  echo "FAIL  versions: marketplace.json on origin/main was not read"
-  stale=1
-fi
-rm -f "$old"
+while read -r name version ref sha path; do
+  if [ "$ref" != "$name-v$version" ] || [ "$path" != "plugins/$name" ]; then
+    echo "FAIL  $name $version is pinned to $ref at $path, not $name-v$version at plugins/$name"
+    stale=1
+  elif [ "$(git rev-parse -q --verify "refs/tags/$ref^{commit}")" != "$sha" ]; then
+    echo "FAIL  $name: tag $ref is not at the pinned commit $sha"
+    stale=1
+  elif ! MSYS_NO_PATHCONV=1 git cat-file -e "$sha:plugins/$name/.claude-plugin/plugin.json" 2>/dev/null; then
+    echo "FAIL  $name: commit $sha has no plugins/$name"
+    stale=1
+  fi
+done < <(pins .claude-plugin/marketplace.json)
+[ $stale = 0 ] && echo "ok    marketplace pins match their tags"
 
 exit $((failed | stale))

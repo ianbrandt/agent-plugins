@@ -6,49 +6,91 @@
   "plugins": [
     {
       "name": "gradle-skills",
-      "source": "./plugins/gradle-skills",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/ianbrandt/coding-skills.git",
+        "path": "plugins/gradle-skills",
+        "ref": "gradle-skills-v1.11.0",
+        "sha": "09d12c8a4d824a2d51c4494749fe8cf43b1074b2"
+      },
       "version": "1.11.0",
       "description": "Skills for working with Gradle projects.",
       "keywords": ["gradle", "dependencies", "version-catalog", "wrapper"]
     },
     {
       "name": "roadmap-skills",
-      "source": "./plugins/roadmap-skills",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/ianbrandt/coding-skills.git",
+        "path": "plugins/roadmap-skills",
+        "ref": "roadmap-skills-v0.22.1",
+        "sha": "09d12c8a4d824a2d51c4494749fe8cf43b1074b2"
+      },
       "version": "0.22.1",
       "description": "Skills for driving a repo's roadmap: claim the next item and build it, for repos you own or upstream OSS projects you contribute to via a fork.",
       "keywords": ["roadmap", "backlog", "worktree", "oss", "contribution"]
     },
     {
       "name": "session-skills",
-      "source": "./plugins/session-skills",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/ianbrandt/coding-skills.git",
+        "path": "plugins/session-skills",
+        "ref": "session-skills-v0.27.5",
+        "sha": "09d12c8a4d824a2d51c4494749fe8cf43b1074b2"
+      },
       "version": "0.27.5",
       "description": "Puts a session in its own git worktree and gets it back out again: adopt the worktree work is already in flight on or open a fresh one, and land the work by what the repo is rather than by a declared mode.",
       "keywords": ["worktree", "session", "landing", "wrap-up", "resume"]
     },
     {
       "name": "parallel-session-skills",
-      "source": "./plugins/parallel-session-skills",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/ianbrandt/coding-skills.git",
+        "path": "plugins/parallel-session-skills",
+        "ref": "parallel-session-skills-v0.3.12",
+        "sha": "09d12c8a4d824a2d51c4494749fe8cf43b1074b2"
+      },
       "version": "0.3.12",
       "description": "Keeps several sessions working one repo at once off each other's files: claim a lane in a shared ledger before writing code, reap dead claims without killing a live sibling, and conduct 2-5 lanes at once when a run has nobody watching it.",
       "keywords": ["claim-ledger", "parallel", "worktree", "pipeline", "unattended"]
     },
     {
       "name": "writing-conventions",
-      "source": "./plugins/writing-conventions",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/ianbrandt/coding-skills.git",
+        "path": "plugins/writing-conventions",
+        "ref": "writing-conventions-v0.54.0",
+        "sha": "09d12c8a4d824a2d51c4494749fe8cf43b1074b2"
+      },
       "version": "0.54.0",
       "description": "Always-on rules for plain prose without AI tells—in chat, in repo docs, and in anything published under your name—with a lint that reports each miss in the next turn.",
       "keywords": ["register", "summary", "prose", "style", "lint"]
     },
     {
       "name": "ghostwriting-skills",
-      "source": "./plugins/ghostwriting-skills",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/ianbrandt/coding-skills.git",
+        "path": "plugins/ghostwriting-skills",
+        "ref": "ghostwriting-skills-v0.12.0",
+        "sha": "09d12c8a4d824a2d51c4494749fe8cf43b1074b2"
+      },
       "version": "0.12.0",
       "description": "Drafts text that ships under your name—issues, PRs, comments, commit messages, docs—in your voice, from a spec derived from your writing, and keeps that spec current from your edits.",
       "keywords": ["ghostwriting", "voice", "writing", "style", "pull-request"]
     },
     {
       "name": "orchestration-skills",
-      "source": "./plugins/orchestration-skills",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/ianbrandt/coding-skills.git",
+        "path": "plugins/orchestration-skills",
+        "ref": "orchestration-skills-v0.5.2",
+        "sha": "09d12c8a4d824a2d51c4494749fe8cf43b1074b2"
+      },
       "version": "0.5.2",
       "description": "Rules for handing work to other agents without losing control of it: what is worth delegating, what every brief must include, which agents worktree isolation breaks, which tier each stage runs at, how to tell a finished stage from one that merely stopped talking, and when to stop and ask the user instead of deciding alone.",
       "keywords": ["subagent", "delegation", "worktree", "workflow", "verification", "escalation"]
