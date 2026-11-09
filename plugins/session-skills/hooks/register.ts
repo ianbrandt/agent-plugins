@@ -813,6 +813,27 @@ async function gate($: any, command: string, shell: string, outer: Dir, add: (re
   }
 }
 
+// Why a shell tool's input waits for the user (`reasons`) or is refused.
+async function judge($: any, start: (input: any) => { shells: string[]; dir: Dir }, input: any) {
+  const reasons: string[] = []
+  const refusals: string[] = []
+  const add = (reason: string, refuse = false) => (refuse ? refusals : reasons).includes(reason) || (refuse ? refusals : reasons).push(reason)
+  // The engine skips a hook that throws, and the command would run unasked.
+  try {
+    const { shells, dir: outer } = start(input)
+    for (const shell of shells) await gate($, String(input.command ?? ''), shell, outer, add)
+  } catch (err) {
+    add(`The command could not be checked for a push or a host write: ${(err as Error).message}.`)
+  }
+  return { refusals, reasons }
+}
+
+// The calls the `tool.check` hook decided, and whether a shell call has run
+// without it, as under managed settings (DESIGN.md, "Native events only").
+const decided = new Set<string>()
+let skipped = false
+const SKIPPED = "Command refused: session-skills' permission check did not run for an earlier command in this session, as under managed settings that skip it, so this command cannot be put to the user in a permission prompt. Get the user's go in chat, and the user can run it from a `!` prompt."
+
 // The session's pre-push hook, added to GIT_CONFIG_PARAMETERS for every git
 // the session starts (DESIGN.md, "Pre-push backstop"). '' once it is set, else why not.
 async function installBackstop($: any): Promise<string> {
@@ -952,20 +973,28 @@ export const register: Register = on => {
     on('tool.check', { tool }, async ($, e: any, next: any) => {
       const verdict = await next(e)
       if (verdict.decision === 'deny') return verdict
-      const command = String(e.input?.command ?? '')
-      const reasons: string[] = []
-      const refusals: string[] = []
-      const add = (reason: string, refuse = false) => (refuse ? refusals : reasons).includes(reason) || (refuse ? refusals : reasons).push(reason)
-      // The engine skips a hook that throws, and the command would run unasked.
-      try {
-        const { shells, dir: outer } = start(e.input ?? {})
-        for (const shell of shells) await gate($, command, shell, outer, add)
-      } catch (err) {
-        add(`The command could not be checked for a push or a host write: ${(err as Error).message}.`)
-      }
+      const { refusals, reasons } = await judge($, start, e.input ?? {})
+      if (e.tool_use_id) decided.add(e.tool_use_id)
       // The reasons to ask go with a refusal, since the command run instead meets them.
       if (refusals.length) return { decision: 'deny', reason: [...refusals, ...reasons].join(' ') }
       return reasons.length ? { decision: 'ask', reason: reasons.join(' ') } : verdict
+    })
+
+    // Under managed settings `cc-plugin-sec-default` may send the hook above
+    // past this plugin, and nothing is asked. It fires inside this hook's
+    // `next`, just before the tool runs, so a skip is learned from a call that
+    // ran, and later calls are refused where that hook would have held them.
+    on('tool.call', { tool }, async ($, e: any, next: any) => {
+      if (skipped) {
+        const { refusals, reasons } = await judge($, start, e)
+        if (refusals.length || reasons.length) return { deny: [SKIPPED, ...refusals, ...reasons].join(' ') }
+      }
+      const ran = await next(e)
+      const id = e.tool_use_id
+      if (!id) return ran
+      if (decided.delete(id)) skipped = false
+      else if (ran.deny === undefined && !(ran as any).isError) skipped = true
+      return ran
     })
   }
 

@@ -967,6 +967,41 @@ test('a held push never reaches the shell when nobody can allow it', async ($: a
   expect(ran).toBe(0)
 })
 
+// A plugin above that answers the check without calling the plugin's hook, as
+// `cc-plugin-sec-default` does under managed settings. An inline plugin is
+// loaded from its source, so its state is kept inside register.
+const skipAll = { name: 'sec', tier: 'prepend' as const, register(on: any) { on('tool.check', () => ({ decision: 'allow' })) } }
+const skipFirst = { name: 'sec', tier: 'prepend' as const, register(on: any) { let n = 0; on('tool.check', (_$: any, e: any, next: any) => (n++ ? next(e) : { decision: 'allow' })) } }
+function skipWorld(on: any, config: Record<string, string>) {
+  const ran: string[] = []
+  pushWorld(on, config)
+  on('tool.call', { tool: 'Bash' }, (_$: any, e: any) => { ran.push(e.command); return { result: {} } })
+  return ran
+}
+
+test('after a shell call runs without the permission check, a held push or host write is refused with the reasons', { plugins: [skipAll] }, async ($: any, on: any) => {
+  const ran = skipWorld(on, { originVisibility: 'public' })
+  // Nothing is refused before a call has run without the check.
+  await $.tool.call({ tool: 'Bash', command: 'git push origin main' })
+  for (const command of ['git push origin main', 'gh pr merge 1', 'git config remote.origin.url x', 'git -c hook.sessionskills.enabled=false push origin main']) {
+    const refused = await $.tool.call({ tool: 'Bash', command })
+    expect(refused.deny).toContain("session-skills' permission check did not run")
+    expect(refused.deny).toMatch(/Push held|Host write held|Config write held/)
+  }
+  // A command with nothing to hold still runs.
+  await $.tool.call({ tool: 'Bash', command: 'git log -1' })
+  expect(ran).toEqual(['git push origin main', 'git log -1'])
+})
+
+test('once the permission check runs again, a held push is put to it and no longer refused up front', { plugins: [skipFirst] }, async ($: any, on: any) => {
+  const ran = skipWorld(on, { originVisibility: 'private' })
+  await $.tool.call({ tool: 'Bash', command: 'git status' })
+  expect((await $.tool.call({ tool: 'Bash', command: 'gh pr merge 1' })).deny).toContain('permission check did not run')
+  await $.tool.call({ tool: 'Bash', command: 'git log -1' })
+  expect((await $.tool.call({ tool: 'Bash', command: 'git push origin main' })).deny).toBeUndefined()
+  expect(ran).toEqual(['git status', 'git log -1', 'git push origin main'])
+})
+
 test('a refusal underneath a held push stands', async ($: any, on: any) => {
   on('tool.check', () => ({ decision: 'deny', reason: 'refused by a rule' }))
   world(on, () => 1)

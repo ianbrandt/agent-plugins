@@ -419,7 +419,11 @@ the model in every run, so the classic hooks were removed on every machine, leav
 test.
 
 On the managed Windows machine on 2.1.319, `cc-plugin-sec-default` sent the native `tool.check`
-past this plugin too (2026-11-08), so no command is held or asked about there. A held push still
-meets the pre-push hook, but its bypass is asked about only as the session's permission mode asks
-about any command, and in auto mode it was denied before any prompt. A write to the host through gh
-or glab, and a write to a hook key, are not held on such a machine.
+past this plugin too (2026-11-08), so nothing is put to the user in a permission prompt there.
+`tool.check` fires inside a `tool.call` hook's `next`, just before the tool runs, so a call cannot
+know beforehand that its own check will be skipped. The `tool.check` hook records each call ID it
+decides, and a `tool.call` hook on the same tools reads that record after a call has run. Once a
+call has run with no record, every later call that `tool.check` would ask about or refuse is
+refused from `tool.call`, with its reasons and a note to get the user's go in chat. The first such
+call to run with no record runs unasked, and a call that runs with a record clears the refusal. A
+held push also meets the pre-push hook, and its bypass is refused like any held command.
