@@ -77,12 +77,13 @@ arbitrary shell commands, and both run `git push`. The side effect for user plug
 `tool.check` hook that would raise a native permission prompt is bypassed on PowerShell on this
 machine, and session-skills' `tool.call` backstop falls back to a chat / `!` refusal instead.
 
-Still held. The 2026-11-08 probe was intercepted by auto mode before session-skills' `tool.call`
-backstop ran, so the draft's claim that "later `Bash` and `PowerShell` tool calls still reach
-the plugin's `tool.check` hook normally" is not yet backed by observation on 2.1.319. The draft
-waits for the results of the probe item above. The same unconfirmed
-claim appears in the session-skills DESIGN.md paragraph on 2.1.319, to correct on the Mac with
-the probe results.
+Still held. The draft's claim that "later `Bash` and `PowerShell` tool calls still reach the
+plugin's `tool.check` hook normally" is not backed by observation on 2.1.319. The 2026-11-08
+probe was blocked by auto mode before session-skills' `tool.call` backstop ran. The plain `Push
+refused:` text on an earlier PowerShell `git push` is no evidence either way, since that refusal
+is returned before `tool.check` fires. In the draft the toast fires at session start, but in one
+session it came on the second PowerShell call. The draft is on hold until the probe item above
+has results.
 
 Draft to file at <https://github.com/anthropics/claude-code/issues>:
 
