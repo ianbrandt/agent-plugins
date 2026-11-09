@@ -1,0 +1,11 @@
+{
+  "message": "Add a snapshot of all counters",
+  "findings": [
+    {
+      "path": "counters.go",
+      "line": 25,
+      "severity": "medium",
+      "summary": "Snapshot reads c.counts without holding c.mu while Inc writes under it, so a concurrent Inc is a data race and can crash the map iteration."
+    }
+  ]
+}

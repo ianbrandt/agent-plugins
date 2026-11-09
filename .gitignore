@@ -3,3 +3,4 @@
 .DS_Store
 plugins/*/evals/results/
 plugins/*/tsconfig.json
+!plugins/confer/tsconfig.json

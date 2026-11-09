@@ -1,0 +1,28 @@
+{
+  "gaps": [
+    {
+      "defect": "mixed-versions",
+      "severity": "high",
+      "summary": "The deploy replaces instances one at a time over 15 minutes, but the migration drops price_dollars first, so the old instances still running fail on every read and write of a price.",
+      "terms": ["rolling", "old (code|version|instances?)", "both (versions|columns)", "mixed", "backward.compat", "expand", "dual.writ"]
+    },
+    {
+      "defect": "truncation",
+      "severity": "high",
+      "summary": "TRUNC drops the fraction, and a REAL price such as 0.53 times 100 is just under 53, so it is stored a cent low. The admin screens' int(dollars * 100) saves 19.99 as 1998.",
+      "terms": ["\\bround", "truncat", "precision", "inexact", "representab", "1998", "off by (one|a) cent"]
+    },
+    {
+      "defect": "table-lock",
+      "severity": "high",
+      "summary": "ADD COLUMN takes an exclusive lock on products, held by the single transaction through the update of 4 million rows, so catalog reads and admin edits wait for the whole migration, against the 20 ms read target.",
+      "terms": ["\\block", "blocks?\\b", "blocked", "downtime", "batch", "outage", "unavailab"]
+    },
+    {
+      "defect": "no-way-back",
+      "severity": "medium",
+      "summary": "The migration drops price_dollars in the same release, so a rollback of the code has no column to read, and the original values are gone.",
+      "terms": ["roll ?back", "back ?up", "restor", "revert", "snapshot", "irreversib"]
+    }
+  ]
+}

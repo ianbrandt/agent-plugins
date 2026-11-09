@@ -1,0 +1,2 @@
+# The host runs one job a day; there is no queue or long-running worker.
+0 6 * * * cd /srv/toolshed && python -m toolshed.nightly

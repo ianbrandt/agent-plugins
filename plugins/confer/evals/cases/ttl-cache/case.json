@@ -1,0 +1,33 @@
+{
+  "message": "Add a time-to-live to cache entries",
+  "findings": [
+    {
+      "path": "cache.py",
+      "line": 24,
+      "severity": "high",
+      "defect": "stale-order",
+      "summary": "Eviction pops the oldest key from `_order` and runs `del self._data[oldest]`, which raises KeyError when `get` has already dropped that expired key from `_data`."
+    },
+    {
+      "path": "cache.py",
+      "line": 29,
+      "severity": "high",
+      "defect": "stale-order",
+      "summary": "`get` drops an expired key from `_data` and `_expires` but leaves it in `_order`, so a later eviction of that key raises KeyError."
+    },
+    {
+      "path": "cache.py",
+      "line": 7,
+      "severity": "low",
+      "defect": "ttl-unit",
+      "summary": "The ttl is documented in milliseconds, but it is added to `time.monotonic()`, which counts seconds."
+    },
+    {
+      "path": "cache.py",
+      "line": 21,
+      "severity": "low",
+      "defect": "ttl-unit",
+      "summary": "The ttl, documented in milliseconds, is added to `time.monotonic()`, which counts seconds."
+    }
+  ]
+}

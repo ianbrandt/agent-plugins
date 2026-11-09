@@ -1,0 +1,14 @@
+{
+  "name": "confer",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc -p . && tsc -p evals",
+    "eval:review": "node --experimental-strip-types --no-warnings evals/review.mjs",
+    "eval:design": "node --experimental-strip-types --no-warnings evals/design.mjs",
+    "eval:ask": "node --experimental-strip-types --no-warnings evals/ask.mjs",
+    "eval:interview": "node --experimental-strip-types --no-warnings evals/interview.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}

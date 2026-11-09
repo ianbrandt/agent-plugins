@@ -1,0 +1,19 @@
+{
+  "message": "Read job intervals in seconds",
+  "findings": [
+    {
+      "path": "runner.go",
+      "line": 7,
+      "severity": "high",
+      "defect": "interval-unit",
+      "summary": "Run still multiplies the interval by time.Millisecond, so jobs tick a thousand times too often now that the interval is in seconds."
+    },
+    {
+      "path": "runner.go",
+      "line": 21,
+      "severity": "high",
+      "defect": "interval-unit",
+      "summary": "NextRun still multiplies the interval by time.Millisecond, so a job is reported due a thousand times too early."
+    }
+  ]
+}

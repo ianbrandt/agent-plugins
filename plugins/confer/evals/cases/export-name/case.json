@@ -1,0 +1,11 @@
+{
+  "message": "Let callers name the exported file",
+  "findings": [
+    {
+      "path": "reports.py",
+      "line": 9,
+      "severity": "high",
+      "summary": "The name comes from the request and is joined to EXPORT_DIR unchecked, so a name such as `../../etc/cron.d/x` writes outside the export directory."
+    }
+  ]
+}

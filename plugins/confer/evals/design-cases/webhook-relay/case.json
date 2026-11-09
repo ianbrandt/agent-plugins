@@ -1,0 +1,22 @@
+{
+  "gaps": [
+    {
+      "defect": "unauthenticated-sender",
+      "severity": "high",
+      "summary": "Nothing checks that a request came from Paylane, so anyone who finds the public URL can post a fake payment.succeeded event and have an order marked paid.",
+      "terms": ["signature", "\\bsigned\\b", "hmac", "authenticat", "spoof", "forg(e|ed|ery)", "verif(y|ies|ied) .*(sender|origin|source)"]
+    },
+    {
+      "defect": "lost-on-failure",
+      "severity": "high",
+      "summary": "A subscriber that fails still gets a 200 sent to Paylane, and the relay stores nothing, so the event is lost for that subscriber with only a log line.",
+      "terms": ["\\blost\\b", "\\bdropped\\b", "dead.?letter", "redeliver", "durab", "never (stored|kept)", "no (durable )?record"]
+    },
+    {
+      "defect": "duplicate-delivery",
+      "severity": "medium",
+      "summary": "Subscribers answer in up to 30 seconds one after another, past Paylane's 10-second limit, so Paylane resends the event and subscribers process it again with nothing to detect it.",
+      "terms": ["idempot", "duplicat", "dedup", "twice", "more than once", "exactly.once"]
+    }
+  ]
+}

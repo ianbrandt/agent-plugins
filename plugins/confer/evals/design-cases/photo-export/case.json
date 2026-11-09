@@ -1,0 +1,22 @@
+{
+  "gaps": [
+    {
+      "defect": "guessable-link",
+      "severity": "high",
+      "summary": "The zip is in a public bucket at a URL made from a sequential user id, so anyone can download any user's whole library by changing the number.",
+      "terms": ["guess", "enumerat", "predictab", "sequential", "authoriz", "authenticat", "access control", "anyone", "\\bsigned\\b"]
+    },
+    {
+      "defect": "local-storage",
+      "severity": "high",
+      "summary": "A 200,000-photo library is about 400 GB, staged twice on a worker with 50 GB, on the machines that also resize uploads.",
+      "terms": ["disk", "\\bspace\\b", "400 ?GB", "stream", "size limit", "quota", "large librar"]
+    },
+    {
+      "defect": "concurrent-exports",
+      "severity": "medium",
+      "summary": "Nothing stops a second export of the same user while one is building, and both jobs write the same /tmp paths and the same zip.",
+      "terms": ["concurren", "same time", "simultaneous", "in.flight", "\\brace\\b", "already (running|building|queued)", "two (exports|jobs|requests)", "overwrit", "second export"]
+    }
+  ]
+}

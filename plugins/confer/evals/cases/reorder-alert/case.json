@@ -1,0 +1,19 @@
+{
+  "message": "Flag items at or below their reorder level",
+  "findings": [
+    {
+      "path": "src/stock.py",
+      "line": 13,
+      "severity": "medium",
+      "defect": "boundary",
+      "summary": "The comparison is `<`, but an item at exactly its reorder level should be flagged too. It should be `<=`."
+    },
+    {
+      "path": "tests/test_stock.py",
+      "line": 4,
+      "severity": "medium",
+      "defect": "boundary",
+      "summary": "The only test has no item at exactly its reorder level, so the boundary the change is about goes untested."
+    }
+  ]
+}

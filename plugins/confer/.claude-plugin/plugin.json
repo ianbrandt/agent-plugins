@@ -1,0 +1,49 @@
+{
+  "name": "confer",
+  "version": "0.12.5",
+  "description": "Claude and Codex challenge each other's analysis, requirements, designs, code reviews, and answers to a question until they agree.",
+  "author": {
+    "name": "Ian Brandt"
+  },
+  "metadata": {
+    "minClaudeCodeVersion": "2.1.317"
+  },
+  "userConfig": {
+    "worktree": {
+      "type": "boolean",
+      "title": "Review worktree",
+      "description": "Run Codex in a detached worktree where the OS does not enforce read-only.",
+      "default": true
+    },
+    "codexRoutineModel": {
+      "type": "string",
+      "title": "Codex routine model",
+      "description": "The model id Codex passes to its provider at the routine tier.",
+      "default": "gpt-6.1-sol"
+    },
+    "codexComplexModel": {
+      "type": "string",
+      "title": "Codex complex model",
+      "description": "The model id Codex passes to its provider at the complex tier.",
+      "default": "gpt-6.1-sol"
+    },
+    "codexCriticalModel": {
+      "type": "string",
+      "title": "Codex critical model",
+      "description": "The model id Codex passes to its provider at the critical tier.",
+      "default": "gpt-6-astra"
+    },
+    "codexEscalationModel": {
+      "type": "string",
+      "title": "Codex escalation model",
+      "description": "The model id Codex passes to its provider at the escalation tier.",
+      "default": "gpt-6-astra"
+    },
+    "maxRounds": {
+      "type": "number",
+      "title": "Max rounds",
+      "description": "The most rounds of a review, a plan, or a question before what is still disputed is reported.",
+      "default": 8
+    }
+  }
+}

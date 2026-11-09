@@ -1,0 +1,4 @@
+id,name,email,phone,contact
+m1,Ada Example,ada@example.invalid,555-0101,email
+m2,Ben Example,ben@example.invalid,555-0102,sms
+m3,Cy Example,cy@example.invalid,555-0103,none

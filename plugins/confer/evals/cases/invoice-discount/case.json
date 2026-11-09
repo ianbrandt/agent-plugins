@@ -1,0 +1,11 @@
+{
+  "message": "Apply a percentage discount to an invoice",
+  "findings": [
+    {
+      "path": "invoice.go",
+      "line": 20,
+      "severity": "high",
+      "summary": "`percent/100` is integer division, which is 0 for any percent below 100, so only a 100 percent discount changes the total. It should multiply first, `total*percent/100`."
+    }
+  ]
+}

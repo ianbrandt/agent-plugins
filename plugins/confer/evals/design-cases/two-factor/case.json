@@ -1,0 +1,28 @@
+{
+  "gaps": [
+    {
+      "defect": "missing-gate",
+      "severity": "high",
+      "summary": "R4 sends members without a second factor to /settings/security, which R2 builds, but R4 is gated on R3 only, so it can land before that page exists.",
+      "terms": ["\\bR4\\b.{0,80}\\bR2\\b", "\\bR2\\b.{0,80}\\bR4\\b", "missing gate", "ungated", "not gated", "enroll\\w* (page|screen|flow).{0,60}(not|n't) (yet )?(exist|built|landed|there|ready)", "(force|forced|forcing) enrollment.{0,80}(R2|not|n't|before)", "redirect\\w*.{0,60}(not|n't) (yet )?(exist|built|landed)", "\\b404\\b"]
+    },
+    {
+      "defect": "too-large",
+      "severity": "medium",
+      "summary": "R4 bundles the policy, forced enrollment, a member report, resets, an audit log with search and export, and email notices across ten files, far more than one increment.",
+      "terms": ["too (large|big|much)", "\\bsplit", "break (it |R4 |this )?(up|down|apart|into)", "(several|smaller|separate) (increments|items|pieces|parts|PRs|pull requests)", "into (several|multiple|smaller|two|three|four)", "one increment", "\\bsingle (increment|item|PR)", "\\bR4\\.\\d", "\\bR4[ab]\\b"]
+    },
+    {
+      "defect": "shared-file",
+      "severity": "medium",
+      "summary": "R2 and R3 are both gated only on R1, so they run in parallel, and both edit src/auth/totp.ts.",
+      "terms": ["merge conflict", "conflict", "collid", "collision", "overlap", "same file", "both (edit|change|modify|touch|write)", "(R2 and R3|R3 and R2).{0,80}(totp|file|parallel|same)", "concurren"]
+    },
+    {
+      "defect": "needs-someone",
+      "severity": "medium",
+      "summary": "R5 is done only when physical security keys are used on three browsers and two operating systems, which no unattended agent can do, but every item runs unattended.",
+      "terms": ["someone (present|there|at|to)", "\\bperson\\b", "human", "\\bmanual", "by hand", "physical", "\\battended", "virtual authenticator", "(tap|press|touch)\\w* (the |a |each )?(security )?keys?", "plug(ged|s)? (it |them |the key )?in", "(can(no|')t|not) be (run unattended|automated)", "(no one|nobody) (is )?(present|there|around)"]
+    }
+  ]
+}

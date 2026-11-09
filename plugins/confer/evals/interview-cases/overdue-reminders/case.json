@@ -1,0 +1,30 @@
+{
+  "goal": "Send members a reminder when a borrowed tool is overdue.",
+  "file": "docs/overdue-reminders.md",
+  "constraints": [
+    { "constraint": "daily-job", "summary": "The host runs one cron job a day at 06:00, with no queue or long-running worker.", "terms": ["once a day", "\\bdaily\\b", "\\bcron", "06:00", "no queue", "long.running"] },
+    { "constraint": "relay-limit", "summary": "The mail relay accepts at most 50 messages an hour and rejects the rest with a 451.", "terms": ["50 (messages|emails)", "\\b451\\b", "rate.?limit", "(an|per) hour"] },
+    { "constraint": "contact-preference", "summary": "Each member chose email, sms, or none, and nothing in the project sends SMS.", "terms": ["\\bsms\\b", "`none`", "contact (preference|field|method)", "agreed to be contacted"] },
+    { "constraint": "library-time-zone", "summary": "Due dates are calendar days in the library's time zone, America/Denver.", "terms": ["Denver", "time ?zone", "LIBRARY_TZ"] }
+  ],
+  "questions": [
+    { "question": "cadence", "summary": "When the first reminder goes out and how often it repeats is a policy that no file in the project sets down.", "terms": ["how often", "frequen", "cadence", "repeat", "first reminder"], "answer": "Send the first reminder the day after the due date, then one every three days until the tool is back." },
+    { "question": "sms-members", "summary": "Members who chose SMS cannot be reached by any sender the project has.", "terms": ["\\bsms\\b", "text messag"], "answer": "Email only. Members who chose text messages or no contact get no reminder." },
+    { "question": "over-limit", "summary": "More reminders may be due in one run than the relay accepts in an hour.", "terms": ["more than 50", "over 50", "past 50", "exceed.*(limit|50)", "rate.?limit", "relay limit"], "answer": "Cap each run at what the relay accepts, oldest loans first, and leave the rest for the next run." },
+    { "question": "path", "summary": "Step 5 of Work it out asks where to write the file.", "terms": ["where\\b.*\\b(plan|file|write|save)", "\\bpath\\b"], "answer": "Write it to docs/overdue-reminders.md." }
+  ],
+  "needless": [
+    { "question": "mail-sender", "summary": "toolshed/mail.py already sends email through the relay.", "terms": ["(which|what) (email|mail) (service|provider|library)", "how (should|do|will|would) .*send (the )?(email|mail)"] },
+    { "question": "contact-store", "summary": "data/members.csv has each member's email address and contact preference.", "terms": ["where .*(email address|contact (details|info))", "do members have (an )?email"] },
+    { "question": "time-zone", "summary": "LIBRARY_TZ sets the time zone of due dates.", "terms": ["(which|what) time ?zone"] },
+    { "question": "scheduler", "summary": "ops/crontab runs one job a day, and there is no queue or worker.", "terms": ["(separate|new|own) (job|service|worker|process)", "\\bqueue\\b", "(which|what) schedul"] },
+    { "question": "language", "summary": "The project is Python.", "terms": ["(which|what) (language|framework)"] }
+  ],
+  "sections": [
+    { "section": "analysis", "terms": ["analysis", "context", "background", "problem"] },
+    { "section": "requirements", "terms": ["requirement"] },
+    { "section": "nonfunctional", "terms": ["non.?functional", "constraints", "quality"] },
+    { "section": "design", "terms": ["design", "approach", "architecture"] },
+    { "section": "plan", "terms": ["^(the )?plan\\b", "implementation", "steps", "tasks", "milestones"] }
+  ]
+}

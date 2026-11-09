@@ -1,0 +1,10 @@
+{
+  "question": "Our capture job gives up after one failed attempt. Should it retry three times with exponential backoff, or five times with a fixed 2-second delay?",
+  "points": [
+    {
+      "point": "double-charge",
+      "summary": "A capture that timed out may have succeeded. The client sends no Idempotency-Key, and the provider applies each capture without one as a new capture, so any retry can charge the customer twice.",
+      "terms": ["idempot", "double.?charg", "charg\\w* twice", "duplicate (charge|capture)"]
+    }
+  ]
+}

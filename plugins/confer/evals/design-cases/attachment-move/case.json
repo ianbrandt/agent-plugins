@@ -1,0 +1,16 @@
+{
+  "gaps": [
+    {
+      "defect": "unmount-first",
+      "severity": "high",
+      "summary": "Step 5 unmounts the volume while the dual write still sends every upload to it, and the release that writes to the bucket only comes in step 6, so every upload fails between the two steps.",
+      "terms": ["out of order", "\\b(swap|reorder)", "reverse (the )?order", "uploads? (will |would |start to |then )?(fail|break)", "fail(ed|ing|s)? (every |all |new )?uploads?", "still (writ|mount|on\\b)", "unmount\\w* (before|while|with)", "\\b6 (before|ahead of|first)", "before (step )?6\\b", "\\b5 and 6\\b"]
+    },
+    {
+      "defect": "copy-unchecked",
+      "severity": "high",
+      "summary": "Step 3 is done when the copy job finishes, which does not show that every file reached the bucket, and step 5 then removes the volume, with only a 30-day snapshot left.",
+      "terms": ["checksum", "\\bhash(es)?\\b", "missing (files|objects|attachments|keys)", "(files|objects) (were |was |are |get )?(skipped|missed|lost)", "(row|object|file)s? counts?", "counts? (of|match|agree)", "compar\\w* (the )?(md5|sizes?|counts?|rows|objects|bucket)", "verif\\w* (that )?(the |each |every |all )?(cop|file|object|attachment)", "unverified", "silent", "(finish|finished|completion|exit|ran).{0,40}(n't|not|nothing) (show|prove|mean|guarantee|confirm|say)", "attachments-sync.{0,40}(all|every|whole|old|existing|full)", "\\bno (check|test|verification|proof)\\b.{0,60}\\b(cop|job|step 3)"]
+    }
+  ]
+}
