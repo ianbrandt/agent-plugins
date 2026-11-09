@@ -93,7 +93,9 @@ hook, none of these prompts appear, and the commands are refused instead. Where 
 `session-skills: its tool.check hook was skipped` toast was shown for one shell tool, run pushes
 and host writes through the other, since a native permission prompt is raised only from a tool
 whose `tool.check` runs. Where neither tool's check runs, get the user's go in chat, and the user
-runs the command from a `!` prompt.
+runs the command from a `!` prompt: the bypass form below, printed in the refusal. Don't run that
+form yourself there, since the auto-mode classifier denies it. For a public origin, the user can
+instead lift `holdPublicPush` for the clone from a `!` prompt.
 
 The plugin also adds a `pre-push` hook to every git the session starts. It refuses a push to a
 remote not known to be private, a fork's push, and any force push, except to a path on this machine.

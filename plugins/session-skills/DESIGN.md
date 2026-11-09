@@ -432,7 +432,9 @@ decides, and the `tool.call` hook reads that record after a call has run, failed
 Once a call of a tool has run with no record, every later call of that tool that `tool.check`
 would ask about is refused too, with its reasons. In the retry note, the other shell tool is
 given only where that tool is not itself in the skipped set, so a session that has seen both
-tools skip falls back to the chat / `!` note. The suggestion is optimistic on a fresh session,
+tools skip falls back to the chat / `!` note. In such a refusal, the bypass is given as the
+command to retry or for the user to run, not as the way to ask the user: with no prompt to raise,
+the auto-mode classifier denies it. The suggestion is optimistic on a fresh session,
 since the asymmetry on `cc-plugin-sec-default` reads as a Claude Code defect rather than a
 stable policy, and after one roundtrip where the other tool is also skipped, no further retry
 through it is suggested. The

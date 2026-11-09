@@ -843,6 +843,9 @@ const skippedMessage = (tool: string) => {
   const retry = other && !skipped.has(other) ? `Retry through the ${other} tool, where the permission check may still run on this machine; otherwise, get` : 'Get'
   return `Command refused: session-skills' permission check did not run for an earlier command of this tool in this session, as under managed settings that skip it, so this command cannot be put to the user in a permission prompt. ${retry} the user's go in chat, and the user can run it from a \`!\` prompt.`
 }
+// With no prompt to raise, the auto-mode classifier denies the bypass a push's
+// refusal offers as the way to ask, so it is offered as the command to run instead.
+const unasked = (reason: string) => reason.replace(/([Tt])o ask the user, (?:run|push with git itself):/g, (_, t) => `${t === 'T' ? 'The' : 'the'} command to retry or for the user to run is:`)
 
 // The session's pre-push hook, added to GIT_CONFIG_PARAMETERS for every git
 // the session starts (DESIGN.md, "Pre-push backstop"). '' once it is set, else why not.
@@ -999,7 +1002,7 @@ export const register: Register = on => {
     on('tool.call', { tool }, async ($, e: any, next: any) => {
       const { refusals, reasons } = await judge($, start, e)
       const skip = skipped.has(tool)
-      if (refusals.length || (skip && reasons.length)) return { deny: [...(skip ? [skippedMessage(tool)] : []), ...refusals, ...reasons].join(' ') }
+      if (refusals.length || (skip && reasons.length)) return { deny: [...(skip ? [skippedMessage(tool)] : []), ...refusals, ...reasons].map(r => (skip ? unasked(r) : r)).join(' ') }
       const ran = await next(e)
       const id = e.tool_use_id
       if (!id) return ran

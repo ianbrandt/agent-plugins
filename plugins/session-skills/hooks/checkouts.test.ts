@@ -1010,6 +1010,18 @@ test('the refusal on a skipped check names the other shell tool as the first ret
   expect((await $.tool.call({ tool: 'PowerShell', command: 'gh pr merge 1' })).deny).toContain('Retry through the Bash tool')
 })
 
+// The auto-mode classifier denies the bypass where no prompt is raised, so the
+// command is given for the user's `!` prompt rather than as a way to ask.
+test('the refusal on a skipped check gives the bypass as the command for the user, not as a way to ask', { plugins: [skipAll] }, async ($: any, on: any) => {
+  skipWorld(on, { originVisibility: 'public' })
+  await $.tool.call({ tool: 'Bash', command: 'git status' })
+  for (const command of ['git push origin main', 'git push', 'git -c alias.p=push p origin main']) {
+    const refused = await $.tool.call({ tool: 'Bash', command })
+    expect(refused.deny).not.toMatch(/to ask the user/i)
+    expect(refused.deny).toContain('-c hook.sessionskills.enabled=false push')
+  }
+})
+
 test('the refusal on a skipped check falls back to chat when the other shell tool is also skipped', { plugins: [skipAll] }, async ($: any, on: any) => {
   skipWorld(on, { originVisibility: 'public' })
   await $.tool.call({ tool: 'Bash', command: 'git status' })
