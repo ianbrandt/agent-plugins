@@ -40,6 +40,7 @@ invoked.
 /plugin install session-skills@ianbrandt
 /plugin install parallel-session-skills@ianbrandt
 /plugin install roadmap-skills@ianbrandt
+/plugin install confer@ianbrandt
 /plugin install gradle-skills@ianbrandt
 ```
 
@@ -58,6 +59,9 @@ invoked.
 - [`roadmap-skills`](plugins/roadmap-skills) backs a lane with a markdown backlog: `Rn` items in
   priority order, claimed one at a time or fed to the conductor in a batch. Claiming one needs
   `session-skills`; feeding the conductor needs `parallel-session-skills` as well.
+- [`confer`](plugins/confer) has a Claude subagent and OpenAI's Codex review a change or a plan, or
+  answer a question, independently, then rule on each other's findings until they agree. It needs
+  the Codex CLI.
 - [`gradle-skills`](plugins/gradle-skills) upgrades Gradle dependencies and the wrapper, one
   verified atomic commit at a time. Gradle builds only.
 
