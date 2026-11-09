@@ -60,11 +60,13 @@ test('in a file with both line ends, the replacement is written as given unless 
 })
 
 const EDIT = 'mcp__session-skills__edit_primary_file'
+// The engine resolves an fs path before a mock gets it, so on Windows /repo
+// arrives as C:\repo. On macOS a path with a drive letter is not absolute, so
+// the engine puts the session's directory in front of it, and that prefix is
+// dropped too.
+const posix = (p: string) => p.replace(/\\/g, '/').replace(/^(.*\/)?[A-Za-z]:(?=\/)/, '')
 function repo(on: any, files: Record<string, string>, afterRead: (n: number) => void = () => {}, root = '/repo') {
   let reads = 0
-  // On macOS a path with a drive letter is not absolute, so the engine puts the
-  // session's directory in front of it, and that prefix is dropped too.
-  const posix = (p: string) => p.replace(/\\/g, '/').replace(/^(.*\/)?[A-Za-z]:(?=\/)/, '')
   on('session.repo', () => ({ value: { root, remote: null, internal: false } }))
   on('fs.exists', (_$: any, e: any) => ({ value: posix(e.path) in files }))
   on('fs.read', (_$: any, e: any) => {
@@ -316,8 +318,8 @@ function backstop(on: any, list = 'sessionskills\n') {
   on('session.id', () => ({ value: w.id }))
   on('session.repo', () => ({ value: { root: '/repo', remote: null, internal: false } }))
   on('ui.toast', (_$: any, e: any) => { w.toasts.push(e.text ?? String(e)); return { value: undefined } })
-  on('fs.read', (_$: any, e: any) => ({ value: w.files[e.path] ?? '' }))
-  on('fs.write', (_$: any, e: any) => { w.files[e.path] = e.text; return { value: undefined } })
+  on('fs.read', (_$: any, e: any) => ({ value: w.files[posix(e.path)] ?? '' }))
+  on('fs.write', (_$: any, e: any) => { w.files[posix(e.path)] = e.text; return { value: undefined } })
   on('process.run', (_$: any, e: any) => {
     const a = e.argv.join(' ')
     if (a.includes('hook list')) return { value: { exitCode: 0, stdout: list, stderr: '' } }
