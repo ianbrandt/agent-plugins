@@ -17,8 +17,8 @@ or later, signed in or set up for a provider.
 1. Add the marketplace and install the plugin:
 
    ```shell
-   /plugin marketplace add ianbrandt/confer
-   /plugin install confer@confer
+   /plugin marketplace add ianbrandt/agent-plugins
+   /plugin install confer@ianbrandt
    ```
 
 2. In a new session, check that `/confer:review`, `/confer:plan`, and `/confer:ask` are listed.

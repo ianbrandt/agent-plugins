@@ -12,13 +12,12 @@
 - The design decisions behind Confer are in [docs/DESIGN.md](docs/DESIGN.md).
 - Only the bare essentials go in `README.md`, `docs/`, and code comments. A reader who wants more
   can have an agent study the code.
-- Raise `version` in `.claude-plugin/plugin.json` with each change to the plugin that lands on
-  `main`, per SemVer and still under 1.0.0: the minor version for a feature or a breaking change,
-  the patch version for a fix.
+- `version` in `.claude-plugin/plugin.json` is raised only in a release, as described in the
+  repo's [README](../../README.md#releases).
 
 ## Building
 
-You need Node.js and Claude Code 2.1.317 or later.
+You need Node.js and Claude Code 2.1.317 or later. Run these commands in this folder.
 
 1. Install TypeScript:
 
@@ -34,7 +33,8 @@ You need Node.js and Claude Code 2.1.317 or later.
    claude plugin validate .
    ```
 
-CI runs the same commands on macOS and Windows.
+`test.sh` at the repo root runs the same checks for every plugin, and CI runs it on Linux and
+Windows.
 
 The plugin API of Claude Code 2.1.317 is declared in `types/claude-code/index.d.ts`. To update
 that file, replace it with `.claude-plugin/types/claude-code/index.d.ts`, which Claude Code
