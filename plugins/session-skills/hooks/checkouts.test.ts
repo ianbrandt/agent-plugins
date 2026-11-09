@@ -1001,6 +1001,24 @@ test('after a shell call runs without the permission check, a held push or host 
   expect(ran).toEqual(['gh pr merge 1', 'git log -1'])
 })
 
+test('the refusal on a skipped check names the other shell tool as the first retry when it is not itself skipped', { plugins: [skipPowerShell] }, async ($: any, on: any) => {
+  skipWorld(on, { originVisibility: 'public' })
+  // Bash runs through the check and clears any Bash skip; PowerShell's check is routed past, so a
+  // later PowerShell call is refused with the Bash-retry note.
+  await $.tool.call({ tool: 'Bash', command: 'git status' })
+  await $.tool.call({ tool: 'PowerShell', command: 'git status' })
+  expect((await $.tool.call({ tool: 'PowerShell', command: 'gh pr merge 1' })).deny).toContain('Retry through the Bash tool')
+})
+
+test('the refusal on a skipped check falls back to chat when the other shell tool is also skipped', { plugins: [skipAll] }, async ($: any, on: any) => {
+  skipWorld(on, { originVisibility: 'public' })
+  await $.tool.call({ tool: 'Bash', command: 'git status' })
+  await $.tool.call({ tool: 'PowerShell', command: 'git status' })
+  const refused = await $.tool.call({ tool: 'PowerShell', command: 'gh pr merge 1' })
+  expect(refused.deny).not.toContain('Retry through')
+  expect(refused.deny).toContain("Get the user's go in chat")
+})
+
 test('what the permission check would refuse is refused before any call has run without it', { plugins: [skipAll] }, async ($: any, on: any) => {
   const ran = skipWorld(on, { originVisibility: 'public' })
   const refused = await $.tool.call({ tool: 'Bash', command: 'git push origin main' })

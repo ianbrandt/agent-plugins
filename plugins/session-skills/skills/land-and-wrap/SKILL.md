@@ -89,8 +89,11 @@ write to the host through `gh` or `glab`, and every `git config` write to a remo
 such as recording the visibility above, is asked about once more there. A PR or MR opened with `holdPrText`
 lifted, in a clone whose only remote is `origin`, is the one write that goes unasked, unless the
 branch push it may make is held. Under managed settings that skip this plugin's `tool.check`
-hook, none of these prompts appear, and the commands are refused instead: get the user's go in
-chat, and the user runs the command from a `!` prompt.
+hook, none of these prompts appear, and the commands are refused instead. Where a
+`session-skills: its tool.check hook was skipped` toast was shown for one shell tool, run pushes
+and host writes through the other, since a native permission prompt is raised only from a tool
+whose `tool.check` runs. Where neither tool's check runs, get the user's go in chat, and the user
+runs the command from a `!` prompt.
 
 The plugin also adds a `pre-push` hook to every git the session starts. It refuses a push to a
 remote not known to be private, a fork's push, and any force push, except to a path on this machine.

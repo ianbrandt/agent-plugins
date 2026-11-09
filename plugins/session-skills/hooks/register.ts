@@ -834,7 +834,15 @@ async function judge($: any, start: (input: any) => { shells: string[]; dir: Dir
 // checked and PowerShell was not.
 const decided = new Set<string>()
 const skipped = new Set<string>()
-const SKIPPED = "Command refused: session-skills' permission check did not run for an earlier command of this tool in this session, as under managed settings that skip it, so this command cannot be put to the user in a permission prompt. Get the user's go in chat, and the user can run it from a `!` prompt."
+// The other shell tool a retry can go to, suggested only where the other is
+// not itself skipped in this session. On a session where neither has run yet,
+// the suggestion is optimistic: the other tool may still work.
+const OTHER_SHELL: Record<string, string> = { Bash: 'PowerShell', PowerShell: 'Bash' }
+const skippedMessage = (tool: string) => {
+  const other = OTHER_SHELL[tool]
+  const retry = other && !skipped.has(other) ? `Retry through the ${other} tool, where the permission check may still run on this machine; otherwise, get` : 'Get'
+  return `Command refused: session-skills' permission check did not run for an earlier command of this tool in this session, as under managed settings that skip it, so this command cannot be put to the user in a permission prompt. ${retry} the user's go in chat, and the user can run it from a \`!\` prompt.`
+}
 
 // The session's pre-push hook, added to GIT_CONFIG_PARAMETERS for every git
 // the session starts (DESIGN.md, "Pre-push backstop"). '' once it is set, else why not.
@@ -991,7 +999,7 @@ export const register: Register = on => {
     on('tool.call', { tool }, async ($, e: any, next: any) => {
       const { refusals, reasons } = await judge($, start, e)
       const skip = skipped.has(tool)
-      if (refusals.length || (skip && reasons.length)) return { deny: [...(skip ? [SKIPPED] : []), ...refusals, ...reasons].join(' ') }
+      if (refusals.length || (skip && reasons.length)) return { deny: [...(skip ? [skippedMessage(tool)] : []), ...refusals, ...reasons].join(' ') }
       const ran = await next(e)
       const id = e.tool_use_id
       if (!id) return ran

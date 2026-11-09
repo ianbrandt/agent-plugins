@@ -426,7 +426,12 @@ the call starts. A `tool.call` hook on the same tools refuses what `tool.check` 
 `next`, so a refusal needs no skip to be known. The `tool.check` hook records each call ID it
 decides, and the `tool.call` hook reads that record after a call has run, failed calls included.
 Once a call of a tool has run with no record, every later call of that tool that `tool.check`
-would ask about is refused too, with its reasons and a note to get the user's go in chat. The
+would ask about is refused too, with its reasons. In the retry note, the other shell tool is
+given only where that tool is not itself in the skipped set, so a session that has seen both
+tools skip falls back to the chat / `!` note. The suggestion is optimistic on a fresh session,
+since the asymmetry on `cc-plugin-sec-default` reads as a Claude Code defect rather than a
+stable policy, and after one roundtrip where the other tool is also skipped, no further retry
+through it is suggested. The
 first such call of each tool runs unasked, and a call of that tool that runs with a record clears
 the refusal. A held push also meets the pre-push hook, and its bypass is refused like any held
 command.
