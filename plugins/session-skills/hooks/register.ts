@@ -828,11 +828,13 @@ async function judge($: any, start: (input: any) => { shells: string[]; dir: Dir
   return { refusals, reasons }
 }
 
-// The calls the `tool.check` hook decided, and whether a shell call has run
-// without it, as under managed settings (DESIGN.md, "Native events only").
+// The calls the `tool.check` hook decided, and the shell tools a call has run
+// in without it, as under managed settings (DESIGN.md, "Native events only").
+// The skip is per tool, not per session: on one managed machine Bash was
+// checked and PowerShell was not.
 const decided = new Set<string>()
-let skipped = false
-const SKIPPED = "Command refused: session-skills' permission check did not run for an earlier command in this session, as under managed settings that skip it, so this command cannot be put to the user in a permission prompt. Get the user's go in chat, and the user can run it from a `!` prompt."
+const skipped = new Set<string>()
+const SKIPPED = "Command refused: session-skills' permission check did not run for an earlier command of this tool in this session, as under managed settings that skip it, so this command cannot be put to the user in a permission prompt. Get the user's go in chat, and the user can run it from a `!` prompt."
 
 // The session's pre-push hook, added to GIT_CONFIG_PARAMETERS for every git
 // the session starts (DESIGN.md, "Pre-push backstop"). '' once it is set, else why not.
@@ -982,18 +984,20 @@ export const register: Register = on => {
 
     // Under managed settings `cc-plugin-sec-default` may send the hook above
     // past this plugin, and nothing is asked. It fires inside this hook's
-    // `next`, just before the tool runs, so a skip is learned from a call that
-    // ran, and later calls are refused where that hook would have held them.
+    // `next`, just before the tool runs, so what it would refuse is refused
+    // here first, and a skip is learned from a call that ran. Later calls of
+    // the tool are refused where that hook would have asked.
+    // shortcut: a held command is judged here and again in tool.check; pass the verdict by tool_use_id if the second read is seen to slow a push.
     on('tool.call', { tool }, async ($, e: any, next: any) => {
-      if (skipped) {
-        const { refusals, reasons } = await judge($, start, e)
-        if (refusals.length || reasons.length) return { deny: [SKIPPED, ...refusals, ...reasons].join(' ') }
-      }
+      const { refusals, reasons } = await judge($, start, e)
+      const skip = skipped.has(tool)
+      if (refusals.length || (skip && reasons.length)) return { deny: [...(skip ? [SKIPPED] : []), ...refusals, ...reasons].join(' ') }
       const ran = await next(e)
       const id = e.tool_use_id
       if (!id) return ran
-      if (decided.delete(id)) skipped = false
-      else if (ran.deny === undefined && !(ran as any).isError) skipped = true
+      if (decided.delete(id)) skipped.delete(tool)
+      // A call that failed reached the tool: a command that exits non-zero is an error result.
+      else if (ran.deny === undefined) skipped.add(tool)
       return ran
     })
   }
