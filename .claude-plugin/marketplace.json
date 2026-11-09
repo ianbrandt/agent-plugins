@@ -36,10 +36,10 @@
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/coding-skills.git",
         "path": "plugins/session-skills",
-        "ref": "session-skills-v0.27.5",
-        "sha": "09d12c8a4d824a2d51c4494749fe8cf43b1074b2"
+        "ref": "session-skills-v0.28.0",
+        "sha": "e5ae3ef85467b1c29be5e26239a6f3735d65061d"
       },
-      "version": "0.27.5",
+      "version": "0.28.0",
       "description": "Puts a session in its own git worktree and gets it back out again: adopt the worktree work is already in flight on or open a fresh one, and land the work by what the repo is rather than by a declared mode.",
       "keywords": ["worktree", "session", "landing", "wrap-up", "resume"]
     },
