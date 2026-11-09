@@ -103,3 +103,45 @@ Expected: either the skip fires consistently (every call to the affected tool, s
 
 Context: session-skills (<https://github.com/ianbrandt/coding-skills/tree/main/plugins/session-skills>) is a plugin whose `tool.check` hook asks the user before a push to a public remote. The plugin's DESIGN.md "Native events only" section records the measurements.
 ```
+
+## Run `/confer:review` once on the Windows machine
+
+`/confer:review` has run against real models on macOS, but never on Windows. On the Windows
+machine:
+
+1. Pull `main` in the clone of this repo, and run `npm ci` in `plugins/confer`.
+2. In a small Git repository with one uncommitted edit, start
+   `claude --plugin-dir <clone>/plugins/confer` and run `/confer:review --tier routine`. The review
+   should end with a report from both reviewers. Codex starts there through the `codex.cmd` shim,
+   with no shell.
+3. Run it again and press Esc while Codex is running. Within a minute, no `pwsh.exe` started by
+   Codex should be left in Task Manager. Then ask Claude to cancel the review, and check that the
+   worktree under `%USERPROFILE%\.claude\tmp\confer\<run>\` is gone.
+4. Run step 2 from a UNC path to the same repository, such as `\\localhost\c$\<path>`.
+
+Clear this item in a commit with the results in its message, including any error text, and push.
+
+## Switch the Windows machine from claudex-loop to Confer
+
+Do this after the item above passes. On the Windows machine:
+
+1. Install Confer from the `ianbrandt` marketplace. `claude plugin list` should show Confer 0.12.5:
+
+   ```shell
+   claude plugin marketplace update ianbrandt
+   claude plugin install confer@ianbrandt
+   ```
+
+2. If claudex-loop or a `confer@confer` install from a local checkout is in the output of
+   `claude plugin list`, uninstall it and remove its marketplace. Check the names with
+   `claude plugin marketplace list`:
+
+   ```shell
+   claude plugin uninstall claudex-loop@claudex-loop
+   claude plugin marketplace remove claudex-loop
+   ```
+
+3. Remove any lines about claudex-loop from `%USERPROFILE%\.claude\CLAUDE.md`.
+4. In a new session, check that `/confer:review`, `/confer:plan`, and `/confer:ask` are listed.
+
+Clear this item in a commit with the results in its message, and push.
