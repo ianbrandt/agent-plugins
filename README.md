@@ -61,6 +61,22 @@ invoked.
 - [`gradle-skills`](plugins/gradle-skills) upgrades Gradle dependencies and the wrapper, one
   verified atomic commit at a time. Gradle builds only.
 
+## Releases
+
+Each plugin is installed from the commit pinned in its `.claude-plugin/marketplace.json` entry, so a
+push to `main` releases nothing. A release is a `<plugin>-v<version>` tag on the commit to ship,
+then a commit on `main` to move the entry's `version`, `ref`, and `sha` to that tag. The
+`version` has to go up: an installed plugin is not updated when only its `sha` moves. Versions
+follow SemVer. The major part goes up for a breaking change, the minor part for a new feature or a
+change in behavior, and the patch part only for a fix. In a plugin still at 0.x, a breaking change
+is a minor bump too.
+
+The tag is pushed with `main`, since CI checks each pin against its tag:
+
+```bash
+git push origin main gradle-skills-v1.12.0
+```
+
 ## Checks
 
 `test.sh` runs every check that needs no model call, in about seven seconds. It needs `claude` and
@@ -73,13 +89,8 @@ invoked.
 - `claude plugin test` in each plugin that has a hooks module.
 - [`graders.test.mjs`](graders.test.mjs): each regex grader in an eval suite, against one text it
   has to match and one it must not. A regex grader with no texts fails.
-- For each plugin changed since `origin/main`, a `version` in `.claude-plugin/marketplace.json` that
-  differs from the one on `origin/main`. An installed session reads a cache keyed by version, so
-  it keeps the old copy of a plugin until the version changes. One new version is enough for every
-  commit waiting to be pushed, and no new version is needed for a change to only evals, tests, or
-  a plugin's `README.md` or `DESIGN.md`. Versions follow SemVer: the major part goes up for a
-  breaking change, the minor part for a new feature or a change in behavior, and the patch part
-  only for a fix. In a plugin still at 0.x, a breaking change is a minor bump too.
+- For each entry in `.claude-plugin/marketplace.json`, a `<plugin>-v<version>` tag at the pinned
+  commit, and the plugin's directory in that commit.
 
 The same script runs in GitHub Actions on Linux and Windows for each push and pull request
 ([`test.yml`](.github/workflows/test.yml)). A pass on Windows does not replace a live run there: the

@@ -268,13 +268,8 @@ there. Do not paste diffs, and do not log a word you used once and caught yourse
 
 That file is the live list, so the edit is a plugin change, made in the marketplace repo the plugin
 ships from—the copy an installed session runs is a version-keyed cache, and editing it is lost on
-the next update. Bump the plugin `version` in the marketplace repo's `.claude-plugin/marketplace.json`
-in the same commit, unless it is already ahead of the version on the remote's default branch
-(`git show origin/main:.claude-plugin/marketplace.json`): one bump covers every commit waiting to be
-pushed. Without one, an installed session keeps serving the old list.
-
-An installed plugin picks the new word up only on its next update, so apply the correction from
-memory for the rest of the session rather than waiting for the release.
+the next update. An installed plugin picks the new word up only after the plugin's next release,
+so apply the correction from memory for the rest of the session rather than waiting for it.
 
 ## 8. The prohibitions, in full
 

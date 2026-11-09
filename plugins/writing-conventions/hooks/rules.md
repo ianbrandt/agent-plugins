@@ -121,7 +121,6 @@ the reply ends, and a finding comes back as a lint result to act on in the same 
 When the user flags a word as jargon or as AI writing, grep the target document for it before
 conceding, since the defect is often in the construction around the word. A word that is confirmed
 goes into rule 3 as the word and its plain replacement. Make that edit in the marketplace repo this
-plugin ships from, never in the installed cache, and bump the plugin `version` in
-`.claude-plugin/marketplace.json` unless it is already ahead of `origin/main`. Apply the correction
-from memory for the rest of the session. The reasoning and edge cases behind each rule are in
+plugin ships from, never in the installed cache. Installed sessions get it after the plugin's next
+release, so apply the correction from memory for the rest of the session. The reasoning and edge cases behind each rule are in
 `STYLE-GUIDE.md` at this plugin's root.
