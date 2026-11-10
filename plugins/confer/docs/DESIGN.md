@@ -10,9 +10,17 @@ uses native events only. Under some managed settings, a user plugin's `classic.*
   subagent through a proxy such as LiteLLM was considered and declined.
 - The Claude side runs as a subagent, so its model and effort can differ from the session's.
   Its tools are `Read`, `Grep`, `Glob`, and `mcp__confer__git`, which runs read-only git commands.
+  It has no Bash because it may read a hostile branch, and Bash is not sandboxed on macOS.
+- The session that runs the rounds makes the `Agent` call for the Claude side, and the mod rewrites
+  it in `agent.spawn`. A hook cannot wait for a subagent within its 10 s budget, and a plugin's own
+  `Agent` call is refused. `$.agent.spawn` takes no effort, so one reviewer agent type is registered
+  per effort, `reviewer-low` through `reviewer-max`.
 - The model and effort for both sides come from the run's tier ([references/tiers.md](../references/tiers.md)).
   Codex has no model aliases and passes the model id to its provider as given. The Codex model for
   each tier is therefore a plugin setting. The provider is set in Codex's config, never by Confer.
+- Fable 5.1 runs only at the escalation tier, below Opus 5.5, although its list price is higher. On
+  2026-11-07 Opus 5.5 scored above Fable 5.1 on every independent leaderboard that lists both, 59 to
+  49 on the Artificial Analysis index at max effort.
 - Each side starts a fresh session every round.
 - Confer checks `codex --version` against a minimum before a run starts.
 
@@ -23,6 +31,10 @@ uses native events only. Under some managed settings, a user plugin's `classic.*
 - The rulings are kept in one `state.json` per run. Consensus and the early stop are computed from
   that file, never judged by the session that runs the rounds.
 - Tokens and estimated cost for both sides are reported for each run, with no budget cap.
+- In `/confer:ask`, each side answers in the first round without seeing the other's answer, and the
+  session only relays. A draft to critique, or one side critiquing the other's first answer, anchors
+  both on its framing. `/confer:plan` starts from the session's draft, since only that session can
+  interview the user.
 
 ## Isolation
 
@@ -30,7 +42,13 @@ uses native events only. Under some managed settings, a user plugin's `classic.*
   versioned. A folder under review that contains that directory is refused.
 - Where the OS does not enforce read-only, Codex runs in a detached worktree, so the checkout is
   never changed by a stray write. For a very large monorepo, the worktree can be turned off with
-  the `worktree` setting.
+  the `worktree` setting. Codex's `--worktree` is not used: on 0.167, `git status --short` inside
+  it showed none of a scratch repo's uncommitted or untracked changes, and the worktree was left on
+  disk after exit.
+- Two runs given the same `--findings` path can both write it, since the path is checked and then
+  written, and `$.fs` has no exclusive create. A process per write would close the race, but
+  PowerShell took 400 to 476 ms of the 1.5 s `session.end` chain, which would put each unattended
+  Windows run's state save at risk.
 
 ## Codex constraints
 
