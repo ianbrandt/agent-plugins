@@ -483,7 +483,7 @@ still dropped, which is why a draft that includes one goes in a longer fence.
 A `git push` is not read, because a branch name is chosen long before it.
 
 Adding a word to the banned list is a plugin change rather than a local edit, and installed
-sessions get it after the plugin's next release ([Releases](../../README.md#releases)).
+sessions get it after the plugin's next release ([Releases](../../DEVELOP.md#releases)).
 
 ## Measuring it
 

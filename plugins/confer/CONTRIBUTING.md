@@ -13,7 +13,7 @@
 - Only the bare essentials go in `README.md`, `docs/`, and code comments. A reader who wants more
   can have an agent study the code.
 - `version` in `.claude-plugin/plugin.json` is raised only in a release, as described in the
-  repo's [README](../../README.md#releases).
+  repo's [DEVELOP.md](../../DEVELOP.md#releases).
 
 ## Building
 
