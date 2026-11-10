@@ -88,10 +88,10 @@
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/orchestration-skills",
-        "ref": "orchestration-skills-v0.5.3",
-        "sha": "54689fe243b0eabd39c5fa7981ed4c21ded4df90"
+        "ref": "orchestration-skills-v0.6.0",
+        "sha": "b8f5d3498f490e85b1b0dc74ce497d112ea084ae"
       },
-      "version": "0.5.3",
+      "version": "0.6.0",
       "description": "Rules for handing work to other agents without losing control of it: what is worth delegating, what every brief must include, which agents worktree isolation breaks, which tier each stage runs at, how to tell a finished stage from one that merely stopped talking, and when to stop and ask the user instead of deciding alone.",
       "keywords": ["subagent", "delegation", "worktree", "workflow", "verification", "escalation"]
     },
@@ -101,10 +101,10 @@
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/confer",
-        "ref": "confer-v0.12.5",
-        "sha": "0a787fc7bb8bde86f1ccd220edb95880482f6446"
+        "ref": "confer-v0.13.0",
+        "sha": "b8f5d3498f490e85b1b0dc74ce497d112ea084ae"
       },
-      "version": "0.12.5",
+      "version": "0.13.0",
       "description": "Claude and Codex challenge each other's analysis, requirements, designs, code reviews, and answers to a question until they agree.",
       "keywords": ["code-review", "codex", "planning", "second-opinion"]
     }
