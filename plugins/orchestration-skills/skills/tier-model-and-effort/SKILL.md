@@ -20,14 +20,14 @@ a run costs four times what it needed to.
 
 ## 1. The model tiers
 
-**Table current as of 2026-10-07.** Model names age fast; re-tune this table when releases land,
+**Table current as of 2026-11-09.** Model names age fast; re-tune this table when releases land,
 and treat every other skill's tier language ("the apex tier", "a task hero") as pointing here rather
 than at a name. No other part of this plugin includes a model name.
 
 | Tier | Model | Use it for | Cost note |
 |---|---|---|---|
-| Apex | Fable 5.1 | A narrow set: architecture or strategy with no precedent to follow, a tie-break when an everyday verify and the build disagree on something that fails silently, and a question the everyday tier has already tried and left open. | Roughly 4x the effective cost of the everyday tier—2x usage against a weekly budget half the size. Aim it; never default to it. |
-| Everyday | Opus 5.5 | The orchestrator and the workhorse: the main loop, design, adversarial verification, and judge stages. Raise its effort before reaching for the apex tier. | The baseline. |
+| Apex | Fable 5.2 | A narrow set: architecture or strategy with no precedent to follow, a tie-break when an everyday verify and the build disagree on something that fails silently, and a stage the everyday tier has already tried at Extra and left open. Run it at High. | Twice the everyday tier's price per token. On FrontierCode 2.0 at High it scored what the everyday tier scored at Max, for half the cost per task. On Pro and standard Team seats, Fable usage is capped at half the weekly limit. Aim it; never default to it. |
+| Everyday | Opus 5.5 | The orchestrator and the workhorse: the main loop, design, adversarial verification, and judge stages. Raise its effort to Extra before reaching for the apex tier. | The baseline. |
 | Task hero | Sonnet 5.5 | Any unit that is well-specified and objectively verifiable, inside a Workflow or not. Test-driven work is the ideal case. | Cheap enough to fan out. |
 | Mechanical | Haiku 5.5 | Stages with a loud oracle: tests, compiles, a verifiable count, bulk reads, fixture sweeps, doc updates. | Cheapest. Only where failure is loud. |
 
@@ -62,14 +62,14 @@ appears in the session's skill list:
   does not run beside an everyday verify. Pass Extra effort and the Claude reviewer's model (the
   everyday tier) explicitly, or both come from that skill's defaults and the CLI's configuration.
 - **A stalled stage.** A routing skill, such as `claudex-route`, hands the reproduction and the
-  failed approaches to the other provider. Try it before Max effort or the apex tier.
+  failed approaches to the other provider. Try it before the apex tier.
 - **Its model.** The other provider's top model, `gpt-6-astra` as of 2026-09-24, with `gpt-6-sol`
   as the step down when that plan's quota runs low. Usage on that side counts against the other
   provider's plan, not the Claude weekly limit. The Claude reviewer inside a cross-provider review
   still counts.
 
 Without one, a silent-failure verify runs on the everyday tier at Extra, and a stalled stage goes to
-Max effort, then to the apex tier.
+the apex tier at High.
 
 ## 2. The effort labels
 
@@ -85,9 +85,11 @@ Rough fit:
   for agentic coding. At Low it sometimes reports a change as done without running a check that
   exercises it, so in a task-hero brief at Low, require test or build output in the result.
 - **Extra**—design, adversarial verification, judge stages, and careful multi-step bookkeeping.
-- **Max**—only a stage where an Extra pass has already stalled on the same question, and after a
-  second provider where one is installed (§1). Past Extra,
-  the cost rises faster than the gain.
+- **Max**—no stage. A stage where an Extra pass has already stalled goes to a second provider where
+  one is installed (§1), then to the apex tier at High. On FrontierCode 2.0 (2026-11-09), the apex
+  tier at High matched the everyday tier at Max for half the cost per task, and the apex tier at
+  Max scored below the apex tier at Extra for three times the cost. Raise the apex tier to Extra only where a
+  gain is measured.
 
 **A session running at a high effort should not make every stage pay for it.** Set the expensive
 tier on the stages that need it and let the rest run cheap.
