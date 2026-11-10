@@ -55,7 +55,10 @@ uses native events only. Under some managed settings, a user plugin's `classic.*
 - On Windows, Codex 0.167 refuses every command in its `read-only` sandbox. Codex runs there with
   `--approve-for-me`, under which writes are possible: a file was created through `apply_patch` in
   a probe. `codex exec resume` has no `--approve-for-me` on 0.167, so a Codex session is never
-  resumed.
+  resumed. A PR, a branch of another remote or one that tracks a pull request, and a commit that no
+  branch of `origin` or of the clone contains are reviewed there only after the user agrees in a
+  question from `review_start`, which is not a tool input that the session could set for itself. A
+  PR fetched into a local branch with no upstream is still taken for local work.
 - On a Responses provider other than OpenAI, `--output-schema` with streaming and tools lost the
   function-call event, and the verdict arrived as plain text. Confer doesn't pass
   `--output-schema`, and validates Codex's output.

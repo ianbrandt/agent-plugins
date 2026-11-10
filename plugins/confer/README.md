@@ -125,7 +125,9 @@ A plan run with `--findings` needs a document to review, since nobody is there t
 
 - The code and documents under review are sent to the model providers Claude Code and Codex are
   configured to use.
-- On Windows, Codex runs with no OS sandbox, so outside PRs are better reviewed on macOS.
+- On Windows, Codex runs with no OS sandbox, so outside PRs are better reviewed on macOS. Confer
+  asks on Windows before it reviews a PR, a branch of a remote other than `origin`, or a commit
+  that no branch of `origin` or of the clone contains, and refuses one under `--findings`.
 
 ## Credits
 

@@ -20,8 +20,36 @@ export async function readFindings($: EngineInterface, words: string[], fix: boo
   return { findings, rest }
 }
 
+// The code under review when it may come from someone else: a PR, a branch of a remote other than
+// origin, a branch that tracks one or a pull request ref, or a commit that neither a branch of origin
+// nor another local branch contains. `head` is the word naming the commit under review, if any.
+// shortcut: a PR fetched into a branch with no upstream is taken for local work; revisit if Codex's
+// read-only sandbox stays broken on Windows.
+export async function foreignSource($: EngineInterface, top: string, target: Target, head: string | undefined): Promise<string | undefined> {
+  if (target.kind === 'pr') return `PR #${target.pr.number}`
+  const run = async (args: string[]) => (await $.process.run(['git', '-C', top, ...args], { timeoutMs: gitTimeoutMs })).stdout.trim()
+  const foreignBranch = async (branch: string) => {
+    const remote = await run(['config', '--get', `branch.${branch}.remote`])
+    if (remote !== '' && remote !== 'origin' && remote !== '.') return `branch ${branch}, which tracks ${remote}`
+    return (await run(['config', '--get', `branch.${branch}.merge`])).startsWith('refs/pull/') ? `branch ${branch}, which tracks a pull request` : undefined
+  }
+  const ref = await run(head === undefined ? ['symbolic-ref', '-q', 'HEAD'] : ['rev-parse', '--symbolic-full-name', head])
+  if (ref.startsWith('refs/remotes/')) {
+    const name = ref.slice('refs/remotes/'.length)
+    const remote = (await run(['remote'])).split('\n').filter(r => name.startsWith(`${r}/`)).sort((a, b) => b.length - a.length)[0]
+    return remote === 'origin' ? undefined : `branch ${name}`
+  }
+  if (ref.startsWith('refs/heads/')) return foreignBranch(ref.slice('refs/heads/'.length))
+  const commit = target.kind === 'commit' ? target.ref : 'HEAD'
+  const holders = (await run(['for-each-ref', '--contains', commit, '--format=%(refname)', 'refs/heads/', 'refs/remotes/origin/'])).split('\n').filter(Boolean)
+  for (const holder of holders) {
+    if (holder.startsWith('refs/remotes/origin/') || (await foreignBranch(holder.slice('refs/heads/'.length))) === undefined) return undefined
+  }
+  return `commit ${commit === 'HEAD' ? 'HEAD' : commit.slice(0, 12)}, which no branch of origin or of this clone contains`
+}
+
 // The words chooseTier left: an optional target, `--fix`, and `--findings <path>`.
-export async function readTarget($: EngineInterface, words: string[], pr: unknown): Promise<{ target: Target; fix: boolean; findings?: string; top: string; prefix: string }> {
+export async function readTarget($: EngineInterface, words: string[], pr: unknown): Promise<{ target: Target; fix: boolean; findings?: string; top: string; prefix: string; head?: string }> {
   await refuseGitRouting($)
   const fix = words.includes('--fix')
   const { findings, rest } = await readFindings($, words.filter(word => word !== '--fix'), fix)
@@ -33,11 +61,11 @@ export async function readTarget($: EngineInterface, words: string[], pr: unknow
   if (word === undefined) return { target: { kind: 'checkout' }, fix, findings, top, prefix }
   if (word.startsWith('-')) throw new Error(`${word} is not an option of the review command.`)
   const commit = await $.process.run(['git', '-C', top, 'rev-parse', '--verify', '--quiet', `${word}^{commit}`], { timeoutMs: gitTimeoutMs })
-  if (commit.exitCode === 0) return { target: { kind: 'commit', ref: commit.stdout.trim() }, fix, findings, top, prefix }
+  if (commit.exitCode === 0) return { target: { kind: 'commit', ref: commit.stdout.trim() }, fix, findings, top, prefix, head: word }
   const path = inCheckout(top, prefix, word)
   if (path !== undefined && (await isPath($, top, path))) return { target: { kind: 'path', path: path === '' ? '.' : path }, fix, findings, top, prefix }
   const range = /^(.*?)\.\.(\.?)(.*)$/s.exec(word)
-  if (range !== null) return { target: await readRange($, top, word, range[1]!, range[2] === '.', range[3]!), fix, findings, top, prefix }
+  if (range !== null) return { target: await readRange($, top, word, range[1]!, range[2] === '.', range[3]!), fix, findings, top, prefix, head: range[3]! }
   throw new Error(`"${word}" is not a branch, a commit, a range, or a path in this checkout.`)
 }
 

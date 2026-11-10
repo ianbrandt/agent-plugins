@@ -1774,3 +1774,142 @@ test('session.end ends the other unattended runs when the save of one fails', as
   expect(state(files, b.run)).toMatchObject({ status: 'expired' })
   expect(JSON.parse(files['/out/b.json']!)).toMatchObject({ run: b.run, outcome: 'expired' })
 })
+
+// A checkout on Windows: Git for Windows prints its top level as C:/repo.
+const windows = (answers: Record<string, Answer> = {}, more: Options = {}) => ({
+  ...more,
+  answers: { 'git rev-parse --show-toplevel': { stdout: 'C:/repo\n' }, ...answers },
+  match: (key: string) => more.match?.(key) ?? defaults[key.replaceAll('C:/repo', top)],
+})
+const sandboxReply = (on: On, reply: string | Error) => {
+  const asked: string[] = []
+  on('tool.call', { tool: 'AskUserQuestion' }, (_, e) => {
+    asked.push(e.questions[0]!.question)
+    if (reply instanceof Error) throw reply
+    return { result: { questions: e.questions, answers: { [e.questions[0]!.question]: reply } } }
+  })
+  return asked
+}
+const pr7 = { url: 'https://github.com/o/r/pull/7', number: 7, title: 't', body: 'b', headRefOid: 'a'.repeat(40), baseRefName: 'main' }
+
+test('on Windows, a PR is reviewed only after the user agrees to run Codex without its sandbox', async ($, on) => {
+  const { files } = world(on, windows())
+  const asked = sandboxReply(on, 'Stop (Recommended)')
+
+  expect(await begin($, { args: '7', pr: pr7 })).toEqual({ error: expect.stringContaining('/code-review') })
+  expect(asked).toEqual([expect.stringContaining('PR #7')])
+  expect(Object.keys(files).some(path => path.endsWith('/state.json'))).toBe(false)
+})
+
+test('on Windows, a dismissed sandbox question starts no review', async ($, on) => {
+  const { files } = world(on, windows())
+  sandboxReply(on, new Error('dismissed'))
+
+  expect(await begin($, { args: '7', pr: pr7 })).toEqual({ error: expect.stringContaining('not started') })
+  expect(Object.keys(files).some(path => path.endsWith('/state.json'))).toBe(false)
+})
+
+test('on Windows, a PR is reviewed when the user agrees to run Codex without its sandbox', async ($, on) => {
+  world(on, windows({}, { match: key => (/rev-parse --verify refs\/confer\/\w+\/head\^\{commit\}$/.test(key) ? { stdout: `${'a'.repeat(40)}\n` } : undefined) }))
+  const asked = sandboxReply(on, 'Review with Codex')
+
+  expect(await begin($, { args: '7', pr: pr7 })).toHaveProperty('run')
+  expect(asked).toHaveLength(1)
+})
+
+test('on Windows, --findings refuses a PR, since no one can be asked', async ($, on) => {
+  world(on, windows())
+  const asked = sandboxReply(on, 'Review with Codex')
+
+  expect(await begin($, { args: `--findings ${out} 7`, pr: pr7 })).toEqual({ error: expect.stringContaining('--findings') })
+  expect(asked).toEqual([])
+})
+
+test('on Windows, a branch of a remote other than origin needs the user to agree', async ($, on) => {
+  world(on, windows({
+    'git -C C:/repo rev-parse --verify --quiet fork/fix^{commit}': { stdout: `${'c'.repeat(40)}\n` },
+    'git -C C:/repo rev-parse --symbolic-full-name fork/fix': { stdout: 'refs/remotes/fork/fix\n' },
+    'git -C C:/repo remote': { stdout: 'origin\nfork\n' },
+  }))
+  const asked = sandboxReply(on, 'Stop (Recommended)')
+
+  expect(await begin($, { args: 'fork/fix' })).toEqual({ error: expect.stringContaining('/code-review') })
+  expect(asked).toEqual([expect.stringContaining('fork/fix')])
+})
+
+test('on Windows, the checked-out branch needs the user to agree when it tracks another remote', async ($, on) => {
+  world(on, windows({
+    'git -C C:/repo symbolic-ref -q HEAD': { stdout: 'refs/heads/pr-7\n' },
+    'git -C C:/repo config --get branch.pr-7.remote': { stdout: 'https://github.com/someone/r.git\n' },
+  }))
+  const asked = sandboxReply(on, 'Stop (Recommended)')
+
+  expect(await begin($)).toEqual({ error: expect.stringContaining('/code-review') })
+  expect(asked).toEqual([expect.stringContaining('pr-7')])
+})
+
+test('on Windows, a branch of origin starts with no sandbox question', async ($, on) => {
+  world(on, windows({
+    'git -C C:/repo symbolic-ref -q HEAD': { stdout: 'refs/heads/main\n' },
+    'git -C C:/repo config --get branch.main.remote': { stdout: 'origin\n' },
+  }))
+  const asked = sandboxReply(on, 'Stop (Recommended)')
+
+  expect(await begin($)).toMatchObject({ status: 'round' })
+  expect(asked).toEqual([])
+})
+
+test('off Windows, a PR starts with no sandbox question', async ($, on) => {
+  world(on, { match: key => (/rev-parse --verify refs\/confer\/\w+\/head\^\{commit\}$/.test(key) ? { stdout: `${'a'.repeat(40)}\n` } : undefined) })
+  const asked = sandboxReply(on, 'Stop (Recommended)')
+
+  await begin($, { args: '7', pr: pr7 })
+  expect(asked).toEqual([])
+})
+
+const contains = (commit: string) => `git -C C:/repo for-each-ref --contains ${commit} --format=%(refname) refs/heads/ refs/remotes/origin/`
+
+test('on Windows, a detached checkout on no branch of this clone or origin needs the user to agree', async ($, on) => {
+  world(on, windows({ 'git -C C:/repo symbolic-ref -q HEAD': { exitCode: 1 } }))
+  const asked = sandboxReply(on, 'Stop (Recommended)')
+
+  expect(await begin($)).toEqual({ error: expect.stringContaining('/code-review') })
+  expect(asked).toHaveLength(1)
+})
+
+test('on Windows, a revision of another remote\'s branch needs the user to agree', async ($, on) => {
+  const commit = 'c'.repeat(40)
+  world(on, windows({
+    'git -C C:/repo rev-parse --verify --quiet fork/fix^0^{commit}': { stdout: `${commit}\n` },
+    [contains(commit)]: { stdout: '' },
+  }))
+  const asked = sandboxReply(on, 'Stop (Recommended)')
+
+  expect(await begin($, { args: 'fork/fix^0' })).toEqual({ error: expect.stringContaining('/code-review') })
+  expect(asked).toHaveLength(1)
+})
+
+test('on Windows, a branch that tracks a pull request ref needs the user to agree', async ($, on) => {
+  world(on, windows({
+    'git -C C:/repo symbolic-ref -q HEAD': { stdout: 'refs/heads/pr-7\n' },
+    'git -C C:/repo config --get branch.pr-7.remote': { stdout: 'origin\n' },
+    'git -C C:/repo config --get branch.pr-7.merge': { stdout: 'refs/pull/7/head\n' },
+  }))
+  const asked = sandboxReply(on, 'Stop (Recommended)')
+
+  expect(await begin($)).toEqual({ error: expect.stringContaining('/code-review') })
+  expect(asked).toEqual([expect.stringContaining('pr-7')])
+})
+
+test('on Windows, a commit on a local branch of this clone starts with no sandbox question', async ($, on) => {
+  const commit = 'd'.repeat(40)
+  world(on, windows({
+    [`git -C C:/repo rev-parse --verify --quiet ${commit}^{commit}`]: { stdout: `${commit}\n` },
+    [contains(commit)]: { stdout: 'refs/heads/main\n' },
+    'git -C C:/repo config --get branch.main.remote': { stdout: 'origin\n' },
+  }))
+  const asked = sandboxReply(on, 'Stop (Recommended)')
+
+  expect(await begin($, { args: commit })).not.toHaveProperty('error')
+  expect(asked).toEqual([])
+})

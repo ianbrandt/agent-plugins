@@ -11,7 +11,7 @@ import { snapshot } from './snapshot'
 import { forget, getRun, isEnded, readRun, remember, save, tmpRoot } from './state'
 import type { Ending, RunState } from './state'
 import { cleanup, failEndedAgent, runCodexAttempts } from './steps'
-import { prepare, readTarget } from './target'
+import { foreignSource, prepare, readTarget } from './target'
 import type { ReviewSide } from './types'
 
 type Input = Record<string, unknown>
@@ -190,12 +190,23 @@ export async function reclaim($: EngineInterface): Promise<void> {
   }
 }
 
+// Codex runs with --approve-for-me on Windows (codex/run.ts), so code from someone else is
+// reviewed there only on the user's yes.
+async function confirmForeign($: EngineInterface, source: string | undefined, isUnattended: boolean): Promise<void> {
+  if (source === undefined) return
+  const risk = `On Windows, Codex runs without its read-only sandbox, so code in ${source} could steer it into running commands or writing files with your rights.`
+  if (isUnattended) throw new Error(`${risk} With --findings no one can be asked, so the review was not started. /code-review reviews it with Claude alone.`)
+  const reply = await $.ui.ask(`${risk} Review it with Codex anyway?`, { options: ['Stop (Recommended)', 'Review with Codex'], header: 'Windows' }).catch(() => undefined)
+  if (reply !== 'Review with Codex') throw new Error(`The review was not started. /code-review reviews ${source} with Claude alone.`)
+}
+
 export async function start($: EngineInterface, input: Input, options: PluginOptions): Promise<Result> {
   await reclaim($)
   const args = String(input.args ?? '')
   const isSure = input.isSure === true || hasFindings(args)
   const choice = await chooseTier($, { command: 'review', pick: input.pick as Tier, isSure, args }, codexModels(options))
-  const { target, fix, findings, top } = await readTarget($, choice.args, input.pr)
+  const { target, fix, findings, top, head } = await readTarget($, choice.args, input.pr)
+  if (isWindowsPath(top)) await confirmForeign($, await foreignSource($, top, target, head), findings !== undefined)
   const id = crypto.randomUUID().slice(0, 8)
   const now = await $.clock.now()
   const run = remember({
