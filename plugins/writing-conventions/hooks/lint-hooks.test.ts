@@ -157,11 +157,19 @@ test('the rules are added to a prompt while the model does not read them, then t
   expect((await submit($))[0]).toMatch(/^Style/)
 })
 
-test('the rules are added at the start of an Agent task, and the re-read request to a Write result', async ($: any, on: any) => {
+// Auto mode refuses an Agent call whose input a hook changed after review, so
+// the rules go into the task at spawn and the call's input is left alone.
+test('the rules are added once at the start of a subagent task, and the re-read request to a Write result', async ($: any, on: any) => {
   world(on)
   const w = native(on)
+  const spawned: string[] = []
+  on('agent.spawn', (_$: any, e: any) => { spawned.push(e.prompt); return { agentId: 'a1', model: 'm' } })
   await $.tool.call({ tool: 'Agent', prompt: 'look', description: 'd' })
-  expect(w.task).toBe('<rules.md>\n\nlook')
+  expect(w.task).toBe('look')
+  await $.agent.spawn({ prompt: 'look' })
+  await $.agent.spawn({ prompt: '<rules.md>\n\nlook' })
+  await $.agent.spawn({ prompt: 'step', workflow: { runId: 'wf_1', agentIndex: 1 } })
+  expect(spawned).toEqual(['<rules.md>\n\nlook', '<rules.md>\n\nlook', 'step'])
   expect((await $.tool.call({ tool: 'Write', file_path: '/p/a.md', content: '', tool_use_id: 't' })).context.join()).toContain('You just wrote prose')
 })
 

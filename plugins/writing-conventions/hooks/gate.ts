@@ -519,17 +519,13 @@ async function turnNote($: any, session: unknown): Promise<string> {
 
 // The lint tool is answered here. A file written with Write or Edit is
 // checked after it is written, and any other command or MCP call before it
-// runs. The rules are added at the start of a subagent's task.
+// runs.
 async function call($: any, e: any, next: any): Promise<any> {
   // A draft may come inside its fence, and lint() drops every closed fence.
   if (e.tool === TOOL) {
     const found = awaiting.get((e as any).tool_use_id)
     awaiting.delete((e as any).tool_use_id)
     return { result: found ?? await lintTool($, String((e as any).text ?? '')) }
-  }
-  if (e.tool === 'Agent') {
-    const rules = (await isChecked($).catch(() => false)) ? await $.fs.read(`${$.plugin.root}/hooks/rules.md`).catch(() => '') : ''
-    return next(rules ? { ...e, prompt: `${rules}\n\n${(e as any).prompt}` } as any : e)
   }
   if (e.tool === 'Write' || e.tool === 'Edit') {
     const ran = await next(e)
@@ -587,6 +583,15 @@ async function restore($: any, e: any, ran: any): Promise<any> {
 
 export const register: Register = on => {
   on('tool.call', async ($, e, next) => restore($, e, await call($, e, next)))
+
+  // The rules go into a subagent's task at spawn: auto mode refuses an Agent
+  // call whose input a tool.call hook changed after review. A Workflow agent
+  // gets them with its first tool result, and a resumed run keeps its prompt.
+  on('agent.spawn', async ($, e: any, next: any) => {
+    if (e.workflow || e.resume) return next(e)
+    const rules = (await isChecked($).catch(() => false)) ? await $.fs.read(`${$.plugin.root}/hooks/rules.md`).catch(() => '') : ''
+    return next(rules && !e.prompt.includes(rules) ? { ...e, prompt: `${rules}\n\n${e.prompt}` } : e)
+  })
 
   on('session.start', async ($, e, next) => {
     if (await isChecked($)) {

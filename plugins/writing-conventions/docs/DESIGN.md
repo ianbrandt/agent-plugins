@@ -12,7 +12,9 @@ The hooks module adds [`hooks/rules.md`](hooks/rules.md) to the first prompt of 
 again to a prompt or a tool result once the model no longer reads it: after `/clear`, a compaction,
 or a plugin update that changed the text. It adds them to the start of every Agent subagent's task,
 and to a Workflow agent's first tool result, since a subagent's report is what a later summary is
-built from. Every hook is on a native event: under managed settings, `cc-plugin-sec-default` sends
+built from. The task is changed in an `agent.spawn` hook, and only when it does not already contain
+the rules. Auto mode refuses an Agent call whose input a `tool.call` hook changed after review,
+which was measured on 2.1.322. Every hook is on a native event: under managed settings, `cc-plugin-sec-default` sends
 each `classic.*` event past user plugins and prints a notice that the hook was skipped. The reasoning behind each rule, and its edge cases,
 are in [`STYLE-GUIDE.md`](../STYLE-GUIDE.md), which nothing loads. A draft for publication goes in
 a fence tagged `draft` under the last rule in `rules.md`, and the draft check below looks for that
