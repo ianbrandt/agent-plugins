@@ -4,7 +4,7 @@
   "author": {
     "name": "Ian Brandt"
   },
-  "repository": "https://github.com/IanBrandt/agent-plugins",
+  "repository": "https://github.com/ianbrandt/agent-plugins",
   "license": "MIT",
   "keywords": [
     "subagent",
