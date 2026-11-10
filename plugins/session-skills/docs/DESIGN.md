@@ -1,6 +1,6 @@
 # session-skills design
 
-How the plugin is wired, for anyone changing it. The [README](README.md) covers using it.
+How the plugin is wired, for anyone changing it. The [README](../README.md) covers using it.
 
 ## Tools and session rules
 

@@ -829,7 +829,7 @@ async function judge($: any, start: (input: any) => { shells: string[]; dir: Dir
 }
 
 // The calls the `tool.check` hook decided, and the shell tools a call has run
-// in without it, as under managed settings (DESIGN.md, "Native events only").
+// in without it, as under managed settings (docs/DESIGN.md, "Native events only").
 // The skip is per tool, not per session: on one managed machine Bash was
 // checked and PowerShell was not.
 const decided = new Set<string>()
@@ -848,7 +848,7 @@ const skippedMessage = (tool: string) => {
 const unasked = (reason: string) => reason.replace(/([Tt])o ask the user, (?:run|push with git itself):/g, (_, t) => `${t === 'T' ? 'The' : 'the'} command to retry or for the user to run is:`)
 
 // The session's pre-push hook, added to GIT_CONFIG_PARAMETERS for every git
-// the session starts (DESIGN.md, "Pre-push backstop"). '' once it is set, else why not.
+// the session starts (docs/DESIGN.md, "Pre-push backstop"). '' once it is set, else why not.
 async function installBackstop($: any): Promise<string> {
   const current = (await $.env.get('GIT_CONFIG_PARAMETERS').catch(() => '')) ?? ''
   const set = await $.env.set('GIT_CONFIG_PARAMETERS', backstopConfig(current, `${$.plugin.root}/hooks/pre-push.sh`, await recordsPath($))).catch((err: Error) => ({ deny: err.message }))

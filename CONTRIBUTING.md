@@ -8,7 +8,7 @@ How the plugins are built, tested, and released is in [DEVELOP.md](DEVELOP.md).
   passes it.
 - Performance questions, such as which model to use for a tier, are settled with evals. Eval cases
   are invented.
-- A plugin's design decisions are in its `DESIGN.md`, or in `docs/DESIGN.md` for Confer.
+- A plugin's design decisions are in its `docs/DESIGN.md`.
 - A plugin's `version` is raised only in a release, as described in
   [DEVELOP.md](DEVELOP.md#releases).
 

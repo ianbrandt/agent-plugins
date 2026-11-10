@@ -2317,7 +2317,7 @@ test('an ssh URL keeps its user, which is the login', () => {
   expect(cleanUrl('git+ssh://git@h/r')).toBe('git+ssh://git@h/r')
 })
 
-// The lexer's side of the pre-push backstop (DESIGN.md, "Pre-push backstop").
+// The lexer's side of the pre-push backstop (docs/DESIGN.md, "Pre-push backstop").
 const BYPASS = 'git -c hook.sessionskills.enabled=false'
 test('a URL is on this machine where the pre-push hook reads it so, with a drive letter a path only on Windows', () => {
   for (const url of ['/srv/r.git', './r', '../r', 'r', 'file:///x', 'http://localhost/r', 'ssh://git@127.0.0.1:22/r', 'http://[::1]:80/r', 'a/b:c', 'u@LocalHost:r']) {

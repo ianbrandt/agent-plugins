@@ -1,6 +1,6 @@
 #!/bin/sh
 # session-skills' pre-push hook, added for the session through
-# GIT_CONFIG_PARAMETERS (DESIGN.md, "Pre-push backstop"). git runs it as
+# GIT_CONFIG_PARAMETERS (docs/DESIGN.md, "Pre-push backstop"). git runs it as
 # `sh pre-push.sh <records> <remote> <url>`, with each ref update on stdin. It
 # allows a push to this machine or to a remote known to be private, and refuses
 # a forced update, a fork's push, and everything else. No network call is made.

@@ -77,7 +77,7 @@ async function ask($: any, system: string[], prompt: string): Promise<string> {
     system: [{ text: parts.join(''), cache: true }],
     prompt,
     // An unset effort resolves to high today. It is set here so that the level depends neither on
-    // the session's effort nor on a default that could change (DESIGN.md).
+    // the session's effort nor on a default that could change (docs/DESIGN.md).
     effort: 'high',
     timeoutMs: 60000,
   })

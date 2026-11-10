@@ -1,7 +1,7 @@
 # writing-conventions design
 
 How the plugin works and the measurements behind its defaults, for anyone changing it. The
-[README](README.md) covers installing and using it.
+[README](../README.md) covers installing and using it.
 
 Every rule in `hooks/rules.md` arrived the same way: a specific draft came back wrong, and the
 correction became a rule.
@@ -14,7 +14,7 @@ or a plugin update that changed the text. It adds them to the start of every Age
 and to a Workflow agent's first tool result, since a subagent's report is what a later summary is
 built from. Every hook is on a native event: under managed settings, `cc-plugin-sec-default` sends
 each `classic.*` event past user plugins and prints a notice that the hook was skipped. The reasoning behind each rule, and its edge cases,
-are in [`STYLE-GUIDE.md`](STYLE-GUIDE.md), which nothing loads. A draft for publication goes in
+are in [`STYLE-GUIDE.md`](../STYLE-GUIDE.md), which nothing loads. A draft for publication goes in
 a fence tagged `draft` under the last rule in `rules.md`, and the draft check below looks for that
 tag.
 
@@ -483,11 +483,11 @@ still dropped, which is why a draft that includes one goes in a longer fence.
 A `git push` is not read, because a branch name is chosen long before it.
 
 Adding a word to the banned list is a plugin change rather than a local edit, and installed
-sessions get it after the plugin's next release ([Releases](../../DEVELOP.md#releases)).
+sessions get it after the plugin's next release ([Releases](../../../DEVELOP.md#releases)).
 
 ## Measuring it
 
-[`evals/`](evals/) is a `claude plugin eval` suite of drafting tasks built from the corrections that
+[`evals/`](../evals/) is a `claude plugin eval` suite of drafting tasks built from the corrections that
 motivated this plugin: commit messages, PR bodies, an issue body, a maintainer comment, a README
 paragraph, KDoc, a changelog entry, Spock method names, a code comment, and a status reply. The facts
 in each prompt are stated the way a user would state them, without the rules, and most include tells

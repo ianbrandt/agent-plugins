@@ -54,4 +54,4 @@ record of which paths a task edits.
 The ledger is read and written only through three tools that the plugin registers as
 `mcp__parallel-session-skills__<tool>`, and every claim stamped with a session's id is deleted when
 that session ends. Nothing is added to a session's context at its start. Claude Code 2.1.308 and git
-2.36 or later are required. [DESIGN.md](DESIGN.md) covers each tool and the release at session end.
+2.36 or later are required. [DESIGN.md](docs/DESIGN.md) covers each tool and the release at session end.

@@ -83,5 +83,5 @@ against the claim ledger.
 In a repo with a roadmap, a short rule is added to the first prompt so that a task you state directly
 is given a roadmap item, started through `next-roadmap-item`, and landed through `land-and-wrap`. The skills call
 two tools that the plugin registers, `find_roadmap` and `delete_item`. Claude Code 2.1.308 or
-later is required, and `delete_item` also needs git 2.36 or later. [DESIGN.md](DESIGN.md) covers
+later is required, and `delete_item` also needs git 2.36 or later. [DESIGN.md](docs/DESIGN.md) covers
 the rule, both tools, and how the roadmap is found.

@@ -76,7 +76,7 @@ script, meets a `pre-push` hook the plugin adds for the session, which refuses i
 is on this machine or known to be private. The result of a `git push` includes a request for the
 next step, so the reply is written with it in view. In the terminal the session title is set with `/rename` when the
 turn ends, and that command shows as one line. Claude Code
-2.1.314 or later is required. [DESIGN.md](DESIGN.md) covers each tool, how the session title is
+2.1.314 or later is required. [DESIGN.md](docs/DESIGN.md) covers each tool, how the session title is
 set, and why the rules are loaded by a hook.
 
 ## Measuring it

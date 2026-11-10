@@ -72,6 +72,6 @@ are added to the same file.
 
 ## More
 
-[DESIGN.md](DESIGN.md) covers how each check works and the measurements behind the defaults,
+[DESIGN.md](docs/DESIGN.md) covers how each check works and the measurements behind the defaults,
 including how to run the [evals](evals/). The reasoning and edge cases behind each rule are in
 [STYLE-GUIDE.md](STYLE-GUIDE.md).
