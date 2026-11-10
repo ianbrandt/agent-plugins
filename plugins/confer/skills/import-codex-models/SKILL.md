@@ -37,19 +37,23 @@ own slugs.
    - Exactly one catalog entry: that single slug fills all four tiers.
    - No catalog, or catalog read failed: the top-level `model` from
      `config.toml` fills all four tiers.
-5. **Open the Claude Code user settings.** The path is
-   `$env:USERPROFILE\.claude\settings.json` on Windows, `$HOME/.claude/settings.json`
-   on POSIX. Create it with `{"pluginConfigs": {}}` if it is missing. Stop if
-   the file is present but not valid JSON; report the parse error and the
-   line, and do not try to rewrite it.
+5. **Open the Claude Code user settings.** Resolve the path in this order:
+   `$env:CLAUDE_CONFIG_DIR\settings.json` where that variable is set (as it
+   is on a managed machine that redirects `.claude` out of the user profile);
+   `$env:USERPROFILE\.claude\settings.json` otherwise on Windows;
+   `$HOME/.claude/settings.json` on POSIX. Create the file with
+   `{"pluginConfigs": {}}` if it is missing. Stop if the file is present but
+   not valid JSON; report the parse error and the line, and do not try to
+   rewrite it.
 6. **Find the Confer plugin key.** Under `pluginConfigs`, use the first key
    whose name is `confer` or starts with `confer@`. If neither is present,
    create `confer@ianbrandt`.
 7. **Write the four tier values** under
    `pluginConfigs.<key>.options.codexRoutineModel`,
    `.codexComplexModel`, `.codexCriticalModel`, and
-   `.codexEscalationModel`, overwriting whatever is there. Preserve every
-   other key in the file.
+   `.codexEscalationModel`. Create each key if missing, else overwrite it;
+   only the keys the user has touched appear under `options` by default.
+   Preserve every other key in the file.
 8. **Report back the four resulting ids** with the Codex home and the files
    read. Mention the fallback explicitly when the mapping came from a short
    catalog or from the top-level `model` alone.
