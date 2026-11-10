@@ -21,6 +21,30 @@ or later, signed in or set up for a provider.
    ```
 
 2. In a new session, check that `/confer:review`, `/confer:plan`, and `/confer:ask` are listed.
+3. If you run Codex against a non-OpenAI provider (a self-hosted LiteLLM
+   gateway, a corporate OpenAI-compatible endpoint, or any other
+   `[model_providers.*]` block with its own slugs), run
+   `/confer:import-codex-models` once to copy the Codex model ids into
+   Confer's settings. The install dialog's packaged defaults
+   (`gpt-6.1-sol`, `gpt-6-astra`) are the standard OpenAI Codex subscription
+   ids; leave them as typed, then overwrite them with the import command.
+   See [Import Codex Model IDs](#import-codex-model-ids) below.
+
+### Import Codex Model IDs
+
+Under `/confer:import-codex-models`, the session reads your Codex
+`config.toml` (at `$CODEX_HOME/config.toml` where the variable is set, else
+`~/.codex/config.toml` on POSIX or `%USERPROFILE%\.codex\config.toml` on
+Windows) and copies the model ids into Confer's user settings. Where a
+`model_catalog_json` key is set in `config.toml`, the session reads that
+catalog too and uses its `priority` ordering: the lowest-priority slug for
+`critical` and `escalation`, the next for `routine` and `complex`, and the
+top-level `model` from `config.toml` for any tier left uncovered. With no
+catalog, all four tiers are set from the top-level `model`.
+
+The priority-to-tier mapping is a Confer convention, not documented by
+Codex. Tune any tier by hand through `/plugin` where your provider's
+capability profile does not match that mapping.
 
 ## Use
 
