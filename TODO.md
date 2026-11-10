@@ -6,7 +6,7 @@ The 2026-11-08 run on 0.27.5 was intercepted by auto mode, the default for a fre
 this machine, before session-skills' `tool.call` backstop ran. These are the same steps, run in
 the default permission mode on 0.28.0. No step pushes to a real remote.
 
-1. In PowerShell 7, pull the coding-skills clone, update the plugin, and record the versions.
+1. In PowerShell 7, pull the clone of this repo, update the plugin, and record the versions.
    `claude plugin list` should show session-skills 0.28.0:
 
    ```powershell
