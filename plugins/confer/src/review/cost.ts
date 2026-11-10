@@ -7,10 +7,11 @@ export type ClaudeUsage = {
   cache_read_input_tokens?: number | null
 }
 
-// USD per million tokens, from Anthropic's model table cached 2026-10-06. Cache writes at the five-minute rate.
+// USD per million tokens, from Anthropic's model table cached 2026-11-03. Cache writes at the five-minute rate.
 const prices = new Map<string, Price>([
   ['claude-opus-5-5', { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 }],
   ['claude-sonnet-5-5', { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 }],
+  ['claude-fable-5-2', { input: 8, output: 40, cacheWrite: 10, cacheRead: 0.2 }],
   ['claude-fable-5-1', { input: 10, output: 50, cacheWrite: 12.5, cacheRead: 0.25 }],
 ])
 

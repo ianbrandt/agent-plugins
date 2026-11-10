@@ -18,9 +18,13 @@ uses native events only. Under some managed settings, a user plugin's `classic.*
 - The model and effort for both sides come from the run's tier ([references/tiers.md](../references/tiers.md)).
   Codex has no model aliases and passes the model id to its provider as given. The Codex model for
   each tier is therefore a plugin setting. The provider is set in Codex's config, never by Confer.
-- Fable 5.1 runs only at the escalation tier, below Opus 5.5, although its list price is higher. On
-  2026-11-07 Opus 5.5 scored above Fable 5.1 on every independent leaderboard that lists both, 59 to
-  49 on the Artificial Analysis index at max effort.
+- Fable 5.2 runs the Claude side at the critical tier, at high, and at the escalation tier, at xhigh.
+  On FrontierCode 2.0 in the 2026-11-09 launch post, Fable 5.2 scored 45.3% at high for about $6.80
+  a task, against 43.3% for about $5.20 for Opus 5.5 at xhigh. At max it scored below its own xhigh
+  for about three times the cost, so no tier runs it at max.
+- Before a critical or escalation run, Confer sends Fable 5.2 a one-line completion. Where that call
+  is refused by the engine or answered with a 404, the run falls back to Opus 5.5, at xhigh for
+  critical and max for escalation. A model set with `--claude-model` is never checked.
 - Each side starts a fresh session every round.
 - Confer checks `codex --version` against a minimum before a run starts.
 

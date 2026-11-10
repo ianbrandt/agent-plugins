@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
-import type { On } from 'claude-code'
+import type { On, OpEventResult } from 'claude-code'
 import type { TierChoice } from './tier'
 
 const choose = async ($: Engine, fields: object): Promise<TierChoice | string> => {
@@ -11,6 +11,21 @@ const choose = async ($: Engine, fields: object): Promise<TierChoice | string> =
     presentation: { isFullscreen: false, columns: 80 },
   })
   return text.startsWith('{') ? JSON.parse(text) : text
+}
+
+type Reply = OpEventResult<'model.complete'>
+const usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
+const served: Reply = { value: { isAnswered: true, text: 'OK', usage } }
+const notFound: Reply = { value: { isAnswered: false, reason: 'api-error', status: 404, error: 'model_not_found', usage } }
+
+// Answers each model check with `reply` and lists the models checked.
+const serve = (on: On, reply: Reply = served) => {
+  const checked: string[] = []
+  on('model.complete', (_, e) => {
+    checked.push(e.model)
+    return reply
+  })
+  return checked
 }
 
 // Answers the tier question with `answer`, or dismisses it when `answer` is an Error.
@@ -36,7 +51,8 @@ test('a sure pick runs at its tier with no question', async ($, on) => {
   expect(asked).toEqual([])
 })
 
-test('each tier pairs the models and efforts of the table', async ($) => {
+test('each tier pairs the models and efforts of the table', async ($, on) => {
+  serve(on)
   const sides = async (tier: string) => {
     const choice = (await choose($, { args: `--tier ${tier}` })) as TierChoice
     return [choice.claude, choice.codex]
@@ -47,13 +63,39 @@ test('each tier pairs the models and efforts of the table', async ($) => {
     { model: 'gpt-6.1-sol', effort: 'medium' },
   ])
   expect(await sides('critical')).toEqual([
-    { model: 'claude-opus-5-5', effort: 'xhigh' },
+    { model: 'claude-fable-5-2', effort: 'high' },
     { model: 'gpt-6-astra', effort: 'high' },
   ])
   expect(await sides('escalation')).toEqual([
-    { model: 'claude-fable-5-1', effort: 'xhigh' },
+    { model: 'claude-fable-5-2', effort: 'xhigh' },
     { model: 'gpt-6-astra', effort: 'max' },
   ])
+})
+
+test('Fable 5.2 tiers fall back to Opus where the account is not served Fable 5.2', async ($, on) => {
+  const checked = serve(on, notFound)
+
+  expect(((await choose($, { args: '--tier critical' })) as TierChoice).claude).toEqual({ model: 'claude-opus-5-5', effort: 'xhigh' })
+  expect(((await choose($, { args: '--tier escalation' })) as TierChoice).claude).toEqual({ model: 'claude-opus-5-5', effort: 'max' })
+  expect(checked).toEqual(['claude-fable-5-2', 'claude-fable-5-2'])
+})
+
+test('a model the engine refuses to send falls back too, and other failures keep Fable 5.2', async ($, on) => {
+  let reply: Reply = { deny: 'claude-fable-5-2 is not in availableModels' }
+  on('model.complete', () => reply)
+
+  expect(((await choose($, { pick: 'critical' })) as TierChoice).claude.model).toBe('claude-opus-5-5')
+  reply = { value: { isAnswered: false, reason: 'api-error', status: 529, error: 'overloaded', usage } }
+  expect(((await choose($, { pick: 'critical' })) as TierChoice).claude.model).toBe('claude-fable-5-2')
+})
+
+test('a Claude model set in the arguments is not checked', async ($, on) => {
+  const checked = serve(on, notFound)
+
+  const choice = (await choose($, { args: '--tier critical --claude-model claude-fable-5-2' })) as TierChoice
+
+  expect(choice.claude).toEqual({ model: 'claude-fable-5-2', effort: 'high' })
+  expect(checked).toEqual([])
 })
 
 test('an unsure pick is asked about, the pick first', async ($, on) => {

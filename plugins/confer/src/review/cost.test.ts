@@ -20,7 +20,7 @@ test('the Claude model of each tier is priced', () => {
 
   expect(estimateClaudeCostUsd('claude-opus-5-5', usage)?.toFixed(2)).toBe('29.20')
   expect(estimateClaudeCostUsd('claude-sonnet-5-5', usage)?.toFixed(2)).toBe('14.70')
-  expect(estimateClaudeCostUsd('claude-fable-5-1', usage)?.toFixed(2)).toBe('72.75')
+  expect(estimateClaudeCostUsd('claude-fable-5-2', usage)?.toFixed(2)).toBe('58.20')
 })
 
 test('a model without a price has no cost', () => {

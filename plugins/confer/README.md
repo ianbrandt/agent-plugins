@@ -107,8 +107,9 @@ run, pass `--claude-model`, `--claude-effort`, `--codex-model`, or `--codex-effo
 /confer:ask --codex-effort high Is this lock ordering safe?
 ```
 
-The Codex model for each tier, the maximum number of rounds, and the review worktree are plugin
-settings.
+The `critical` and `escalation` tiers run Claude Fable 5.2, and fall back to Claude Opus 5.5 where
+the account is not served Fable 5.2. The Codex model for each tier, the maximum number of rounds,
+and the review worktree are plugin settings.
 
 ### Run with nobody watching
 

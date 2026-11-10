@@ -14,12 +14,13 @@ export type TierRequest = {
 
 export type TierChoice = { tier: Tier; claude: Side; codex: Side; args: string[] }
 
-// Paired by measured score and cost per task on 2026-11-07, not by effort label. Codex ids are settings.
-const table: Record<Tier, { claude: Side; codexEffort: ModelEffort }> = {
+// Paired by measured score and cost per task on 2026-11-09, not by effort label. Codex ids are settings.
+// `fallback` runs where the account is not served Fable 5.2.
+const table: Record<Tier, { claude: Side; fallback?: Side; codexEffort: ModelEffort }> = {
   routine: { claude: { model: 'claude-sonnet-5-5', effort: 'high' }, codexEffort: 'medium' },
   complex: { claude: { model: 'claude-opus-5-5', effort: 'high' }, codexEffort: 'xhigh' },
-  critical: { claude: { model: 'claude-opus-5-5', effort: 'xhigh' }, codexEffort: 'high' },
-  escalation: { claude: { model: 'claude-fable-5-1', effort: 'xhigh' }, codexEffort: 'max' },
+  critical: { claude: { model: 'claude-fable-5-2', effort: 'high' }, fallback: { model: 'claude-opus-5-5', effort: 'xhigh' }, codexEffort: 'high' },
+  escalation: { claude: { model: 'claude-fable-5-2', effort: 'xhigh' }, fallback: { model: 'claude-opus-5-5', effort: 'max' }, codexEffort: 'max' },
 }
 export const codexModels = (options: PluginOptions): Record<Tier, string> => ({
   routine: String(options.codexRoutineModel),
@@ -52,7 +53,8 @@ export async function chooseTier($: EngineInterface, request: TierRequest, codex
     tier = await ask($, `Which tier should ${isClaudeSet ? 'Codex' : isCodexSet ? 'Claude' : 'Confer'} run this ${request.command} at?`, request.pick)
   }
 
-  const { claude, codexEffort } = table[tier]
+  const { claude: picked, fallback, codexEffort } = table[tier]
+  const claude = fallback !== undefined && set['--claude-model'] === undefined && !(await isServed($, picked.model)) ? fallback : picked
   return {
     tier,
     claude: { model: set['--claude-model'] ?? claude.model, effort: (set['--claude-effort'] as ModelEffort) ?? claude.effort },
@@ -100,6 +102,13 @@ export function split(args: string): string[] {
   if (quote !== undefined) throw new Error(`The arguments have an unclosed ${quote} quote.`)
   if (word !== undefined) words.push(word)
   return words
+}
+
+// A model the engine blocks rejects, and the API answers 404 for one the account is not served.
+async function isServed($: EngineInterface, model: string): Promise<boolean> {
+  const reply = await $.model.complete({ model, prompt: 'Reply with OK.', maxTokens: 16, effort: 'low', timeoutMs: 30000 }).catch(() => undefined)
+  if (reply === undefined) return false
+  return reply.isAnswered || reply.reason !== 'api-error' || (reply.status !== 404 && reply.error !== 'model_not_found')
 }
 
 // With no one to ask, as in a -p run, or with the question dismissed, the pick stands.
