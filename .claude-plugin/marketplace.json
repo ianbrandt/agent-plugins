@@ -101,10 +101,10 @@
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/confer",
-        "ref": "confer-v0.14.2",
-        "sha": "596acb0cf1c5e7f02d229200d83d0ad5dce75094"
+        "ref": "confer-v0.14.3",
+        "sha": "a876348c438267adfdd5503d6f2b183188f2f6d6"
       },
-      "version": "0.14.2",
+      "version": "0.14.3",
       "description": "Claude and Codex challenge each other's analysis, requirements, designs, code reviews, and answers to a question until they agree.",
       "keywords": ["code-review", "codex", "planning", "second-opinion"]
     }
