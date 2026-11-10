@@ -1,4 +1,4 @@
-# Claude Code notes for this repo
+# Agent notes for this repo
 
 ## TODO.md is the inter-machine handoff
 
