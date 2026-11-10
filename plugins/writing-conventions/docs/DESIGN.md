@@ -18,6 +18,11 @@ are in [`STYLE-GUIDE.md`](../STYLE-GUIDE.md), which nothing loads. A draft for p
 a fence tagged `draft` under the last rule in `rules.md`, and the draft check below looks for that
 tag.
 
+The rules are added under every output style, a forced one that already includes them too. On
+2.1.322 the active output style is in neither the `session.start` input nor the environment, but the
+`prompt.compose` input includes its name, or null for the default style. Skipping the rules from
+`prompt.compose` under such a style has not been tried.
+
 Prohibitions apply everywhere, `SKILL.md` files included, because they are about precision rather
 than register. Form rules—bold, redundancy, length, and the reader-facing voice—do not apply to
 agent-facing files, so those files are formatted for whatever a model reads best.
@@ -101,7 +106,10 @@ user is told once in a toast. `claude --debug` logs a module that did not load.
 ## The gate at publication
 
 In the census behind this plugin, 101 of 107 corrections were to text that ships: PR bodies,
-comments, issue bodies, commit messages, and docs. A lint over chat is never run on those, so a
+comments, issue bodies, commit messages, and docs. The rules alone did not lower them: counting
+partial findings, 19 agency corrections came in the 15 days after that rule moved into the
+always-on file, against 16 in the 38 days before. Verbs listed in the rule kept coming back after
+they were listed. A lint over chat is never run on those, so a
 `tool.call` hook checks the commands that publish them: `git commit`, every `gh pr`, `gh issue`, and
 `gh release` subcommand, and any other command that can publish (see "Other shell commands"),
 through the `Bash` tool and through the `PowerShell` tool both. Covering only `Bash` leaves every
@@ -168,7 +176,8 @@ The check is one `$.model.complete` call, with
 message. [`hooks/rules.md`](hooks/rules.md) is appended to that prompt, so a word added to the rules
 is checked at the gate with no second edit. Which model answers comes from `WRITING_CONVENTIONS_GATE_MODEL`, or from the `sonnet` alias
 when that is unset; set it in the `env` block of a settings file to any id the session's endpoint
-serves.
+serves. In 0.12.0 and 0.13.0 the check ran as a nested `claude -p --bare`, which answered "Not
+logged in" on all 39 calls and let each command through with no notice.
 
 An alias is enough there because `$.model.complete` resolves one the way `--model` does, through
 `ANTHROPIC_DEFAULT_SONNET_MODEL` and the related variables, so the default works on a first-party
@@ -427,7 +436,8 @@ is read. A draft written to a file with a shell redirect is not read at all.
 
 ### Chat drafts
 
-A draft the session hands its user to paste somewhere else is never in a shell command or an MCP
+After the first gate shipped, 32 of 43 corrections were to drafts in chat or in draft files, which a
+gate on `git commit` and `gh` never reads. A draft the session hands its user to paste somewhere else is never in a shell command or an MCP
 tool call. A draft for publication goes in its own fenced block with the info string `draft`; that rule
 is loaded into every session.
 
@@ -466,6 +476,9 @@ lost, since the call uses up the limit and the run ends in `error_max_turns`. A 
 rewrite is not affected, and the evals allow 8 turns.
 Set `WRITING_CONVENTIONS_STOP_READER=0` to turn this check off, in the tool and at the end of a reply.
 
+The review is not tied to a drafting skill having run. A drafting skill ran on 12 of 12 prompts
+that asked for a draft, but on 3 of 12 where the draft was a by-product of a coding task.
+
 Tagging keeps this check cheap, since an untagged draft has no reliable form: without the rule,
 drafts came back in plain fences, blockquotes, and between `---` rules, and a plain fence of 8 words
 or more also showed up in 4 of 12 ordinary replies. On Sonnet 5.5, with the draft mentioned only as
@@ -481,6 +494,12 @@ still dropped, which is why a draft that includes one goes in a longer fence.
 ### What is not gated
 
 A `git push` is not read, because a branch name is chosen long before it.
+
+Sentence order (rule 6) is not judged. With an ordering item added, the gate found 2 of 6 held-out
+ordering corrections, the same 2 it found without the item, through agency and comma findings. Of
+170 held-out findings, one was an ordering violation. Sentence length is left out by choice,
+although the judge found 5 of 12 ordering corrections with a length clause and 2 without it. A
+retry needs more than 12 ordering corrections and a rules example that is not one of them.
 
 Adding a word to the banned list is a plugin change rather than a local edit, and installed
 sessions get it after the plugin's next release ([Releases](../../../DEVELOP.md#releases)).
@@ -502,6 +521,13 @@ change came about. Sentence counts and heading limits are left to `ghostwrite`. 
 draft only for a sentence they can quote: with looser wording, the personification judge failed 11
 of 24 runs with and without the plugin, and only one of the 11 drafts had a real violation.
 
+The personification judge was checked against the correction census on Sonnet 5 on 2026-09-21. It
+was right on 79 of 80 flags but found 21 of 35 corrected agency sentences, missing quieter verbs
+such as "is never offered" and "bounded by", so eval scores undercount agency. The regex grader was
+right on 44 of 44 flags and found 16 of 35. Of 97 texts posted after review, 37 break the agency
+rule as written, so a baseline drawn from posted text will show findings. A blind reader rejected
+19 of 20 decoy flags.
+
 Run the suite from the plugin directory:
 
 ```bash
@@ -519,6 +545,34 @@ known only to within about that much. Tells copied from the facts still get thro
 users" has appeared in plugin-loaded PR body drafts. A score from before CLI 2.1.289 is not
 comparable with a later one, because the judge for `--judge-model sonnet` changed to Sonnet 5.5
 there.
+
+Opus 5.5 personified in 15 of 48 drafts without the rules file and 4 of 48 with it, a difference of
+22.9 points with a 95% interval of 6.2 to 41.7 (2.1.280, when the rules loaded at session start).
+Unaided, it wrote no spaced em dash and no banned word. Most of the failures left with the rules
+copied a tell from the prompt in a context past 100k tokens. Fact fidelity was 97.0% with the
+rules and 100% without, inside the 10-point margin. The judge's recall makes each count a lower
+bound.
+
+The gate has not been shown to reduce corrections. Corrections per post through `gh` fell from 43 on
+47 posts under the first gate versions to 29 on 50 under 0.40.0 and later, the same rate as the 107
+on 173 before any gate. The model, the date, and the plugin version changed together, so the fall
+cannot be credited to the plugin. Corrections in the categories the gate reads stayed at 5 on 50,
+against 4 on 47. Agency corrections in published text had already fallen from 17 to 8 to 2 a week
+before the gate shipped, most likely from the always-on rules and the reminder. From 0.44.0 on,
+20 of 20 corrections were to drafts, and most were outside prohibitions 1 to 4.
+
+### Hooks rather than a drafting skill
+
+A skill reaches a draft only when it is invoked, but the gate reads every publishing command. On
+2026-09-21, Sonnet 5 wrote 48 drafts per arm with skill invocation forced, to see whether a skill
+improves drafts when it runs. Agency failures were 5 of 48 with the rules file and reminder alone,
+2 of 48 with the rules reloaded by a skill before drafting, and 1 of 48 with a fresh-context
+reviewer added. Both 95% intervals end at zero, so neither skill arm separated from the rules
+alone, and completion and fact fidelity were no worse. Of the 8 failures, 7 were on one prompt that
+contained the tells. Short-context runs were near zero in every arm. The visible gap was at long
+context, 4 of 12 failures with the rules alone against 1 of 12 with a skill, which 12 drafts per
+arm cannot settle. The result is inconclusive rather than negative, and the hooks stay the
+delivery path.
 
 ## Prior art
 
@@ -539,4 +593,6 @@ so text that ships is checked at the gate here rather than left to the rules alo
 `rules.md` and the reminder at the next prompt are based on two results: instruction following
 falls as the count of instructions grows ([IFScale](https://arxiv.org/abs/2507.11538)), and a
 reminder at the end of the prompt restored most lost compliance
-([arXiv 2603.23530](https://arxiv.org/abs/2603.23530)).
+([arXiv 2603.23530](https://arxiv.org/abs/2603.23530)). The reminder did the same here: after it
+shipped on 2026-09-04, spaced em dashes per 1,000 words of assistant text fell from 13.4 to 2.9 on
+Opus 5 and to 0.05 on Fable 5.1, and banned words fell from 1.3 to 0.4 and 0.02.
