@@ -1,6 +1,6 @@
 {
   "name": "confer",
-  "version": "0.14.0",
+  "version": "0.14.1",
   "description": "Claude and Codex challenge each other's analysis, requirements, designs, code reviews, and answers to a question until they agree.",
   "author": {
     "name": "Ian Brandt"
