@@ -24,10 +24,18 @@ test('the rules are added to a prompt once the model no longer reads them', asyn
   expect((await $.prompt.submit({ text: 'after an update' })).context).toEqual([RULES])
 })
 
-test('an Agent task opens with the escalation rule', async ($: any, on: any) => {
+// Auto mode refuses an Agent call whose input a hook changed after review, so
+// the rule goes into the task at spawn and the call's input is left alone.
+test('a subagent task opens with the escalation rule once, and the Agent call is left as reviewed', async ($: any, on: any) => {
   const w = world(on)
+  const spawned: string[] = []
+  on('agent.spawn', (_$: any, e: any) => { spawned.push(e.prompt); return { agentId: 'a1', model: 'm' } })
   await $.tool.call({ tool: 'Agent', prompt: 'look', description: 'd' })
-  expect(w.task).toBe(`${SUBAGENT_RULE}\n\nlook`)
+  expect(w.task).toBe('look')
+  await $.agent.spawn({ prompt: 'look' })
+  await $.agent.spawn({ prompt: `${SUBAGENT_RULE}\n\nlook` })
+  await $.agent.spawn({ prompt: 'step', workflow: { runId: 'wf_1', agentIndex: 1 } })
+  expect(spawned).toEqual([`${SUBAGENT_RULE}\n\nlook`, `${SUBAGENT_RULE}\n\nlook`, 'step'])
 })
 
 // The conversations read back, by agent: the main loop under '', an Agent

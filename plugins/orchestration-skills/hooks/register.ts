@@ -31,7 +31,11 @@ export const register: Register = on => {
     return next(rules && !(await isRead($, rules)) ? { ...e, context: [...(e.context ?? []), rules] } : e)
   })
 
-  on('tool.call', { tool: 'Agent' }, async ($, e: any, next: any) => next({ ...e, prompt: `${SUBAGENT_RULE}\n\n${e.prompt}` }))
+  // The rule goes into the task at spawn: auto mode refuses an Agent call
+  // whose input a tool.call hook changed after review. A Workflow agent gets it
+  // with its first tool result below, and a resumed run keeps its prompt.
+  on('agent.spawn', async ($, e: any, next: any) =>
+    next(e.workflow || e.resume || e.prompt.includes(SUBAGENT_RULE) ? e : { ...e, prompt: `${SUBAGENT_RULE}\n\n${e.prompt}` }))
 
   // A Workflow's agents start without the rule, and after an automatic
   // compaction in the middle of a turn the main loop goes without the rules
