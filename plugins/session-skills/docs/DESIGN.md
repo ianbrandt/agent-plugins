@@ -292,6 +292,9 @@ only those a session might write were fixed. These forms are not seen:
 - `-c` aliases nested so that each runs several more, which can take minutes to read, since each
   level is read with a work cap of its own
 
+A newly found form is fixed only if a session plausibly writes it unprompted and the
+[pre-push backstop](#pre-push-backstop) does not cover it. Any other form is added to this list.
+
 A follow-up prompt after the reply used to do this. It showed in the transcript as a message from the
 plugin, it took a fenced block as the only sign of a next step, so it fired after "This session
 carries on with R104", and it cost a turn.
@@ -301,7 +304,23 @@ No hook adds the rules to a subagent, because a subagent doesn't end a session.
 ## Pre-push backstop
 
 The lexer cannot see a push run inside another program: `bash -c 'git push'`, `npm run release`,
-`./gradlew release`, `git town ship`, or a script. So the module also adds a git `pre-push` hook,
+`./gradlew release`, `git town ship`, or a script. More lexer rules did not close the gap:
+`checkouts.ts` grew from 34 to 1,566 lines in three days, and the last two adversarial reviews
+found new silent misses, ten and then nine, most of the second set in rules the change under review
+had added. Four other mechanisms were rejected:
+
+- A `PATH` shim for `git`, `gh`, and `glab` misses an absolute `/usr/bin/git` and a script that
+  resets `PATH`. On Windows, a program that starts `git.exe` through `CreateProcess` does not see a
+  `.cmd` shim. Of all the options, only a shim would see a `gh` write from inside another program.
+- Two review rounds each found new edge cases in a grant file for an approved push, because the
+  hook cannot tell which tool call started the push.
+- A push tool served by the plugin is never checked: the serving `tool.call` hook answers in place
+  of `next(e)`, and `next(e)` runs `tool.check`. This was probed under `claude -p` with ask and deny
+  rules.
+- Asking on every push, whatever the repo's visibility, stops unattended runs that land on private
+  repos.
+
+So the module also adds a git `pre-push` hook,
 `hooks/pre-push.sh`, to every git the session starts. On `session.start` and each `prompt.submit` it
 sets `GIT_CONFIG_PARAMETERS` with `$.env.set` to its current value plus
 `hook.sessionskills.event=pre-push` and `hook.sessionskills.command=sh <script> <records>`. Any
