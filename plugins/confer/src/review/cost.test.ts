@@ -27,3 +27,11 @@ test('a model without a price has no cost', () => {
   expect(estimateClaudeCostUsd('claude-unknown', { input_tokens: 1, output_tokens: 1 })).toBeNull()
   expect(estimateClaudeCostUsd('toString', { input_tokens: 1, output_tokens: 1 })).toBeNull()
 })
+
+test('a Bedrock id is priced from its canonical Anthropic id', () => {
+  const usage = { input_tokens: 1_000_000, output_tokens: 1_000_000, cache_creation_input_tokens: 1_000_000, cache_read_input_tokens: 1_000_000 }
+  const base = estimateClaudeCostUsd('claude-sonnet-5-5', usage)
+
+  expect(estimateClaudeCostUsd('bedrock-claude-sonnet-5-5', usage)).toBe(base)
+  expect(estimateClaudeCostUsd('bedrock-claude-sonnet-5-5[1m]', usage)).toBe(base)
+})

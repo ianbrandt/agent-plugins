@@ -182,6 +182,15 @@ test('Confer never picks escalation itself', async ($) => {
   expect(await choose($, { pick: 'escalation' })).toBe('Error: Escalation runs only when the user asks for it.')
 })
 
+test('an ANTHROPIC_DEFAULT_*_MODEL env var pins the alias to the id the main session uses', async ($, on) => {
+  serve(on)
+  on('env.get', (_, e) => ({ value: e.name === 'ANTHROPIC_DEFAULT_SONNET_MODEL' ? 'bedrock-claude-sonnet-5-5[1m]' : undefined }))
+
+  const choice = (await choose($, { pick: 'routine' })) as TierChoice
+
+  expect(choice.claude).toEqual({ model: 'bedrock-claude-sonnet-5-5[1m]', effort: 'high' })
+})
+
 test('a bad argument fails the choice', async ($) => {
   expect(await choose($, { args: '--claude-effort extra' })).toBe('Error: --claude-effort takes low, medium, high, xhigh, or max, not "extra".')
   expect(await choose($, { args: '--tier' })).toBe('Error: --tier needs a value.')

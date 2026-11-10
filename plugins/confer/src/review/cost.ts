@@ -15,9 +15,12 @@ const prices = new Map<string, Price>([
   ['claude-fable-5-1', { input: 10, output: 50, cacheWrite: 12.5, cacheRead: 0.25 }],
 ])
 
+// A Bedrock id shows up as `bedrock-<id>` or `bedrock-<id>[1m]`; the Anthropic id in `prices` is its canonical form.
+const canonical = (model: string): string => model.replace(/^bedrock-/, '').replace(/\[[^\]]*\]$/, '')
+
 // `table` is for tests. Anthropic counts cache tokens apart from input_tokens.
 export function estimateClaudeCostUsd(model: string, usage: ClaudeUsage, table: ReadonlyMap<string, Price> = prices): number | null {
-  const price = table.get(model)
+  const price = table.get(model) ?? table.get(canonical(model))
   if (price === undefined) return null
   return (
     (usage.input_tokens * price.input +
