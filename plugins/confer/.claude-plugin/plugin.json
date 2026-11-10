@@ -5,6 +5,9 @@
   "author": {
     "name": "Ian Brandt"
   },
+  "repository": "https://github.com/ianbrandt/agent-plugins",
+  "license": "MIT",
+  "keywords": ["code-review", "planning", "codex", "second-opinion", "consensus"],
   "metadata": {
     "minClaudeCodeVersion": "2.1.317"
   },
