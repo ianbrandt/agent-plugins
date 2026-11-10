@@ -242,7 +242,7 @@ test('a two-round review reaches consensus, each reviewer reading the other\'s r
   const round2 = await call($, 'review_round', { run: round1.run })
 
   expect(round2).toMatchObject({ status: 'round', round: 2, agent: { description: `Confer ${round1.run} round 2` } })
-  expect(spawned[0]).toMatchObject({ model: 'claude-opus-5-5', cwd: top, background: false })
+  expect(spawned[0]).toMatchObject({ model: 'opus', cwd: top, background: false })
   expect(spawned[0]!.prompt).toContain('# Review brief')
   expect(spawned[0]!.prompt).toContain('mcp__confer__git')
   expect(codexPrompts[0]).toContain('`cat`, `sed -n`, `rg`, and `git show`')
@@ -262,7 +262,7 @@ test('a two-round review reaches consensus, each reviewer reading the other\'s r
     confirmed: [{ id: 'C1', foundBy: 'claude', agreedBy: 'codex', severity: 'high' }],
     phases: [{ phase: 0, rounds: 2, stop: 'consensus' }],
   })
-  expect(done.report.sides.claude).toMatchObject({ completed: true, resolvedModels: ['claude-opus-5-5'], requested: [{ model: 'claude-opus-5-5', effort: 'high' }] })
+  expect(done.report.sides.claude).toMatchObject({ completed: true, resolvedModels: ['claude-opus-5-5'], requested: [{ model: 'opus', effort: 'high' }] })
   expect(done.report.sides.claude.tokens).toEqual({ input_tokens: 100, output_tokens: 10, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 })
   expect(done.report.sides.codex.tokens).toMatchObject({ input_tokens: 200, output_tokens: 20 })
   expect(state(files, round1.run)).toMatchObject({ status: 'complete', findings: [{ id: 'C1', status: 'agreed' }] })
@@ -648,7 +648,7 @@ test('each fix review returns its tier and models, keeps the review\'s model fla
   expect(await call($, 'review_fixes', { run: round1.run, ids: ['C1'], pick: 'routine' })).toMatchObject({
     status: 'fixing',
     tier: 'routine',
-    claude: { model: 'claude-sonnet-5-5', effort: 'high' },
+    claude: { model: 'sonnet', effort: 'high' },
     codex: { model: 'gpt-test', effort: 'medium' },
   })
   tree = 'tree2'
@@ -658,7 +658,7 @@ test('each fix review returns its tier and models, keeps the review\'s model fla
   expect(await call($, 'review_fixes', { run: round1.run, ids: ['C1'] })).toMatchObject({
     status: 'fixing',
     tier: 'complex',
-    claude: { model: 'claude-opus-5-5', effort: 'high' },
+    claude: { model: 'opus', effort: 'high' },
     codex: { model: 'gpt-test', effort: 'xhigh' },
   })
   tree = 'tree3'
@@ -1740,7 +1740,7 @@ test('review_start returns the tier and models it runs at, a tier picked in the 
     target: 'checkout',
     fix: false,
     tier: 'routine',
-    claude: { model: 'claude-sonnet-5-5', effort: 'high' },
+    claude: { model: 'sonnet', effort: 'high' },
     codex: { model: 'gpt-test', effort: 'medium' },
   })
 })

@@ -149,7 +149,7 @@ test('ask_start keeps the question verbatim, quotes and apostrophes included, an
     round: 1,
     question,
     tier: 'complex',
-    claude: { model: 'claude-opus-5-5', effort: 'high' },
+    claude: { model: 'opus', effort: 'high' },
     codex: { effort: 'xhigh' },
     agent: { subagent_type: 'confer:reviewer-high' },
   })

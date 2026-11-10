@@ -222,7 +222,7 @@ test('plan_start returns the tier and models it runs at, a tier picked in the di
   expect(await begin($, { args: `--codex-model gpt-test ${file}`, isSure: false })).toMatchObject({
     status: 'round',
     tier: 'routine',
-    claude: { model: 'claude-sonnet-5-5', effort: 'high' },
+    claude: { model: 'sonnet', effort: 'high' },
     codex: { model: 'gpt-test', effort: 'medium' },
   })
 })

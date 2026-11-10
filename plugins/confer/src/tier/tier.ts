@@ -15,12 +15,13 @@ export type TierRequest = {
 export type TierChoice = { tier: Tier; claude: Side; codex: Side; args: string[] }
 
 // Paired by measured score and cost per task on 2026-11-09, not by effort label. Codex ids are settings.
-// `fallback` runs where the account is not served Fable 5.2.
+// Claude models are aliases (`sonnet`, `opus`, `fable`), resolved to the provider's id by the harness.
+// `fallback` runs where the account is not served Fable.
 const table: Record<Tier, { claude: Side; fallback?: Side; codexEffort: ModelEffort }> = {
-  routine: { claude: { model: 'claude-sonnet-5-5', effort: 'high' }, codexEffort: 'medium' },
-  complex: { claude: { model: 'claude-opus-5-5', effort: 'high' }, codexEffort: 'xhigh' },
-  critical: { claude: { model: 'claude-fable-5-2', effort: 'high' }, fallback: { model: 'claude-opus-5-5', effort: 'xhigh' }, codexEffort: 'high' },
-  escalation: { claude: { model: 'claude-fable-5-2', effort: 'xhigh' }, fallback: { model: 'claude-opus-5-5', effort: 'max' }, codexEffort: 'max' },
+  routine: { claude: { model: 'sonnet', effort: 'high' }, codexEffort: 'medium' },
+  complex: { claude: { model: 'opus', effort: 'high' }, codexEffort: 'xhigh' },
+  critical: { claude: { model: 'fable', effort: 'high' }, fallback: { model: 'opus', effort: 'xhigh' }, codexEffort: 'high' },
+  escalation: { claude: { model: 'fable', effort: 'xhigh' }, fallback: { model: 'opus', effort: 'max' }, codexEffort: 'max' },
 }
 export const codexModels = (options: PluginOptions): Record<Tier, string> => ({
   routine: String(options.codexRoutineModel),
