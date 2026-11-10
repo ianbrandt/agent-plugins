@@ -40,3 +40,25 @@ unit tests run against mocked file and git calls. Checks that need another machi
 The eval suites call a model and cost money. Each is run from its plugin's directory, with the
 command in that plugin's README, or in `DESIGN.md` for `writing-conventions`. So do the
 [end-to-end tests](e2e/README.md), which run `next-roadmap-item` end to end in a scratch repo.
+
+## Building Confer
+
+Confer needs Node.js and Claude Code 2.1.317 or later. Run these commands in `plugins/confer`.
+
+1. Install TypeScript:
+
+   ```bash
+   npm ci
+   ```
+
+2. Type-check, test, and validate the plugin:
+
+   ```bash
+   npm run typecheck
+   claude plugin test
+   claude plugin validate .
+   ```
+
+The plugin API of Claude Code 2.1.317 is declared in `types/claude-code/index.d.ts`. To update
+that file, replace it with `.claude-plugin/types/claude-code/index.d.ts`, which Claude Code
+writes when you run `claude --plugin-dir .` in `plugins/confer`.

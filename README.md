@@ -65,7 +65,8 @@ invoked.
 - [`gradle-skills`](plugins/gradle-skills) upgrades Gradle dependencies and the wrapper, one
   verified atomic commit at a time. Gradle builds only.
 
-How the plugins are released and tested is in [DEVELOP.md](DEVELOP.md).
+How to contribute is in [CONTRIBUTING.md](CONTRIBUTING.md), and how the plugins are built,
+tested, and released is in [DEVELOP.md](DEVELOP.md).
 
 ## License
 
