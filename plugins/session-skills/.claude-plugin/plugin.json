@@ -12,5 +12,13 @@
     "landing",
     "wrap-up",
     "resume"
-  ]
+  ],
+  "userConfig": {
+    "askBeforeOutwardWrites": {
+      "type": "boolean",
+      "title": "Ask before a push or a GitHub or GitLab write",
+      "description": "Raise a permission prompt for a push that is forced or not known to be private, and for a write to the host with gh or glab. Turn it off on a machine with managed settings, where the prompt is skipped with a warning; hold pushes there with an auto mode rule instead.",
+      "default": true
+    }
+  }
 }

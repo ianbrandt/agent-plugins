@@ -82,29 +82,16 @@ git config session-skills.holdFork false          # a fork lands as a PR against
 git config session-skills.holdPrText false        # open a PR without first showing its text
 ```
 
-A push that a hold applies to and every force push are refused by this plugin's hook unless they
-are written in the form below, and then they are put to the user in the permission prompt. Every
-write to the host through `gh` or `glab`, and every `git config` write to a remote, a hook, or a
-`session-skills` key, is put to the user there too. So a step the user already approved in chat,
-such as recording the visibility above, is asked about once more there. A PR or MR opened with `holdPrText`
-lifted, in a clone whose only remote is `origin`, is the one write that goes unasked, unless the
-branch push it may make is held. Under managed settings that skip this plugin's `tool.check`
-hook, none of these prompts appear, and the commands are refused instead. Where a
-`session-skills: its tool.check hook was skipped` toast was shown for one shell tool, run pushes
-and host writes through the other, since a native permission prompt is raised only from a tool
-whose `tool.check` runs. Where neither tool's check runs, get the user's go in chat, and the user
-runs the command from a `!` prompt: the bypass form below, printed in the refusal. Don't run that
-form yourself there, since the auto-mode classifier denies it. For a public origin, the user can
-instead lift `holdPublicPush` for the clone from a `!` prompt.
-
-The plugin also adds a `pre-push` hook to every git the session starts. It refuses a push to a
-remote not known to be private, a fork's push, and any force push, except to a path on this machine.
-So **write a held push, and any force push, with `-c hook.sessionskills.enabled=false` after
-`git`**, as in `git -C "$MAIN" -c hook.sessionskills.enabled=false push origin "$DEFAULT"`. That
-form is the one printed when a push is refused, and every command written that way is put to the
-user in the permission prompt, whatever the holds. It is accepted on `git push` itself, not on an
-alias or a tool such as `git town`. Push the branch before a PR is opened: a `gh pr create` without
-`--head`, or a `glab mr create` without `--push=false`, is refused where its own push would be held.
+A push that a hold applies to, every force push, every write to the host through `gh` or `glab`,
+every `git config` write to a `session-skills` key, and every `git remote remove`, `rename`, or
+`set-url` are put to the user in the permission
+prompt, where the plugin's `askBeforeOutwardWrites` option is on. Write the push as a plain `git
+push`; after Yes it runs as written. A step the user already approved in chat, such as recording
+the visibility above, is asked about once more there. A PR or MR opened with `holdPrText` lifted, in
+a clone whose only remote is `origin`, is the one write that goes unasked, unless the branch push it
+may make is held. With the option off, as on a machine with managed settings, nothing is asked:
+hold to the rules above yourself, and run a held push only after the user's go in this
+conversation.
 
 These are independent of the backlog. A repo you own can track its work in an untracked, local-only
 roadmap and still merge into its default branch; that combination needs no special handling.

@@ -2,7 +2,7 @@
 // run the git work of both skills, and the tool a worktree session calls to edit
 // a file that is only in the primary checkout.
 import type { Register } from 'claude-code'
-import { backstopConfig, bypassMisuse, configWrites, type Dir, DIR_MARK, expand, hookWrites, type HostWrite, hostWrites, localUrl, pickBase, type Push, pushTargets, recorded, refLine, vagueDir, visibility, type Word, worktreeName } from './checkouts'
+import { type Dir, type HostWrite, localUrl, outward, pickBase, refLine, visibility, worktreeName } from './checkouts'
 import { splice } from './splice'
 
 const NONE = { type: 'object', properties: {} } as const
@@ -397,17 +397,7 @@ const setting = ($: any, dir: string, key: string) => out(git($, dir, 'config', 
 
 const VIEW = [['gh', ['--json', 'visibility', '-q', '.visibility']], ['glab', ['-F', 'json', '--jq', '.visibility']]] as const
 
-// The session's visibility records, which the pre-push hook reads. A hooks
-// module is given no data directory, so they are in the temp directory.
-async function recordsPath($: any): Promise<string> {
-  const tmp = (await $.env.get('TMPDIR').catch(() => '')) || (await $.env.get('TEMP').catch(() => '')) || '/tmp'
-  return `${tmp.replace(/[\\/]+$/, '')}/session-skills-${await $.session.id().catch(() => 'session')}.visibility`
-}
-
-// A URL's visibility from gh or glab, recorded for the hook whatever it is, so
-// an unknown or public answer replaces a private one. A record that is not
-// written leaves the hook to refuse the push.
-// shortcut: two lookups at once can each write the file and lose the other's line, which refuses a push; lock the file if that is seen.
+// A URL's visibility from gh or glab, or '' for both where it is unknown.
 async function lookUp($: any, url: string): Promise<[string, string]> {
   let found: [string, string] = ['', '']
   for (const [from, argv] of VIEW) {
@@ -417,10 +407,6 @@ async function lookUp($: any, url: string): Promise<[string, string]> {
       break
     }
   }
-  try {
-    const path = await recordsPath($)
-    await $.fs.write(path, recorded(await $.fs.read(path).catch(() => ''), url, found[0], Math.floor(Date.now() / 1000)))
-  } catch {}
   return found
 }
 
@@ -525,33 +511,6 @@ async function configList($: any, dir: string): Promise<[string, string][]> {
   return entries
 }
 
-const TRUE = /^(?:true|yes|on|-?[1-9]\d*)$/i
-
-// What config set before the command adds to a push: a force where the
-// remote mirrors or has a + refspec, and submodules where push.recurseSubmodules
-// or submodule.recurse sends the push into them and the index has a gitlink,
-// with or without a .gitmodules, or another command in the line may have staged one. A remote that is not written out may be any of
-// them. A setting is read from its last value, the one git uses, and of the two
-// recursion keys git uses the one set last. git pushes to each member of a
-// remote group, and prefers a group to a remote of the same name, so a group
-// is read as a remote that is not written out. git prints a subsection in its
-// own case and matches the name in it, so the name is compared in any case.
-// So is a remote after a command that may move the branch where config has an
-// onbranch include, since its URL can be set there for the branch moved to.
-async function pushConfig($: any, dir: string, p: Push): Promise<{ force: boolean; submodules: boolean; unread: boolean }> {
-  const entries = await configList($, dir)
-  const named = p.remote === undefined ? await pushRemote($, dir) : p.remote
-  const unread = named !== null && entries.some(([k]) => k.toLowerCase() === `remotes.${named.toLowerCase()}` || (!!p.switched && /^includeif\.onbranch:/i.test(k)))
-  const name = unread ? null : named
-  const remote = ([k]: [string, string], field: string) => (name === null ? k.startsWith('remote.') && k.endsWith(`.${field}`) : k === `remote.${name}.${field}`)
-  const force = [...new Map(entries)].some(e => remote(e, 'mirror') && TRUE.test(e[1])) || entries.some(e => remote(e, 'push') && e[1].startsWith('+'))
-  const [key, mode] = entries.filter(([k]) => k === 'push.recursesubmodules' || k === 'submodule.recurse').at(-1) ?? ['', '']
-  const recurses = p.submodules ?? (key === 'push.recursesubmodules' ? /^(?:on-demand|only)$/i.test(mode) : TRUE.test(mode))
-  // `:/` lists the whole index from a subdirectory too.
-  // shortcut: the whole index is printed to find one gitlink, read only where recursion is set; filter in git if a large repo slows the hook.
-  return { force, submodules: recurses && (!!p.staged || /^160000 /m.test(await must($, dir, 'ls-files', '-s', ':/'))), unread }
-}
-
 // Every URL a remote pushes to, or null where git has no such remote.
 async function pushUrls($: any, dir: string, name: string): Promise<string[] | null> {
   const r = await git($, dir, 'remote', 'get-url', '--push', '--all', name)
@@ -563,8 +522,8 @@ async function pushUrls($: any, dir: string, name: string): Promise<string[] | n
 // A session on Windows is told by its drive-letter paths, there being no platform call.
 const onWindows = (dir: string) => /^[A-Za-z]:[\\/]/.test(dir)
 
-// Whether every URL a push goes to is on this machine, by the pre-push hook's
-// first rule: `git push .`, a path, or a remote whose push URLs all are.
+// Whether every URL a push goes to is on this machine:
+// `git push .`, a path, or a remote whose push URLs all are.
 async function localTarget($: any, dir: string, remote: string | null | undefined): Promise<boolean> {
   if (remote === null) return false
   const name = remote ?? (await pushRemote($, dir))
@@ -628,10 +587,9 @@ async function otherBase($: any, dir: string, what: string): Promise<string> {
 }
 
 // Why a host write waits for the user, or '' when it does not. Only a PR or MR
-// opened in origin's repo, with holdPrText lifted and past the fork hold, goes
-// unasked, unless hostRefusal refuses the branch push it may make.
+// opened in origin's repo, with holdPrText lifted, past the fork hold, and with
+// no hold on the branch push it may make, goes unasked.
 async function hostHold($: any, w: HostWrite): Promise<string> {
-  if (w.unread) return `\`${w.what}\` runs a git alias that could not be read, which may write to the remote host.`
   const write = `\`${w.what}\` writes to the remote host`
   if (!w.prCreate || w.otherRepo) return `${write}.`
   if (w.dir === null) return `${write}, and the repo it runs in could not be read from the command.`
@@ -640,82 +598,9 @@ async function hostHold($: any, w: HostWrite): Promise<string> {
   if ((await remoteUrl($, dir, 'upstream')) !== null && (await setting($, dir, 'holdFork')) !== 'false') return `${write}, and this repo is a fork, which writes nothing there. ${lift('holdFork')}`
   if ((await setting($, dir, 'holdPrText')) !== 'false') return `${write}, and a PR's text waits for the user's go. ${lift('holdPrText')}`
   const other = await otherBase($, dir, w.what)
-  // The branch push it may make is checked by hostRefusal.
-  return other ? `${write}, and ${other}.` : ''
-}
-
-// Why a host write that pushes the branch is refused, or '': the push it makes
-// would be held, so the session's pre-push hook would refuse it after the
-// approval. This is read before any reason to ask.
-async function hostRefusal($: any, w: HostWrite, vague: boolean): Promise<string> {
-  if (!w.pushes || w.unread) return ''
-  if (!w.prCreate) return `\`${w.what} --push\` pushes to the repo it creates, which is not known to be private, so the session's pre-push hook would refuse the push after the approval. Create the repo, then push the branch as a command of its own with \`${BYPASS}\` after \`git\`.`
-  if (w.dir === null) return ''
-  const dir = await where($, w.dir)
-  if (await localTarget($, dir, 'origin')) return ''
-  const config = await pushConfig($, dir, { dir, dryRun: false, force: false, remote: 'origin', staged: w.staged })
-  const held = config.force ? 'a force is set in config for the push.' : config.submodules ? 'it may push submodules to their own remotes.' : await pushHold($, dir, 'origin')
-  if (!held) return ''
-  const flag = w.what.startsWith('glab') ? '`--push=false`' : '`--head <branch>`'
-  return `\`${w.what}\` may push the branch, and the session's pre-push hook would refuse that push after the approval: ${held} Push the branch first, as in \`git -C ${vague ? '<dir>' : typedDir(dir)} ${BYPASS} push origin <branch>\`, which the user is asked about, then open the PR with ${flag}.`
-}
-
-// The help.autocorrect values with which git 2.56.0 runs nothing for a subcommand
-// it does not know. With `prompt` it asks at the terminal, which only the user can answer.
-const SUGGESTS = new Set(['', '0', 'false', 'no', 'off', 'show', 'never', 'prompt'])
-
-// Whether git may run a subcommand it does not know as the one closest to it,
-// from the last help.autocorrect given with -c, else from config. A value that
-// cannot be read, or one git refuses, is held.
-async function autocorrects($: any, dir: string, configs: Word[]): Promise<boolean> {
-  const set = configs.filter(w => /^help\.autocorrect(?:=|$)/is.test(w.text)).at(-1)
-  // A -c key with no `=` sets the key to true.
-  const v = set ? (set.literal ? (set.text.includes('=') ? set.text.slice(set.text.indexOf('=') + 1) : 'true') : null) : await configValue($, dir, 'help.autocorrect').catch(() => null)
-  return v === null || !SUGGESTS.has(v.trim().toLowerCase())
-}
-
-// Each push in a command, with a git alias read from config in the directory it
-// runs in, as `alias.<name>` and git 2.54's `alias.<name>.command`, and each
-// expansion checked in its place with the -c values given with the alias. The
-// gh and glab writes in each expansion are added to `hosts`. A subcommand with
-// no alias is not a push unless help.autocorrect may run it as the command it is
-// closest to, and it and an alias that cannot be read are held as a push and as
-// a host write. A command that sends gh to another repo does so for each expansion.
-async function pushesIn($: any, pushes: Push[], hosts: HostWrite[], depth = 0): Promise<Push[]> {
-  const found: Push[] = []
-  for (const p of pushes) {
-    if (!p.alias) {
-      found.push(p)
-      continue
-    }
-    const unread = () => {
-      found.push({ dir: p.dir, dryRun: false, force: p.force, remote: null, staged: p.staged })
-      hosts.push({ what: `git ${p.alias}`, dir: p.dir, prCreate: false, otherRepo: false, pushes: false, unread: true })
-    }
-    const dir = p.unread || p.dir === null || depth > 3 ? null : await where($, p.dir).catch(() => null)
-    if (dir === null) {
-      unread()
-      continue
-    }
-    // A name such as `pr:m` can only be read in the subsection form: git refuses `alias.pr:m` as a key.
-    const keys = /^[a-z][a-z0-9-]*$/i.test(p.alias.split('.').at(-1)!) ? [`alias.${p.alias}`] : []
-    let named = false
-    for (const key of [...keys, `alias.${p.alias}.command`]) {
-      const v = await configValue($, dir, key).catch(() => null)
-      if (v === null) unread()
-      if (v !== '') named = true
-      if (!v) continue
-      const text = expand(v, p.rest ?? '')
-      for (const w of hostWrites(text, 'Bash', p.dir, p.configs)) hosts.push({ ...w, otherRepo: w.otherRepo || !!p.otherRepo, staged: w.staged || p.staged })
-      const inner = pushTargets(text, 'Bash', p.dir, p.configs).map(e => (p.otherRepo && e.alias ? { ...e, otherRepo: true } : e))
-      // A -c given with the alias that forces or moves the push holds for its expansion.
-      for (const e of await pushesIn($, inner, hosts, depth + 1)) {
-        found.push({ ...e, force: e.force || p.force, ...(p.remote === null && { remote: null }), staged: e.staged || p.staged, ...(e.bypass && !e.via && { via: p.alias }) })
-      }
-    }
-    if (!named && (await autocorrects($, dir, p.configs ?? []))) unread()
-  }
-  return found
+  if (other) return `${write}, and ${other}.`
+  const push = await pushHold($, dir, 'origin')
+  return push ? `${write}, and it may push the branch: ${push}` : ''
 }
 
 // Each tool that runs a shell command, with the shells its command is read in
@@ -732,167 +617,35 @@ const SHELLS: Record<string, (input: any) => { shells: string[]; dir: Dir }> = {
   mcp__idea__execute_terminal_command: () => ({ shells: ['Bash', 'PowerShell'], dir: null }),
 }
 
-const BYPASS = '-c hook.sessionskills.enabled=false'
-// A directory as it would be typed in a command. Git Bash drops an unquoted
-// backslash, and git reads a Windows path written with slashes.
-function typedDir(dir: string): string {
-  const d = /^[A-Za-z]:\\/.test(dir) ? dir.replace(/\\/g, '/') : dir
-  return /^[\w./:-]+$/.test(d) ? d : `'${d.replace(/'/g, `'\\''`)}'`
-}
-
-// The instruction in a push's refusal: the same push with the bypass, which the
-// user is asked about, with its directory written out.
-function retry(push: Push, dir: string): string {
-  const at = dir ? typedDir(dir) : '<dir>'
-  const run = push.retry ? push.retry.replace(DIR_MARK, () => at) : `git -C ${at} ${BYPASS} push <remote> <src>:<dst>`
-  if (!dir || push.remote === null) return `Write the repo and the remote out, as in \`git -C <dir> push <remote> <src>:<dst>\`, so the push can be read, or, to ask the user, run: ${run}`
-  return `To ask the user, run: ${run}`
-}
-
-// Adds why each push, config write, and host write in a command waits for the
-// user, or, with `refuse`, why it is refused. A held push without the bypass
-// is refused, since the session's pre-push hook would refuse it after an
-// approval, and one with the bypass is asked about whatever the holds.
-async function gate($: any, command: string, shell: string, outer: Dir, add: (reason: string, refuse?: boolean) => void) {
-  const hosts = hostWrites(command, shell, outer)
-  const pushes = (await pushesIn($, pushTargets(command, shell, outer), hosts)).filter(p => !p.dryRun)
-  for (const push of pushes) {
-    let force = push.force
-    let noVerify = !!push.noVerify
-    let submodules = !!push.submodules
-    let why = "the repo it runs in could not be read from the command, so the push waits for the user's go."
-    let dir = ''
-    let remote = push.remote
-    const vague = vagueDir(command, shell)
-    if (push.dir !== null) {
-      try {
-        dir = await where($, push.dir)
-        const config = await pushConfig($, dir, push)
-        submodules = config.submodules
-        if (config.unread) remote = null
-        // A push to this machine adds no force line, by the hook's first rule.
-        if (await localTarget($, dir, remote)) force = noVerify = false
-        else force ||= config.force
-        why = await pushHold($, dir, remote)
-      } catch (err) {
-        why = `the push hold could not be checked: ${(err as Error).message}`
-      }
-    }
-    const reasons: string[] = []
-    if (force) reasons.push('Force push: this replaces commits on the remote branch that a reviewer may already have read.')
-    if (noVerify) reasons.push("No-verify push: `--no-verify` skips every pre-push hook, the session's included.")
-    if (submodules) reasons.push("Push held: it may push submodules to their own remotes, which are not checked, so the push waits for the user's go.")
-    if (why) reasons.push(`Push held: ${why}`)
-    if (push.bypass && !push.via) {
-      add(`Hook bypass: \`${BYPASS}\` turns the session's pre-push hook off for this push, so it waits for the user's go.`)
-      for (const r of reasons) add(r)
-    } else if (reasons.length || push.via) {
-      const alias = push.via ? `The bypass is accepted only on git push itself, not through the alias \`${push.via}\`. ` : ''
-      add(`Push refused: ${alias}${[...reasons, retry({ ...push, remote }, vague ? '' : dir)].join(' ')}`, true)
-    }
-  }
-  for (const what of bypassMisuse(command, shell, outer)) {
-    add(`Push refused: \`${what}\` is given \`${BYPASS}\`, which is accepted only on git push itself, since any other command may push where the command does not show. To ask the user, push with git itself: git -C <dir> ${BYPASS} push <remote> <src>:<dst>`, true)
-  }
-  // The bypass on a push is asked about above.
-  const bypassed = pushes.some(p => p.bypass && !p.via)
-  for (const what of hookWrites(command, shell, outer)) {
-    if (!(bypassed && /^hook\.sessionskills\.enabled$/i.test(what))) add(`Hook setting held: \`${what}\` can turn the session's pre-push hook off or replace it, so it waits for the user's go.`)
-  }
-  // Each of these can move a later push or PR, which the hold reads before it runs.
-  for (const what of configWrites(command, shell, outer)) add(`Config write held: \`${what}\` can change where a push or a PR goes, run one unseen, or lift a hold, so it waits for the user's go.`)
-  for (const w of hosts) {
-    const refused = await hostRefusal($, w, vagueDir(command, shell)).catch(err => {
-      add(`Host write held: the branch push \`${w.what}\` may make could not be checked: ${(err as Error).message}`)
-      return ''
-    })
-    // A quoted variable after --head most likely holds the branch name.
-    if (refused) add(`Host write ${w.headUnread ? 'held' : 'refused'}: ${refused}`, !w.headUnread)
-    const why = await hostHold($, w).catch(err => `the hold on \`${w.what}\` could not be checked: ${(err as Error).message}`)
-    if (why) add(`Host write held: ${why}`)
-  }
-}
-
-// Why a shell tool's input waits for the user (`reasons`) or is refused.
-async function judge($: any, start: (input: any) => { shells: string[]; dir: Dir }, input: any) {
+// Why a shell tool's input waits for the user, by the holds in land-and-wrap
+// §1. A force push waits whatever the holds, since it replaces commits a
+// reviewer may have read.
+async function judge($: any, start: (input: any) => { shells: string[]; dir: Dir }, input: any): Promise<string[]> {
   const reasons: string[] = []
-  const refusals: string[] = []
-  const add = (reason: string, refuse = false) => (refuse ? refusals : reasons).includes(reason) || (refuse ? refusals : reasons).push(reason)
+  const add = (reason: string) => reasons.includes(reason) || reasons.push(reason)
   // The engine skips a hook that throws, and the command would run unasked.
   try {
     const { shells, dir: outer } = start(input)
-    for (const shell of shells) await gate($, String(input.command ?? ''), shell, outer, add)
+    for (const shell of shells) {
+      const { pushes, hosts, configs } = outward(String(input.command ?? ''), shell, outer)
+      for (const p of pushes.filter(p => !p.dryRun)) {
+        if (p.force) add('Force push: this replaces commits on the remote branch that a reviewer may already have read.')
+        const why = p.dir === null ? "the repo it runs in could not be read from the command, so the push waits for the user's go."
+          : await where($, p.dir).then(dir => pushHold($, dir, p.remote)).catch(err => `the push hold could not be checked: ${(err as Error).message}`)
+        if (why) add(`Push held: ${why}`)
+      }
+      for (const w of hosts) {
+        const why = await hostHold($, w).catch(err => `the hold on \`${w.what}\` could not be checked: ${(err as Error).message}`)
+        if (why) add(`Host write held: ${why}`)
+      }
+      for (const c of configs) add(`Config write held: \`${c}\` can lift a hold or change where a push goes, so it waits for the user's go.`)
+    }
   } catch (err) {
     add(`The command could not be checked for a push or a host write: ${(err as Error).message}.`)
   }
-  return { refusals, reasons }
+  return reasons
 }
 
-// The calls the `tool.check` hook decided, and the shell tools a call has run
-// in without it, as under managed settings (docs/DESIGN.md, "Native events only").
-// The skip is per tool, not per session: on one managed machine Bash was
-// checked and PowerShell was not.
-const decided = new Set<string>()
-const skipped = new Set<string>()
-// The other shell tool a retry can go to, suggested only where the other is
-// not itself skipped in this session. On a session where neither has run yet,
-// the suggestion is optimistic: the other tool may still work.
-const OTHER_SHELL: Record<string, string> = { Bash: 'PowerShell', PowerShell: 'Bash' }
-const skippedMessage = (tool: string) => {
-  const other = OTHER_SHELL[tool]
-  const retry = other && !skipped.has(other) ? `Retry through the ${other} tool, where the permission check may still run on this machine; otherwise, get` : 'Get'
-  return `Command refused: session-skills' permission check did not run for an earlier command of this tool in this session, as under managed settings that skip it, so this command cannot be put to the user in a permission prompt. ${retry} the user's go in chat, and the user can run it from a \`!\` prompt.`
-}
-// With no prompt to raise, the auto-mode classifier denies the bypass a push's
-// refusal offers as the way to ask, so it is offered as the command to run instead.
-const unasked = (reason: string) => reason.replace(/([Tt])o ask the user, (?:run|push with git itself):/g, (_, t) => `${t === 'T' ? 'The' : 'the'} command to retry or for the user to run is:`)
-
-// The session's pre-push hook, added to GIT_CONFIG_PARAMETERS for every git
-// the session starts (docs/DESIGN.md, "Pre-push backstop"). '' once it is set, else why not.
-async function installBackstop($: any): Promise<string> {
-  const current = (await $.env.get('GIT_CONFIG_PARAMETERS').catch(() => '')) ?? ''
-  const set = await $.env.set('GIT_CONFIG_PARAMETERS', backstopConfig(current, `${$.plugin.root}/hooks/pre-push.sh`, await recordsPath($))).catch((err: Error) => ({ deny: err.message }))
-  return set?.deny ? `GIT_CONFIG_PARAMETERS could not be set: ${set.deny}` : ''
-}
-
-// Why git in the session's repo will not run the hook, or ''. $.process.run adds
-// hook.pre-push.enabled=false to every git it starts, so the listing turns it
-// back on, and only a setting in a config file counts.
-async function checkBackstop($: any): Promise<string> {
-  const dir = (await $.session.repo().catch(() => null))?.root
-  if (!dir) return ''
-  const list = await git($, dir, '-c', 'hook.pre-push.enabled=true', 'hook', 'list', 'pre-push')
-  if (!list.stdout.split(/\r?\n/).some(l => l.trim() === 'sessionskills')) return `\`git hook list pre-push\` did not list it (${firstLine(list.stderr) || 'git 2.54 or later runs a hook set in config'})`
-  for (const key of ['hook.pre-push.enabled', 'hook.sessionskills.enabled']) {
-    const set = await git($, dir, 'config', '--type=bool', '--show-scope', '--get-all', key)
-    const off = set.stdout.split(/\r?\n/).find(l => /^(?!command\t)\S+\tfalse$/.test(l))
-    if (off) return `${key} is false in the ${off.split('\t')[0]} config`
-  }
-  return ''
-}
-
-// Setup on every event, and the self-check once a session.
-const checked = new Set<string>()
-async function backstop($: any) {
-  try {
-    let why = await installBackstop($)
-    const id = String(await $.session.id().catch(() => ''))
-    if (checked.has(id)) return
-    checked.add(id)
-    // Each URL origin pushes to is looked up once, unawaited, so a push that
-    // only the hook sees in a private session repo is allowed.
-    const main = (await $.session.repo().catch(() => null))?.root
-    if (main && !visibility(await setting($, main, 'originVisibility'))) {
-      void pushUrls($, main, 'origin').then(urls => Promise.all((urls ?? []).filter(u => !localUrl(u, onWindows(main))).map(u => lookUp($, u)))).catch(() => {})
-    }
-    why ||= await checkBackstop($)
-    if (why) $.ui.toast(`session-skills: the pre-push backstop is off, so a push inside another program, such as a release script, is not checked: ${why}.`)
-  } catch {}
-}
-
-// The first line the session's pre-push hook prints when it refuses a push,
-// and git's last line for any push that failed, which a pipe through tail leaves.
-const HOOK_REFUSED = /push refused by the session's pre-push hook|failed to push some refs/
 const NEXT_STEP ='This command pushed work. End the reply with the next step, under the session rules: the hand-off block for the next unit of work, or one line stating that this session carries on with it. When nothing can start yet, write one line on what the next item waits on, then the block for when it can start. When nothing comes next at all, say so in one line.'
 
 const TITLE_RULES: Record<string, string> = { 'claude-desktop': 'title-desktop', cli: 'title-cli' }
@@ -927,7 +680,7 @@ async function head($: any): Promise<string> {
   return Array.isArray(messages) ? JSON.stringify(messages[0] ?? null) : ''
 }
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     await $.tool.register({
       name: 'edit_primary_file',
@@ -944,7 +697,6 @@ export const register: Register = on => {
       isDeferred: false,
     })
     for (const [name, tool] of Object.entries(TOOLS)) await $.tool.register({ name, ...tool, isDeferred: false })
-    await backstop($)
     // The desktop app has a title tool of its own, and a session run with -p has
     // no title to set.
     if ((await $.env.get('CLAUDE_CODE_ENTRYPOINT').catch(() => '')) === 'cli') {
@@ -965,52 +717,33 @@ export const register: Register = on => {
     on('tool.call', { tool }, async ($, e: any, next: any) => {
       const ran = await next(e)
       if (e.agentId || ran.deny !== undefined || (ran as any).isError) return ran
-      // A push that failed pushed nothing, whatever the command's exit code.
-      if (HOOK_REFUSED.test(JSON.stringify(ran.result ?? ''))) return ran
+      // A push that failed pushed nothing, whatever the command's exit code,
+      // and git's last line for it is left by a pipe through tail.
+      if (JSON.stringify(ran.result ?? '').includes('failed to push some refs')) return ran
       let pushed = false
       try {
-        pushed = pushTargets(String(e.command ?? ''), tool).some(p => !p.alias && !p.dryRun)
+        pushed = outward(String(e.command ?? ''), tool).pushes.some(p => !p.dryRun)
       } catch {}
       if (!pushed) return ran
       return { ...ran, context: [...(ran.context ?? []), NEXT_STEP] }
     })
   }
 
-  // A held push is put to the user in the permission prompt, in every mode: a
-  // session that pushed without reading land-and-wrap pushed to this public
-  // repo on 2026-11-06. A force push is put to the user whatever the holds,
-  // since it replaces commits a reviewer may have read. A write to the host
-  // with gh or glab, such as a comment or a merge, is put to the user too. Where
-  // nobody can be asked, the command is refused. A subagent's is held too.
-  for (const [tool, start] of Object.entries(SHELLS)) {
-    on('tool.check', { tool }, async ($, e: any, next: any) => {
-      const verdict = await next(e)
-      if (verdict.decision === 'deny') return verdict
-      const { refusals, reasons } = await judge($, start, e.input ?? {})
-      if (e.tool_use_id) decided.add(e.tool_use_id)
-      // The reasons to ask go with a refusal, since the command run instead meets them.
-      if (refusals.length) return { decision: 'deny', reason: [...refusals, ...reasons].join(' ') }
-      return reasons.length ? { decision: 'ask', reason: reasons.join(' ') } : verdict
-    })
-
-    // Under managed settings `cc-plugin-sec-default` may send the hook above
-    // past this plugin, and nothing is asked. It fires inside this hook's
-    // `next`, just before the tool runs, so what it would refuse is refused
-    // here first, and a skip is learned from a call that ran. Later calls of
-    // the tool are refused where that hook would have asked.
-    // shortcut: a held command is judged here and again in tool.check; pass the verdict by tool_use_id if the second read is seen to slow a push.
-    on('tool.call', { tool }, async ($, e: any, next: any) => {
-      const { refusals, reasons } = await judge($, start, e)
-      const skip = skipped.has(tool)
-      if (refusals.length || (skip && reasons.length)) return { deny: [...(skip ? [skippedMessage(tool)] : []), ...refusals, ...reasons].map(r => (skip ? unasked(r) : r)).join(' ') }
-      const ran = await next(e)
-      const id = e.tool_use_id
-      if (!id) return ran
-      if (decided.delete(id)) skipped.delete(tool)
-      // A call that failed reached the tool: a command that exits non-zero is an error result.
-      else if (ran.deny === undefined) skipped.add(tool)
-      return ran
-    })
+  // A held push, a force push, and a write to the host with gh or glab are put
+  // to the user in the permission prompt, in every mode: a session that pushed
+  // without reading land-and-wrap pushed to this public repo on 2026-11-06. A
+  // subagent's is held too. Under managed settings `cc-plugin-sec-default` may
+  // skip this hook and warn about it, so it can be turned off there with the option
+  // (docs/DESIGN.md, "Managed machines").
+  if (options.askBeforeOutwardWrites !== false) {
+    for (const [tool, start] of Object.entries(SHELLS)) {
+      on('tool.check', { tool }, async ($, e: any, next: any) => {
+        const verdict = await next(e)
+        if (verdict.decision === 'deny') return verdict
+        const reasons = await judge($, start, e.input ?? {})
+        return reasons.length ? { decision: 'ask', reason: reasons.join(' ') } : verdict
+      })
+    }
   }
 
   // A title set in a turn is applied when the turn ends, since /rename waits for
@@ -1037,7 +770,6 @@ export const register: Register = on => {
   // The rules go with the first prompt, and again once the model no longer
   // reads them. A fork starts with its parent's context, where they already are.
   on('prompt.submit', async ($, e: any, next: any) => {
-    await backstop($)
     const rules = await readRules($)
     return next(rules && !(await isRead($, rules)) ? { ...e, context: [...(e.context ?? []), rules] } : e)
   })

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Every check that needs no model call: each plugin's `claude plugin test` suite and shell tests,
+# Every check that needs no model call: each plugin's `claude plugin test` suite,
 # the eval regex graders against known texts, `claude plugin validate` on each plugin, Confer's
 # typecheck, and each marketplace.json entry's tag and commit.
 # Needs `claude` and `node` on the PATH.
@@ -14,16 +14,6 @@ for hooks in plugins/*/hooks/hooks.json; do
   else
     printf '%s\n' "$out"
     echo "FAIL  $plugin"
-    failed=1
-  fi
-done
-
-for t in plugins/*/hooks/*.test.sh; do
-  if out=$(sh "$t" 2>&1); then
-    echo "ok    $t: $(printf '%s\n' "$out" | tail -1)"
-  else
-    printf '%s\n' "$out"
-    echo "FAIL  $t"
     failed=1
   fi
 done
