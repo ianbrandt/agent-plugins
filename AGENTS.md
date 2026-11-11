@@ -15,12 +15,6 @@ the results. A results item: an analysis-form title ("Analyze the …
 results") and sections for what matched, what differed, and what is
 still open.
 
-## Push after each closeout commit on `main`
-
-A closeout commit on `main` is pushed to `origin` before the session
-ends, so the other machine can pull. An unpushed commit is invisible to
-the other machine until pushed from this one.
-
 ## Clean up scratch probe directories
 
 Scratch directories written under `$env:TEMP` (`backstopprobe`,
