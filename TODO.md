@@ -93,104 +93,36 @@ Replace this item with an "Analyze the Codex read-only sandbox results" item: th
 features from step 1, and for each run, Codex's report of each command, any error text, and the
 `Test-Path` output. Then push.
 
-## Check per-clone push rules on the managed Windows CLI
+## Analyze the push rule results
 
-In auto mode a `git push` is allowed by default, and on 2026-11-11 a push to `main` ran on the
-Windows machine without the `session-skills` 0.29.0 prompt. The planned replacement is a set of
-`permissions.ask` rules in the clone's `.claude/settings.local.json`, with no hook involved. Check
-three things there: whether those rules are applied under managed settings, which file is read by a
-session started in a worktree, and why the 0.29.0 prompt was missed. Every push in these steps goes
-to a bare repository in a scratch folder, or to a host that does not exist.
+- `claude --version`: `2.1.322 (Claude Code)`.
+- session-skills 0.29.0 is installed under the user scope.
+- `cc-plugin-sec-default@builtin seated outermost: this machine has managed settings`.
 
-On the Windows machine, in PowerShell 7, with `session-skills` 0.29.0 installed and its
-`askBeforeOutwardWrites` option on:
+Step 3, no rules: `b1: PUSHED`.
 
-1. Record the versions, and whether `cc-plugin-sec-default` is active:
+Step 4, push to the `held` remote. The reply reported that the push ran and exited 128 with
+`fatal: unable to access 'https://git.invalid/probe/held.git/': Could not resolve host: git.invalid`.
+Only `cc-plugin-sec-default` and `cc-plugin-privacy` ran `tool.check` on that push; session-skills
+did not. `askBeforeOutwardWrites` is `false` in `C:\Dev\.claude\settings.json`, which is the
+recommended setting on a machine with managed settings, per the option's description. That is why
+the prompt was missed on 2026-11-11.
 
-   ```powershell
-   claude --version
-   claude plugin list | Select-String -SimpleMatch -Context 0,2 ' session-skills@'
-   $d = (Join-Path $env:TEMP pushrulesprobe).Replace('\', '/')
-   Remove-Item -Recurse -Force $d -ErrorAction Ignore; New-Item -ItemType Directory $d | Out-Null
-   $null | claude -p 'Reply with ok.' --debug-file "$d/seat.log" | Out-Null
-   (Select-String -Path "$d/seat.log" -Pattern 'sec-default').Line
-   ```
+Step 5, rules written to the main checkout:
 
-2. Set up a clone with a local remote, a worktree, and six unpushed branches. `Push-Probe` runs one
-   push in a headless auto mode session, then prints whether the branch arrived:
+- `b2: not pushed`
+- `b3: not pushed`
 
-   ```powershell
-   git init -q --bare -b main "$d/remote.git"
-   git init -q -b main "$d/clone"; Set-Location "$d/clone"
-   git config user.name probe; git config user.email probe@example.invalid
-   Set-Content .gitignore '.claude/'; git add .gitignore; git commit -q -m First
-   git remote add origin "$d/remote.git"; git push -q -u origin main
-   git remote add held https://git.invalid/probe/held.git
-   Set-Content note.txt probe; git add note.txt; git commit -q -m 'Add note'
-   'b1', 'b2', 'b3', 'b4', 'b5', 'b6' | ForEach-Object { git branch $_ }
-   git worktree add -q -b wt "$d/clone/.claude/worktrees/wt"
-   function Push-Probe($dir, $branch, $command) {
-     Push-Location $dir
-     $null | claude -p "Run this exact command as one shell call and report what happened: $command" --permission-mode auto --debug-file "$d/$branch.log" > "$d/$branch.txt"
-     Pop-Location
-     $arrived = git -C "$d/remote.git" branch --list $branch
-     '{0}: {1}' -f $branch, $(if ($arrived) { 'PUSHED' } else { 'not pushed' })
-   }
-   ```
+Step 6, session started in the worktree:
 
-3. Push with no rules. `b1: PUSHED` is expected. If `not pushed` is printed, auto mode may be turned
-   off on this machine. In that case keep `$d/b1.txt` for the results, and go to step 8.
+- `b4: PUSHED`, with no file in the worktree
+- `b5: not pushed`, after a copy of the file into the worktree
 
-   ```powershell
-   Push-Probe "$d/clone" b1 'git push origin b1'
-   ```
+Step 7: `notices in the logs: 0`.
 
-4. Push to a remote of unknown visibility. With 0.29.0 installed, a prompt is expected for this
-   push. On macOS the call is denied before git runs. If the reply includes
-   `Could not resolve host`, the push ran unasked. If `tool.check` is not among the events on the
-   `session-skills` line, the option is off on this machine.
+Conclusions from the three checks:
 
-   ```powershell
-   $null | claude -p 'Run this exact command as one shell call and report what happened: git push held b6' --permission-mode auto --debug-file "$d/held.log" > "$d/held.txt"
-   Get-Content "$d/held.txt"
-   (Select-String -Path "$d/held.log" -Pattern 'tool\.check|tried to|passed over|hooks? .{0,40}(skipped|failed)').Line
-   ```
-
-5. Add the rules to the main checkout, and push from it in both forms. `b2: not pushed` and
-   `b3: not pushed` are expected:
-
-   ```powershell
-   $ask = 'git push *', 'git -C * push *' | ForEach-Object { "Bash($_)"; "PowerShell($_)" }
-   @{ permissions = @{ ask = @($ask) } } | ConvertTo-Json -Depth 3 | Set-Content "$d/clone/.claude/settings.local.json"
-   Push-Probe "$d/clone" b2 'git push origin b2'
-   Push-Probe "$d/clone" b3 "git -C '$d/clone/.claude/worktrees/wt' push origin b3"
-   ```
-
-6. Push from a session started in the worktree. Per the Claude Code docs, a session in a worktree on
-   Windows does not read the main checkout's file, so `b4: PUSHED` is expected. `b5: not pushed` is
-   expected once the worktree has a copy of the file:
-
-   ```powershell
-   Push-Probe "$d/clone/.claude/worktrees/wt" b4 'git push origin b4'
-   New-Item -ItemType Directory "$d/clone/.claude/worktrees/wt/.claude" | Out-Null
-   Copy-Item "$d/clone/.claude/settings.local.json" "$d/clone/.claude/worktrees/wt/.claude/"
-   Push-Probe "$d/clone/.claude/worktrees/wt" b5 'git push origin b5'
-   ```
-
-7. Count the log lines of the five runs that report a hook as skipped, failed, or passed over.
-   `notices in the logs: 0` is printed on macOS:
-
-   ```powershell
-   $notices = @(Select-String -Path "$d/b*.log" -Pattern 'tried to|passed over|hooks? .{0,40}(skipped|failed)')
-   'notices in the logs: {0}' -f $notices.Count
-   $notices.Line
-   ```
-
-8. Remove the scratch folder:
-
-   ```powershell
-   Set-Location $env:TEMP; Remove-Item -Recurse -Force $d
-   ```
-
-Replace this item with an "Analyze the push rule results" item. Include the output of steps 1 and 3
-to 7 as printed. Commit it, and ask before pushing.
+- The `permissions.ask` rules are applied under managed settings.
+- A session started in a worktree reads only the worktree's own `.claude/settings.local.json`, not
+  the main checkout's file. Each worktree needs its own copy for the rules to hold.
+- The 0.29.0 prompt was missed because `askBeforeOutwardWrites` is turned off on this machine.
