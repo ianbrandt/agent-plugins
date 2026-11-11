@@ -171,11 +171,25 @@ test('an unclosed quote fails the choice', async ($) => {
 })
 
 test('no question is asked when arguments set both sides or the tier', async ($, on) => {
+  mock.env(on, {})
+  serve(on)
   const asked = answer(on, 'Routine')
 
-  await choose($, { isSure: false, args: '--claude-effort low --codex-model bedrock-gpt-6.1-sol' })
-  await choose($, { isSure: false, args: '--tier critical' })
+  const first = (await choose($, { isSure: false, args: '--claude-effort low --codex-model bedrock-gpt-6.1-sol' })) as TierChoice
+  const second = (await choose($, { isSure: false, args: '--tier critical' })) as TierChoice
 
+  expect(first).toEqual({
+    tier: 'complex',
+    claude: { model: 'opus', effort: 'low' },
+    codex: { model: 'bedrock-gpt-6.1-sol', effort: 'xhigh' },
+    args: [],
+  })
+  expect(second).toEqual({
+    tier: 'critical',
+    claude: { model: 'fable', effort: 'high' },
+    codex: { model: 'gpt-6-astra', effort: 'high' },
+    args: [],
+  })
   expect(asked).toEqual([])
 })
 
