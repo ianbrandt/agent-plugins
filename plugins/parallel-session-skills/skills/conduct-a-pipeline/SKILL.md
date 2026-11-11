@@ -31,13 +31,13 @@ an ordered list of workable units and records each one done in its own form; thi
 many run at once, what happens when one fails, and when to stop. With no backlog plugin, the user
 supplies the list up front and the conductor runs it dry.
 
-How a completed unit is **processed** follows `land-and-wrap` §1: fork-ness, the landing mode,
-`origin`'s visibility, and the per-clone holds. In `merge` mode each unit lands serially on the
-default branch: rebase, mandatory build, fast-forward, and a push unless it is held (§2a). In `pr`
-mode each unit's branch is rebased, built, and pushed under the same rule, and its PR text waits in
-a local file for the user's go (§2b). On a fork, each unit is staged locally and **nothing is written
-to the remote host** unless the user lifted the fork hold (§2c). Only `merge` units serialize, since
-only they move a shared branch.
+How a completed unit is **processed** follows `land-and-wrap` §1: fork-ness, the landing mode, the
+push mode, and the post mode. A conductor run is unattended, so in a confirm mode it attempts no
+push and no post. In `merge` mode each unit lands serially on the default branch: rebase, mandatory
+build, fast-forward, and a push in `auto-push` only (§2a). In `pr` mode each unit's branch is
+rebased, built, and pushed under the same rule, and its PR text is written to a local file (§2b).
+On a fork, each unit is processed like `pr` mode, against `upstream` (§2c). Only `merge` units
+serialize, since only they move a shared branch.
 
 ## 0. Arguments
 
@@ -55,9 +55,9 @@ the run-state file and the PR draft files excepted. **It reaches a lane only by 
 conductor's Bash call moved the session's working directory into that lane. Get the candidate list from the backlog; if it
 is empty, stop. Run the hygiene pass once—`work-in-worktree` §4's prune, then `claim-a-lane` §2's dead-claim reap. Then:
 
-- **Read how units land** with `land-and-wrap` §1's commands: fork-ness, visibility, the landing
-  mode, and the holds. For a value still unknown, skip the question to the user and take that
-  section's default, since nobody is there to answer. An unknown mode means §2a with the push held.
+- **Read how units land** with `mcp__session-skills__landing_facts` (`land-and-wrap` §1): fork-ness,
+  the landing mode, the push mode, and the post mode. For a landing mode still unknown, skip the
+  question to the user, since nobody is there to answer: take §2a and push nothing.
 - **Create the run-state file** `.claude/pipeline-run.json`—git-ignored where the backlog is tracked,
   git-excluded where it isn't, and deliberately NOT under `.claude/claims/`, where the hygiene reaper
   would parse it as a claim and delete it. Per-unit `{status, worktree, branch, taskId, attempts,
@@ -128,10 +128,9 @@ Workflow: the conductor does them inline in the worktree and processes them in t
 - no `git push` even to a scratch test repo, since every push raises a permission prompt the user
   cannot tell apart from a real one; update a scratch bare `origin` from its side instead (`git -C
   origin.git fetch <checkout> <branch>:<branch>`, or `git -C origin.git branch -D <branch>`);
-- **[on a fork only] NO writes of any kind to the remote host** (GitHub, GitLab, Bitbucket, or
-  any other)—no push even to the fork, no issues, comments, PRs, or merge requests, no write
-  commands from a host CLI (`gh`, `glab`, or another); draft any outreach text as local files for
-  the user to post;
+- NO writes of any kind to the remote host (GitHub, GitLab, Bitbucket, or any other)—no issues,
+  comments, PRs, or merge requests, no write commands from a host CLI (`gh`, `glab`, or another);
+  draft any outreach text as local files for the conductor to process;
 - repo conventions apply: test-first, in whatever style guide the repo or the backlog plugin
   supplies, pasted verbatim rather than referenced; delete agent artifacts (think-aloud comments,
   banners, mismatched test names)—cleanup is part of the work, not a later pass;
@@ -190,12 +189,11 @@ Per `land-and-wrap` §2 `merge`, with these unattended deviations:
 - Fast-forward-merge from the main checkout. On `--ff-only` refusal—a human session landed inside
   your rebase→build window—**re-rebase onto the moved branch and retry, bounded (3 attempts)**; never
   relax `--ff-only`.
-- **Push** where `origin` is private or the user lifted the public-push hold, and never with the
-  landing mode unknown. Otherwise keep landing each unit on the local default branch and present
-  the accumulated unpushed range (`origin/$DEFAULT..$DEFAULT`) at stop for the user's
-  review-then-push. Then delete the claim; remove the worktree and branch; update the run-state file.
+- **Push** in `auto-push`, and never with the landing mode unknown. In `confirm-push` keep landing
+  each unit on the local default branch, attempt no push, and present the accumulated unpushed
+  range (`origin/$DEFAULT..$DEFAULT`) at stop, for the user to push. Then delete the claim; remove the worktree and branch; update the run-state file.
 
-### 2b. `pr`—push each branch, and leave its PR text for the user
+### 2b. `pr`—push each branch in `auto-push`, and write its PR text to a file
 
 Per `land-and-wrap` §2 `pr`, with these unattended deviations. No shared branch moves, so units do
 NOT serialize:
@@ -205,27 +203,27 @@ NOT serialize:
   outside the tree, record the unit as in review once it passes the build gate, so a declined PR
   leaves it open.
 - **Build gate** (step 3), on the rebased branch.
-- **Push the branch** where `origin` is private or the user lifted the public-push hold. Otherwise
-  leave it unpushed for the wrap-up.
+- **Push the branch** in `auto-push`. In `confirm-push` leave it unpushed for the wrap-up.
 - **Write the PR title and body**, in the repo's PR style, to `<id>-pr-draft.md` in the repo's notes
   directory, or `.claude/pr-drafts/` where the repo has none (git-ignored or git-excluded like the
-  run-state file), with the create link from the push's `remote:` lines where there is one. The text
-  waits for the user's go: open the PR (`land-and-wrap` §2 `pr` step 6) only where the user set
-  `holdPrText` to `false` and the branch was pushed.
+  run-state file), with the create link from the push's `remote:` lines where there is one. Open
+  the PR (`land-and-wrap` §2 `pr` step 6) only in `auto-post`, and only where the branch was
+  pushed. In `confirm-post` the file is where the text is left for the user.
 - **Leave the worktree + branch in place** until the PR merges. Delete the claim; update the
   run-state file (`staged`, not `landed`).
 
-### 2c. A fork—stage locally, nothing to the remote host
+### 2c. A fork—a branch for a pull request against `upstream`
 
-Per `land-and-wrap` §3. There is no shared branch, so units do NOT serialize. Where the user lifted
-the fork hold, process the unit by §2b instead, against `upstream` per `land-and-wrap` §3.
+Per `land-and-wrap` §3. There is no shared branch, so units do NOT serialize. Process the unit by
+§2b, rebased onto `upstream/$DEFAULT`, with two differences: nothing is pushed to `upstream`, and
+no PR, issue, or comment is posted, since a fork is always `confirm-post`.
 
-- Keep the squashed atomic commits **on the unit's branch**; do not merge or push them.
+- Keep the squashed atomic commits **on the unit's branch**; do not merge them.
 - **Build gate** (step 3) before recording it done. A red unit is not "done".
 - Record it done in the backlog, with a note of how far it got. Draft any issue, comment, or PR text
   as local files under the repo's notes directory, or `.claude/pr-drafts/` where it has none.
-- **Leave the worktree + branch in place** for the user to review and sync. Delete the claim; update
-  the run-state file (`staged`, not `landed`).
+- **Leave the worktree + branch in place** until the PR merges. Delete the claim; update the
+  run-state file (`staged`, not `landed`).
 
 5. **Post-completion premise check:** `plan_invalidating` is self-reported and an agent can miss
    it—if the completed unit's diff touched a shared seam that in-flight or queued units build on, or
@@ -260,10 +258,10 @@ On stop: finalize the run-state file, send a PushNotification (one line—units 
 reason), then a full wrap-up per `land-and-wrap` §4:
 
 - landed and staged units with SHAs;
-- after §2a with the push held, the unpushed `origin/$DEFAULT..$DEFAULT` range awaiting
-  review-then-push;
+- after §2a in `confirm-push`, the unpushed `origin/$DEFAULT..$DEFAULT` range, for the user to
+  push;
 - after §2b, each branch with its PR text file (`<id>-pr-draft.md` in the notes directory, or
-  `.claude/pr-drafts/`) or opened PR, and for a held push its `origin/$DEFAULT..<branch>` range;
+  `.claude/pr-drafts/`) or opened PR, and for an unpushed branch its `origin/$DEFAULT..<branch>` range;
 - after §2c, the branch names to sync;
 - flagged units with why, what the backlog has left, and a recommendation for the next attended
   session.

@@ -27,7 +27,6 @@ git remote add origin "$D/origin.git"
 git fetch -q origin
 git remote set-head origin main
 git branch -q --set-upstream-to=origin/main main
-git config session-skills.originVisibility public
 git config session-skills.landing merge
 mkdir notes.local
 : > ROADMAP-CHANGELOG.local.md

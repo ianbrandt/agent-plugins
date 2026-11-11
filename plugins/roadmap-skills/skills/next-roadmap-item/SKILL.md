@@ -74,8 +74,8 @@ shared plan, not per-worktree copies. `work-in-worktree` has the mechanics for e
 primary-checkout file from a worktree session.
 
 **This is not the same question as how work lands.** That is determined from the repo, as
-described in `land-and-wrap` §1: fork-ness, the landing mode, `origin`'s visibility, and the
-per-clone holds. Work in a repo you own lands in its default branch even when the roadmap is
+described in `land-and-wrap` §1: fork-ness, the landing mode, and the per-clone push
+and post modes. Work in a repo you own lands in its default branch even when the roadmap is
 local-only.
 
 ## 2. Get into a lane
@@ -314,8 +314,8 @@ tracked family. Ambiguous, ask.
    - a one-line banner: local-only, excluded via `.git/info/exclude`, never commit or push;
    - a **forward-only** note pointing landed work at `ROADMAP-CHANGELOG.local.md`;
    - the fork and upstream remote names;
-   - the **binding guardrails**: `land-and-wrap`'s no-remote-host-writes rule verbatim, and which
-     items require the user present;
+   - the **binding guardrails**: nothing is pushed to `upstream`, every post there is confirmed by
+     the user (`land-and-wrap` §3), and which items require the user present;
    - a **House style** section distilled from the project's `CONTRIBUTING`, `.editorconfig`, and a
      read of neighboring source—mechanical gate command, comment conventions, test framework and
      naming, commit-message convention, **branch-naming convention** (read recent branch and
