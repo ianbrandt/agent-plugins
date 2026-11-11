@@ -68,10 +68,12 @@ export async function chooseTier($: EngineInterface, request: TierRequest, codex
   const pin = async (side: Side): Promise<Side> => ({ model: (await readPin($, side.model)) ?? side.model, effort: side.effort })
   const pickedPinned = await pin(picked)
   const fallbackPinned = fallback === undefined ? undefined : await pin(fallback)
-  const claude = fallbackPinned !== undefined && set['--claude-model'] === undefined && !(await isServed($, pickedPinned.model)) ? fallbackPinned : pickedPinned
+  const override = set['--claude-model']
+  const overridePinned = override === undefined ? undefined : (await readPin($, override)) ?? override
+  const claude = fallbackPinned !== undefined && override === undefined && !(await isServed($, pickedPinned.model)) ? fallbackPinned : pickedPinned
   return {
     tier,
-    claude: { model: set['--claude-model'] ?? claude.model, effort: (set['--claude-effort'] as ModelEffort) ?? claude.effort },
+    claude: { model: overridePinned ?? claude.model, effort: (set['--claude-effort'] as ModelEffort) ?? claude.effort },
     codex: { model: set['--codex-model'] ?? codexModels[tier], effort: (set['--codex-effort'] as ModelEffort) ?? codexEffort },
     args: rest,
   }

@@ -202,6 +202,16 @@ test('an ANTHROPIC_DEFAULT_*_MODEL env var pins the alias to the id the main ses
   expect(choice.claude).toEqual({ model: 'bedrock-claude-sonnet-5-5[1m]', effort: 'high' })
 })
 
+test('an alias passed as --claude-model is pinned through the env var too', async ($, on) => {
+  const checked = serve(on)
+  on('env.get', (_, e) => ({ value: e.name === 'ANTHROPIC_DEFAULT_OPUS_MODEL' ? 'bedrock-claude-opus-5-5' : undefined }))
+
+  const choice = (await choose($, { args: '--tier critical --claude-model opus' })) as TierChoice
+
+  expect(choice.claude).toEqual({ model: 'bedrock-claude-opus-5-5', effort: 'high' })
+  expect(checked).toEqual([])
+})
+
 test('a bad argument fails the choice', async ($) => {
   expect(await choose($, { args: '--claude-effort extra' })).toBe('Error: --claude-effort takes low, medium, high, xhigh, or max, not "extra".')
   expect(await choose($, { args: '--tier' })).toBe('Error: --tier needs a value.')
