@@ -482,7 +482,10 @@ async function setPushPolicy($: any, e: any): Promise<string> {
     if (answer !== 'Switch') return ['The user kept the modes as they are.', ...modeLines(now)].join('\n')
   }
   for (const [key, mode] of wanted) await must($, main, 'config', `session-skills.${key}`, mode)
-  const written = await writeRules($, main, (await worktrees($, main)).map(w => w.path), true)
+  // A worktree whose directory was deleted is still listed until it is pruned.
+  const dirs: string[] = []
+  for (const w of await worktrees($, main)) if (await $.fs.exists(w.path)) dirs.push(w.path)
+  const written = await writeRules($, main, dirs, true)
   return [...modeLines(await readModes($, main)), ...written.map(path => `rules written: ${path}`)].join('\n')
 }
 

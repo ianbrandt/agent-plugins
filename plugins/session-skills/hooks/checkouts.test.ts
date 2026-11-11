@@ -571,8 +571,8 @@ test('rules are added to a settings file beside what it has, and taken out witho
 const LOCAL = '/repo/.claude/settings.local.json'
 const WT_LOCAL = '/repo/.claude/worktrees/r1-a/.claude/settings.local.json'
 function clone(on: any, config: Record<string, string>, files: Record<string, string> = {}, upstream = false, ignored = false) {
-  const w = { files, asked: [] as string[], answer: 'Switch' as string | null, toasts: [] as string[] }
-  on('fs.exists', (_$: any, e: any) => ({ value: e.path in files }))
+  const w = { files, asked: [] as string[], answer: 'Switch' as string | null, toasts: [] as string[], gone: '' }
+  on('fs.exists', (_$: any, e: any) => ({ value: e.path in files || (!e.path.endsWith('.json') && e.path !== w.gone) }))
   on('fs.read', (_$: any, e: any) => {
     if (!(e.path in files)) throw new Error('ENOENT')
     return { value: files[e.path] }
@@ -695,6 +695,11 @@ test('set_push_policy asks before a switch to an auto mode, then takes its rules
   await call($, 'set_push_policy', { push: 'confirm-push' })
   expect(w.asked).toHaveLength(1)
   expect(asks(w.files[WT_LOCAL])).toEqual([...POST_RULES, ...PUSH_RULES])
+  // Nothing is written into a worktree whose directory is gone.
+  delete w.files[WT_LOCAL]
+  w.gone = '/repo/.claude/worktrees/r1-a'
+  await call($, 'set_push_policy', { post: 'confirm-post' })
+  expect(w.files[WT_LOCAL]).toBeUndefined()
 })
 
 test('set_push_policy changes nothing when the user keeps the mode, when nobody can be asked, or for a value that is no mode', async ($: any, on: any) => {
