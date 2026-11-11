@@ -30,17 +30,20 @@ host squashed or rebased on merge, deleted only when their content is on the def
 
 ### `land-and-wrap`
 
-How work leaves a worktree, decided by facts read off the repo instead of a mode declared in a
-file. An `upstream` remote means the repo is a fork of someone else's project: the work is never
-merged or pushed, and nothing is written to the remote host, whether GitHub, GitLab, or Bitbucket.
-Issue and PR text is drafted as local files for the user to post. No `upstream` means the repo is
-the user's. Work then fast-forwards into the default branch, or, where the default branch is
-protected, is pushed as a branch with a pull request that is opened only after the user's go on its
-title and body. The push depends on `origin`'s visibility, going out when private and waiting for
-the user's explicit go when public. Visibility and landing mode are each read from a per-clone
-`git config` value, with `gh` as a shortcut for both and `glab` for visibility, and the user is
-asked once when none of them returns a value. The fork hold, the public-push hold, and the wait on
-PR text each have a per-clone `git config` override that only the user sets.
+How work leaves a worktree, decided by facts read off the clone instead of a mode declared in a
+file in the tree. With no `upstream` remote the repo is the user's: work fast-forwards into the
+default branch, or, where the default branch is protected, is pushed as a branch with a pull
+request. An `upstream` remote means the repo is a fork of someone else's project, and the work
+lands as a pull request against `upstream`.
+
+Each clone has a push mode and a post mode, and both are the user's choice, whatever the repo's
+visibility. In `confirm-push`, the default, every `git push` raises a permission prompt, in every
+permission mode, after the commit range is shown in the reply. In `auto-push` a push runs unasked.
+`confirm-post` and `auto-post` are the same for a PR, an issue, a comment, or a release written
+with `gh` or `glab`, and a fork is always `confirm-post`. In an unattended run, work in a confirm
+mode is left as local commits and draft files. To switch a clone, ask the session, for example
+"switch this clone to auto-push": the `set_push_policy` tool asks for confirmation and writes the
+mode.
 
 None of these facts depends on the backlog, so a repo you own with an untracked, local-only roadmap
 needs no special case.
@@ -66,13 +69,14 @@ in the marketplace's README.
 
 ## How it is wired
 
-The skills call six tools that the plugin registers as `mcp__session-skills__<tool>`, and the session
+The skills call seven tools that the plugin registers as `mcp__session-skills__<tool>`, and the session
 rules in [`hooks/rules.md`](hooks/rules.md) are added to the first prompt, and again after
-`/clear` and compaction. A force push, a push that a hold in `land-and-wrap` applies to, and a
-write to the host through `gh` or `glab`, such as a comment or a merge, are put to the user in the
-permission prompt, in any permission mode. On a machine with managed settings, where that prompt is
-skipped with a warning, turn off "Ask before a push or a GitHub or GitLab write" in `/config` and
-have an admin hold pushes with an auto mode rule instead. The result of a `git push` includes a request for the
+`/clear` and compaction. The push and post modes are kept in per-clone `git config`, as
+`session-skills.pushMode` and `session-skills.postMode`. For a confirm mode the plugin writes
+`permissions.ask` rules to `.claude/settings.local.json` in the primary checkout and each worktree,
+which also works under managed settings. A push inside a script or an alias matches no rule. A
+`claude -p` session applies a rules file written at its own start only from the next session.
+The result of a `git push` includes a request for the
 next step, so the reply is written with it in view. In the terminal the session title is set with `/rename` when the
 turn ends, and that command shows as one line. Claude Code
 2.1.314 or later is required. [DESIGN.md](docs/DESIGN.md) covers each tool, how the session title is
@@ -81,19 +85,21 @@ set, and why the rules are loaded by a hook.
 ## Measuring it
 
 [`evals/`](evals/) is a `claude plugin eval` suite of seven chat cases: how work lands in a fork, a
-public repo, a pull-request repo, and a repo of unknown visibility, a handoff after a landed unit, no
-handoff mid-unit, and the session title block. Run it from the plugin directory:
+`confirm-push` clone, an `auto-push` clone, and a pull-request repo, a handoff after a landed unit,
+no handoff mid-unit, and the session title block. Run it from the plugin directory:
 
 ```bash
 claude plugin eval . --runs 4 --judge-model sonnet --no-publish -j 4
 ```
 
-On 2026-10-08, with four runs per case, the plugin scored 1.00 and no plugin 0.43, a gap of +0.57.
-Four cases scored 0.00 without the plugin and 1.00 with it: the handoff after a landed unit, the
-public-repo and pull-request landing cases, and the session title. The other three scored 1.00 in
-both arms: the fork and unknown-visibility landing cases, and no handoff mid-unit. Those three guard
-against the plugin making an agent act where it should hold, and they measure nothing about the
-plugin's gain. The run cost $5.70 and took 209 seconds.
+On 2026-11-11, with four runs per case, the plugin scored 1.00 and no plugin 0.46, a gap of +0.54.
+Four cases scored higher with the plugin: the handoff after a landed unit, the `confirm-push`
+landing case, and the session title, each 0.00 without it, and the `auto-push` landing case, 0.25
+without it. The other three scored 1.00 in both arms: the fork and pull-request landing cases, and
+no handoff mid-unit. Those three guard against the plugin making an agent post or stop where it
+should not, and they measure nothing about the plugin's gain. The run cost $6.03 and took 212
+seconds. The `auto-push` case scored 0.50 in that run and was run again after its grader was
+changed to judge the push step and not a closing offer to carry out the plan.
 
 ## Platform
 

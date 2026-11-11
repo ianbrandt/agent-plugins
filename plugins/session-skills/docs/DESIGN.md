@@ -4,8 +4,8 @@ How the plugin is wired, for anyone changing it. The [README](../README.md) cove
 
 ## Tools and session rules
 
-One hooks module, `hooks/register.ts`, which is a Claude Code mod and needs Claude Code 2.1.314 or
-later, the oldest build checked for `tool.check`. It registers six tools, named
+One hooks module, `hooks/register.ts`, which is a Claude Code mod. It was run on Claude Code
+2.1.314 and later, and on nothing older. It registers seven tools, named
 `mcp__session-skills__<tool>`, and the skills call them where they once had bash to adapt:
 
 - `find_checkouts` fetches, then returns the primary checkout, the default branch, the ref a new
@@ -18,8 +18,10 @@ later, the oldest build checked for `tool.check`. It registers six tools, named
   worktree's directory where it is still on disk, as it is on Windows. A path outside
   `.claude/worktrees` is refused, and a path already unregistered is a no-op (§4, and
   `land-and-wrap` §2).
-- `landing_facts` returns whether the repo is a fork, `origin`'s visibility, the landing mode, and
-  the holds the user lifted (`land-and-wrap` §1).
+- `landing_facts` returns whether the repo is a fork, the push mode, the post mode, and the landing
+  mode (`land-and-wrap` §1).
+- `set_push_policy` sets the push mode, the post mode, or both, and writes the permission rules
+  for them (see "Push and post modes").
 - `edit_primary_file` edits a file that is only in the primary checkout, such as an untracked
   roadmap: one passage is replaced, or text is appended, and nothing is written when the passage
   has drifted.
@@ -32,11 +34,12 @@ transcript, and the next turn gets a reminder that the user named the session. N
 tool, and the model prints a `/rename` block instead.
 
 `hooks/checkouts.test.ts` and `hooks/register.test.ts` run under `claude plugin test`. The
-tool definitions are in every session's context, at roughly 600 tokens by estimate for the six.
+tool definitions are in every session's context, at roughly 1,150 tokens for the seven, counted as
+four characters to a token.
 
 The module adds `hooks/rules.md` to the first prompt of every session, and again to a prompt or
 a tool result once the model no longer reads it: after `/clear`, a compaction, or a plugin update
-that changed the text. A fork starts with its parent's context, where the rules already are. That file has three rules that cannot go in a skill. One is the session title, given
+that changed the text. A fork starts with its parent's context, where the rules already are. That file has four rules that cannot go in a skill. One is the session title, given
 once the subject of the session is known and again when a better one fits. How the title is set
 differs by surface, so `{{title}}` in `rules.md` is replaced with one of two files, chosen by
 `CLAUDE_CODE_ENTRYPOINT`: `title-desktop.md` for the desktop app's tool, and `title-print.md`
@@ -46,7 +49,8 @@ weigh continuing this session against handing off to a fresh one without writing
 and end a turn that closed a unit with the outcome: a hand-off block, a line that this session goes
 on, or a line on what the next item waits on. The third applies whenever something out of scope turns up: raise it in the reply, write it
 into the repo's backlog where it should outlive the session, and never leave it in a host's
-suggested-task feature on its own. All three apply to every session that did real work, including
+suggested-task feature on its own. The fourth is that a push or a post runs only at the user's
+request, written as a plain command. All four apply to every session that did real work, including
 the ones that never open a worktree and so never load `land-and-wrap`. That is why they are injected
 by a hook, and why they ship with the plugin instead of sitting in a personal global `CLAUDE.md`.
 
@@ -71,70 +75,61 @@ carries on with R104", and it cost a turn.
 
 No hook adds the rules to a subagent, because a subagent doesn't end a session.
 
-## Push and host-write prompt
+## Push and post modes
 
-The holds in `land-and-wrap` are read from the skill text, so a session that pushes without the
-skill pushes anyway: on 2026-11-06 a session pushed a cleared TODO to this public repo. With the
-`askBeforeOutwardWrites` option on, its default, a `tool.check` hook on `Bash`, `PowerShell`,
-`Monitor`, and the two terminal tools answers `ask` for:
+In auto mode a push to any branch of the session's repo and a `gh pr create` are allowed by
+default, so a session that never loads `land-and-wrap` pushes unasked: on 2026-11-06 a session
+pushed a cleared TODO to this public repo. A clone has two modes in per-clone git config, each the
+user's choice whatever the repo's visibility: `session-skills.pushMode`, which is `confirm-push` or
+`auto-push`, and `session-skills.postMode`, which is `confirm-post` or `auto-post`. Unset is the
+confirm mode. A post is a PR or MR, an issue, a comment, or a release written with `gh` or `glab`.
+A fork is always `confirm-post`, since its posts are published in someone else's project.
+`holdPublicPush false` and `holdPrText false`, the keys of 0.29.0, are still read as the auto
+modes. `holdFork` and `originVisibility` are no longer read.
 
-- a push that a hold in `land-and-wrap` §1 applies to, with the `git config` line that lifts it
-- any force push, whatever the holds, since it replaces commits a reviewer may have read
-- a write to the host with `gh` or `glab`, such as a comment, a merge, or a POST through `api`
-- a write to a `session-skills.*` git config key, or a `git remote remove`, `rm`, `rename`, or
-  `set-url`, which could lift a hold or change where a push goes
+In a confirm mode the prompt is raised by `permissions.ask` rules in `.claude/settings.local.json`,
+which Claude Code applies in every permission mode. The rules are `git push *` and
+`git -C * push *`, one for each post subcommand, such as `gh pr create *`, and `gh api` with each
+flag that makes a write. Each rule is written for `Bash` and for `PowerShell`, beside whatever else
+the file has, in three places:
 
-After Yes the command runs as written. The ask reaches a person in every permission mode, and the
-engine's own denial stands. The hook asks when it cannot read a command at all, since the engine
-skips a hook that throws.
+- A `session.start` hook adds the rules for the primary checkout and for the directory the session
+  starts in. It never takes a rule out.
+- `open_worktree` adds them for the new worktree.
+- `set_push_policy` writes the two git config keys, then adds and removes rules in the primary
+  checkout and every worktree in `git worktree list`. Before a switch to an auto mode the user is
+  asked with `$.ui.ask`, which is rejected in a `-p` run, and the modes then stay as they are.
 
-The hold reads git config in the directory the push runs in: the last `cd` or `-C` in the command,
-else the Bash tool's working directory. A directory held in a variable cannot be read, and the push
-is asked about. The visibility is read for the remote the push goes to: the one written in the
-command, else the one git picks from the branch's `pushRemote`, `remote.pushDefault`, and the
-branch's remote, with origin last. origin, or a remote with the same push URLs, takes
-`originVisibility` from git config, and any other remote is looked up with gh or glab by each of
-its push URLs. A path on this machine is private, and a push to one is not held, in a fork too.
-`mcp__terminal__run_in_terminal` is read in its `cwd`, and in a directory that cannot be read when it
-reuses a tab or `cwd` starts with `~`. `mcp__idea__execute_terminal_command` runs in the IDE's
-project with the IDE's shell, so the command is read as both bash and PowerShell in a directory that
-cannot be read.
+`**/.claude/settings.local.json` is appended to `.git/info/exclude` where nothing ignores the file.
 
-A `gh pr create` or `glab mr create` goes unasked only with `holdPrText` lifted, past the fork hold,
-in a clone whose only remote is origin, with no `GH_REPO` or `GITLAB_REPO`, and where a push of the
-branch to origin would not be held, since either CLI may push the branch.
+Each of these was measured on 2.1.322, in one run per case:
 
-The command is read loosely, as the retired personal guard this hook replaces read it: split on
-shell separators outside quotes, with quotes and escapes resolved, and with comments,
-redirections, PowerShell here-string bodies, and heredoc bodies dropped, unless a shell reads the
-heredoc. A `$(...)`, `${...}`, or backtick span stays in its word, which then cannot be read, so a
-`git -C $(...) push` is asked about, and the commands inside an unquoted substitution are read too. git, gh, and glab are found in any word of a simple
-command, so `sudo git push` is read, and `echo git push` is asked about too. A review with live probes
-found four commands an agent might write that went unasked, among them `git push 2>&1 | tail -5`, which
-read `2>` as a remote on this machine, and each has a regression test. A push in a quoted
-substitution, a git or gh alias, `eval`, `bash -c`, or a script is not seen, and neither is a force
-set in config. These gaps are accepted, since the prompt is there for a session that misreads a go,
-not for a command written to get past it.
+- In a headless auto mode session, `git push origin <branch>` ran with no rule, and did not run
+  with the rules, in the plain form and under `git -C`. The results of the same five cases were the
+  same on the Windows machine under managed settings, with no notice about a hook in the logs.
+- On macOS a session started in a worktree applied the rules in the primary checkout's file. On
+  Windows it applied only the file in the worktree, which is why the rules are written to each
+  worktree.
+- A ` *` at the end of a pattern also matched the command with nothing after it. A `* ` inside a
+  pattern needed at least one word, so `git push *` and `git -C * push *` are two rules. A command
+  after `cd . &&` was matched.
+- An interactive session applied a file written by the `session.start` hook at once: the prompt
+  was raised in the first session of a fresh clone. A `-p` session did not apply it until its next
+  start.
+- An edit of `.claude/settings.local.json` that was requested only in a file was blocked by the
+  auto mode classifier as Self-Modification. The tool writes the file itself, after the user's
+  answer.
 
-## Managed machines
+No rule matches `git -c key=value push`, a push in a script or an alias, a write through `gh api`
+with none of the flags, or a command sent through `Monitor` or a terminal tool, since a rule cannot
+match an MCP tool's input. A push to the default branch of a `pr` clone has no prompt of its own in
+`auto-push`. Whether a subagent's prompt is shown is not in the docs, a cloud session reads no local
+settings, and bypass mode was not probed. For these, the paragraph in `hooks/rules.md` is the only
+check.
 
-Under managed settings, or a Team or Enterprise sign-in, `cc-plugin-sec-default` sends each
-`classic.*` event past user plugins and prints a notice that the hook was skipped. On the managed
-Windows machine on 2.1.319 it also sent `tool.check` past this plugin, so the prompt above was never
-raised and a skipped-hook warning was shown. Every other hook is on a native event, and the native
-paths reached the model in every run there.
-
-Whether a machine is managed cannot be learned in time: a hook that read the managed settings at
-session start and then registered `tool.check` was refused on 2.1.322 with "a hook may not register
-hooks". So the prompt is an option, read when the module loads, and a managed user turns it off
-once. With it off, no `tool.check` hook is registered and nothing warns. The hold then rests on the
-skill text and on an auto mode rule an admin puts in managed settings. In a probe on 2.1.322 under
-`claude -p` in auto mode, a rule in a settings file blocked an action the user did not ask for and
-let a requested one through. The same rule returned by a plugin's `settings.read` hook had no
-effect. The managed-settings rule itself is not tested.
-
-Before this design, the module also added a git `pre-push` hook to every git the session started
-through `GIT_CONFIG_PARAMETERS`, refused a held push with a bypass to run instead, refused a skipped
-tool's later calls, and read commands with a 1,700-line lexer. The auto mode classifier denied the
-bypass on both machines, and the refusals stopped work on the managed machine, so all of it was
-removed.
+Through 0.29.0 a `tool.check` hook read each shell command and answered `ask` for a push to a
+remote not known to be private. Under managed settings `cc-plugin-sec-default` returns the
+organization's verdict on `tool.check` in place of a user plugin's, so the hook had to be turned
+off there with an option, and the push then ran unasked. Before that, the module added a git
+`pre-push` hook through `GIT_CONFIG_PARAMETERS` and read commands with a 1,700-line lexer. The auto
+mode classifier denied its bypass on both machines.

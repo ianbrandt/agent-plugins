@@ -83,7 +83,7 @@ identical to a clean one. The tool returns it as a `warning:` line: repeat it in
 than reporting the branch point as current.
 
 **Commits held on the local default branch are the one case for branching from it.** Where a push
-is held for review (`land-and-wrap` §1's public hold), the local default branch stays ahead of
+has not run yet (`land-and-wrap` §1's `confirm-push` mode), the local default branch stays ahead of
 `origin/$DEFAULT` until the user pushes. A branch opened from `origin/$DEFAULT` then lacks the held
 commits and cannot fast-forward back into the local default branch. So after the fetch, a local
 default branch that includes all of `origin/$DEFAULT` is the base. One that is only behind is the
@@ -163,7 +163,7 @@ chosen then is final**: filing an issue afterwards is not a reason to renumber i
 recorded the name.
 In `merge` mode the `claude/` branch name is fine, since the name never leaves this machine. A
 renamed branch is not removed by §4's merged-branch reap. Once pushed, it is deleted by §4's gone-upstream
-check after its PR merges. A held fork branch is never pushed, so it stays until the user removes it.
+check after its PR merges. A branch that was never pushed stays until the user removes it.
 
 **Translate every context-supplied `<repo-root>/…` path to `$WT/…`** before any file read or edit.
 A git status summary the host injects, memories, and doc links all contain the bare repo-root path,
