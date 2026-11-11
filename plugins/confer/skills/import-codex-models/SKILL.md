@@ -37,11 +37,13 @@ own slugs.
    - Exactly one catalog entry: that single slug fills all four tiers.
    - No catalog, or catalog read failed: the top-level `model` from
      `config.toml` fills all four tiers.
-5. **Open the Claude Code user settings.** Resolve the path in this order:
-   `$env:CLAUDE_CONFIG_DIR\settings.json` where that variable is set (as it
-   is on a managed machine that redirects `.claude` out of the user profile);
-   `$env:USERPROFILE\.claude\settings.json` otherwise on Windows;
-   `$HOME/.claude/settings.json` on POSIX. Create the file with
+5. **Open the Claude Code user settings.** Check `CLAUDE_CONFIG_DIR` first
+   on both Windows and POSIX (as it is set on a managed machine that
+   redirects `.claude` out of the user profile): use
+   `$env:CLAUDE_CONFIG_DIR\settings.json` on Windows or
+   `$CLAUDE_CONFIG_DIR/settings.json` on POSIX. Otherwise fall back to the
+   per-OS profile path: `$env:USERPROFILE\.claude\settings.json` on Windows
+   or `$HOME/.claude/settings.json` on POSIX. Create the file with
    `{"pluginConfigs": {}}` if it is missing. Stop if the file is present but
    not valid JSON; report the parse error and the line, and do not try to
    rewrite it.
