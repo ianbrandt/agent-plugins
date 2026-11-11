@@ -15,7 +15,7 @@ machine:
    worktree under `%USERPROFILE%\.claude\tmp\confer\<run>\` is gone.
 4. Run step 2 from a UNC path to the same repository, such as `\\localhost\c$\<path>`.
 
-Clear this item in a commit with the results in its message, including any error text, and push.
+Clear this item in a commit with the results in its message, including any error text.
 
 ## Switch the Windows machine from claudex-loop to Confer
 
@@ -40,7 +40,7 @@ Do this after the item above passes. On the Windows machine:
 3. Remove any lines about claudex-loop from `%USERPROFILE%\.claude\CLAUDE.md`.
 4. In a new session, check that `/confer:review`, `/confer:plan`, and `/confer:ask` are listed.
 
-Clear this item in a commit with the results in its message, and push.
+Clear this item in a commit with the results in its message.
 
 ## Check whether Codex's read-only sandbox works on Windows
 
@@ -91,38 +91,4 @@ one that writes. On the Windows machine, in PowerShell 7:
 
 Replace this item with an "Analyze the Codex read-only sandbox results" item: the versions and
 features from step 1, and for each run, Codex's report of each command, any error text, and the
-`Test-Path` output. Then push.
-
-## Analyze the push rule results
-
-- `claude --version`: `2.1.322 (Claude Code)`.
-- session-skills 0.29.0 is installed under the user scope.
-- `cc-plugin-sec-default@builtin seated outermost: this machine has managed settings`.
-
-Step 3, no rules: `b1: PUSHED`.
-
-Step 4, push to the `held` remote. The reply reported that the push ran and exited 128 with
-`fatal: unable to access 'https://git.invalid/probe/held.git/': Could not resolve host: git.invalid`.
-Only `cc-plugin-sec-default` and `cc-plugin-privacy` ran `tool.check` on that push; session-skills
-did not. `askBeforeOutwardWrites` is `false` in `C:\Dev\.claude\settings.json`, which is the
-recommended setting on a machine with managed settings, per the option's description. That is why
-the prompt was missed on 2026-11-11.
-
-Step 5, rules written to the main checkout:
-
-- `b2: not pushed`
-- `b3: not pushed`
-
-Step 6, session started in the worktree:
-
-- `b4: PUSHED`, with no file in the worktree
-- `b5: not pushed`, after a copy of the file into the worktree
-
-Step 7: `notices in the logs: 0`.
-
-Conclusions from the three checks:
-
-- The `permissions.ask` rules are applied under managed settings.
-- A session started in a worktree reads only the worktree's own `.claude/settings.local.json`, not
-  the main checkout's file. Each worktree needs its own copy for the rules to hold.
-- The 0.29.0 prompt was missed because `askBeforeOutwardWrites` is turned off on this machine.
+`Test-Path` output.
