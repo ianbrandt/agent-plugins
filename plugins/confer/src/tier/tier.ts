@@ -25,11 +25,13 @@ const table: Record<Tier, { claude: Side; fallback?: Side; codexEffort: ModelEff
 }
 // The env var that pins an alias to a specific provider id, as Claude Code reads for the main session.
 // A subagent spawn does not go through that resolution, so the pin is applied here for the reviewer.
-const pinVar: Record<string, string> = {
-  sonnet: 'ANTHROPIC_DEFAULT_SONNET_MODEL',
-  opus: 'ANTHROPIC_DEFAULT_OPUS_MODEL',
-  haiku: 'ANTHROPIC_DEFAULT_HAIKU_MODEL',
-  fable: 'ANTHROPIC_DEFAULT_FABLE_MODEL',
+// `$.env.get` takes string literals, so each name is spelled out in `readPin` below.
+async function readPin($: EngineInterface, model: string): Promise<string | undefined> {
+  if (model === 'sonnet') return $.env.get('ANTHROPIC_DEFAULT_SONNET_MODEL')
+  if (model === 'opus') return $.env.get('ANTHROPIC_DEFAULT_OPUS_MODEL')
+  if (model === 'haiku') return $.env.get('ANTHROPIC_DEFAULT_HAIKU_MODEL')
+  if (model === 'fable') return $.env.get('ANTHROPIC_DEFAULT_FABLE_MODEL')
+  return undefined
 }
 export const codexModels = (options: PluginOptions): Record<Tier, string> => ({
   routine: String(options.codexRoutineModel),
@@ -63,7 +65,7 @@ export async function chooseTier($: EngineInterface, request: TierRequest, codex
   }
 
   const { claude: picked, fallback, codexEffort } = table[tier]
-  const pin = async (side: Side): Promise<Side> => ({ model: (pinVar[side.model] !== undefined ? (await $.env.get(pinVar[side.model]!)) : undefined) ?? side.model, effort: side.effort })
+  const pin = async (side: Side): Promise<Side> => ({ model: (await readPin($, side.model)) ?? side.model, effort: side.effort })
   const pickedPinned = await pin(picked)
   const fallbackPinned = fallback === undefined ? undefined : await pin(fallback)
   const claude = fallbackPinned !== undefined && set['--claude-model'] === undefined && !(await isServed($, pickedPinned.model)) ? fallbackPinned : pickedPinned

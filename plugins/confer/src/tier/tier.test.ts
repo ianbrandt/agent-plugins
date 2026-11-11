@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, OpEventResult } from 'claude-code'
 import type { TierChoice } from './tier'
@@ -40,6 +40,7 @@ const answer = (on: On, answer: string | Error) => {
 }
 
 test('a sure pick runs at its tier with no question', async ($, on) => {
+  mock.env(on, {})
   const asked = answer(on, 'Routine')
 
   expect(await choose($, {})).toEqual({
@@ -52,6 +53,7 @@ test('a sure pick runs at its tier with no question', async ($, on) => {
 })
 
 test('each tier pairs the models and efforts of the table', async ($, on) => {
+  mock.env(on, {})
   serve(on)
   const sides = async (tier: string) => {
     const choice = (await choose($, { args: `--tier ${tier}` })) as TierChoice
@@ -73,6 +75,7 @@ test('each tier pairs the models and efforts of the table', async ($, on) => {
 })
 
 test('Fable tiers fall back to Opus where the account is not served Fable', async ($, on) => {
+  mock.env(on, {})
   const checked = serve(on, notFound)
 
   expect(((await choose($, { args: '--tier critical' })) as TierChoice).claude).toEqual({ model: 'opus', effort: 'xhigh' })
@@ -81,6 +84,7 @@ test('Fable tiers fall back to Opus where the account is not served Fable', asyn
 })
 
 test('a model the engine refuses to send falls back too, and other failures keep Fable', async ($, on) => {
+  mock.env(on, {})
   let reply: Reply = { deny: 'fable is not in availableModels' }
   on('model.complete', () => reply)
 
@@ -90,6 +94,7 @@ test('a model the engine refuses to send falls back too, and other failures keep
 })
 
 test('a Claude model set in the arguments is not checked', async ($, on) => {
+  mock.env(on, {})
   const checked = serve(on, notFound)
 
   const choice = (await choose($, { args: '--tier critical --claude-model fable' })) as TierChoice
@@ -99,6 +104,7 @@ test('a Claude model set in the arguments is not checked', async ($, on) => {
 })
 
 test('an unsure pick is asked about, the pick first', async ($, on) => {
+  mock.env(on, {})
   const asked = answer(on, 'Critical')
 
   const choice = (await choose($, { pick: 'routine', isSure: false })) as TierChoice
@@ -115,6 +121,7 @@ test('an unsure pick is asked about, the pick first', async ($, on) => {
 })
 
 test('the recommended label and a typed tier name are both answers', async ($, on) => {
+  mock.env(on, {})
   let next = 'Routine (Recommended)'
   on('tool.call', { tool: 'AskUserQuestion' }, (_, e) => ({ result: { questions: e.questions, answers: { [e.questions[0]!.question]: next } } }))
 
@@ -130,12 +137,14 @@ test('an answer that is no tier fails the choice', async ($, on) => {
 })
 
 test('a dismissed question, or no one to ask, takes the pick', async ($, on) => {
+  mock.env(on, {})
   answer(on, new Error('dismissed'))
 
   expect(((await choose($, { pick: 'critical', isSure: false })) as TierChoice).tier).toBe('critical')
 })
 
 test('arguments set either side, and the tier fills the rest', async ($, on) => {
+  mock.env(on, {})
   const asked = answer(on, 'Routine')
 
   const choice = await choose($, { args: '--fix --claude-model opus --codex-effort=low src/' })
@@ -149,7 +158,8 @@ test('arguments set either side, and the tier fills the rest', async ($, on) => 
   expect(asked).toEqual([])
 })
 
-test('quotes keep a path with spaces in one word', async ($) => {
+test('quotes keep a path with spaces in one word', async ($, on) => {
+  mock.env(on, {})
   const choice = (await choose($, { args: `--fix "src/a dir/x.ts" 'it''s' --tier=routine "" src\\x.ts` })) as TierChoice
 
   expect(choice.tier).toBe('routine')
@@ -170,6 +180,7 @@ test('no question is asked when arguments set both sides or the tier', async ($,
 })
 
 test('the question covers only the side no argument sets', async ($, on) => {
+  mock.env(on, {})
   const asked = answer(on, 'Routine')
 
   const choice = (await choose($, { isSure: false, args: '--claude-effort max' })) as TierChoice
