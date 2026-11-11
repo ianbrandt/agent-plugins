@@ -92,3 +92,57 @@ one that writes. On the Windows machine, in PowerShell 7:
 Replace this item with an "Analyze the Codex read-only sandbox results" item: the versions and
 features from step 1, and for each run, Codex's report of each command, any error text, and the
 `Test-Path` output.
+
+## Check the session-skills push and post modes on the Windows machine
+
+The `tool.check` hook of session-skills 0.29.0 is replaced by `permissions.ask` rules that a
+`session.start` hook writes to `.claude/settings.local.json`. These steps check that the file is
+written under managed settings, and that a push is asked about. On the Windows machine, in
+PowerShell 7:
+
+1. Pull `main` in the clone of this repo, then set up a scratch clone. `$p` is the plugin in the
+   clone of this repo:
+
+   ```powershell
+   $p = (Join-Path (git rev-parse --show-toplevel) plugins/session-skills).Replace('\', '/')
+   $d = (Join-Path $env:TEMP pushmodeprobe).Replace('\', '/'); Remove-Item -Recurse -Force $d -ErrorAction Ignore
+   New-Item -ItemType Directory $d | Out-Null
+   git init -q --bare -b main "$d/remote.git"
+   git init -q -b main "$d/clone"; Set-Location "$d/clone"
+   git config user.name probe; git config user.email probe@example.invalid
+   Set-Content note.txt probe; git add note.txt; git commit -q -m First
+   git remote add origin "$d/remote.git"; git push -q -u origin main
+   'b1', 'b2', 'b3' | ForEach-Object { git branch $_ }
+   ```
+
+2. Run one headless session, then print the rules it wrote and any notice in its log. The count
+   should be 4, and no line should follow it:
+
+   ```powershell
+   $null | claude -p 'Reply with ok.' --plugin-dir $p --setting-sources project,local --permission-mode auto --debug-file "$d/start.log" | Out-Null
+   (Select-String -Path .claude/settings.local.json -Pattern 'push').Count
+   (Select-String -Path "$d/start.log" -Pattern 'did not load|tried to|passed over|hooks? .{0,40}(skipped|failed)').Line
+   ```
+
+3. Run a second headless session that pushes. The last line should be empty, since `b1` is not on
+   the remote:
+
+   ```powershell
+   $null | claude -p 'Run this exact command as one shell call and report what happened: git push origin b1' --plugin-dir $p --setting-sources project,local --permission-mode auto > "$d/b1.txt"
+   git -C "$d/remote.git" branch --list b1
+   ```
+
+4. Start an interactive session with `claude --plugin-dir $p --setting-sources project,local --permission-mode auto`
+   and enter `Run this exact command: git push origin b2`. A permission prompt should be raised.
+   Answer Yes, then enter `Switch this clone to auto-push with the set_push_policy tool`. A
+   question that starts with "Switch this clone to auto-push?" should be raised. Answer Switch,
+   then enter `Run this exact command: git push origin b3`. It should run with no prompt.
+
+5. Remove the scratch folder:
+
+   ```powershell
+   Set-Location $env:TEMP; Remove-Item -Recurse -Force $d
+   ```
+
+Replace this item with an "Analyze the push and post mode results" item: the output of steps 2 and
+3, and for step 4 whether each prompt was raised and what any warning on screen read.
