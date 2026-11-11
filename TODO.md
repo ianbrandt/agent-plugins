@@ -93,73 +93,104 @@ Replace this item with an "Analyze the Codex read-only sandbox results" item: th
 features from step 1, and for each run, Codex's report of each command, any error text, and the
 `Test-Path` output. Then push.
 
-## Harden the session-skills push hold on managed Windows CLI
+## Check per-clone push rules on the managed Windows CLI
 
-On Mac Desktop with unmanaged settings, the current `tool.check` hook
-in `plugins/session-skills/hooks/register.ts` answers
-`{ decision: 'ask' }` for a held push and the ask prompt reaches the
-user. On Windows CLI 2.1.319 under managed settings
-(Team/Enterprise sign-in), `classic.*` events are routed past user
-plugins by `cc-plugin-sec-default`, `tool.check` among them, so the
-ask prompt is skipped and a public push is not blocked. On 2026-11-11
-a push to `main` ran without asking for the go.
+In auto mode a `git push` is allowed by default, and on 2026-11-11 a push to `main` ran on the
+Windows machine without the `session-skills` 0.29.0 prompt. The planned replacement is a set of
+`permissions.ask` rules in the clone's `.claude/settings.local.json`, with no hook involved. Check
+three things there: whether those rules are applied under managed settings, which file is read by a
+session started in a worktree, and why the 0.29.0 prompt was missed. Every push in these steps goes
+to a bare repository in a scratch folder, or to a host that does not exist.
 
-### Working
+On the Windows machine, in PowerShell 7, with `session-skills` 0.29.0 installed and its
+`askBeforeOutwardWrites` option on:
 
-- `judge()` in `register.ts` detects every held push: a hold reason
-  per `land-and-wrap` §1, a force push, and a host write through
-  `gh` or `glab`.
-- The per-clone config keys `session-skills.holdPublicPush`,
-  `holdFork`, and `holdPrText` are read and applied.
-- The hold-for-go rule is in `land-and-wrap` §1.
-- The `AGENTS.md` push rule that contradicted the hold is removed in
-  commit `09c934c` (2026-11-11).
+1. Record the versions, and whether `cc-plugin-sec-default` is active:
 
-### Not working
+   ```powershell
+   claude --version
+   claude plugin list | Select-String -SimpleMatch -Context 0,2 ' session-skills@'
+   $d = (Join-Path $env:TEMP pushrulesprobe).Replace('\', '/')
+   Remove-Item -Recurse -Force $d -ErrorAction Ignore; New-Item -ItemType Directory $d | Out-Null
+   $null | claude -p 'Reply with ok.' --debug-file "$d/seat.log" | Out-Null
+   (Select-String -Path "$d/seat.log" -Pattern 'sec-default').Line
+   ```
 
-- Under managed settings on Windows CLI 2.1.319, `tool.check` is
-  skipped and a skipped-hook warning is printed.
-- An earlier version of the plugin had a `pre-push` hook via
-  `GIT_CONFIG_PARAMETERS` and a 1700-line command lexer. The bypass
-  was denied by the auto-mode classifier on both machines, and work
-  stopped on the managed machine because of the refusals, so the
-  whole design was removed (DESIGN.md §136-140).
-- The current DESIGN.md §119-134 workaround is to turn off
-  `askBeforeOutwardWrites` and rely on skill text plus an auto-mode
-  rule in managed settings; the managed-settings rule is "not
-  tested" (§134).
-- A prior Fable 5.2 session on the Mac ended without a working fix.
+2. Set up a clone with a local remote, a worktree, and six unpushed branches. `Push-Probe` runs one
+   push in a headless auto mode session, then prints whether the branch arrived:
 
-### Path identified in this Windows session
+   ```powershell
+   git init -q --bare -b main "$d/remote.git"
+   git init -q -b main "$d/clone"; Set-Location "$d/clone"
+   git config user.name probe; git config user.email probe@example.invalid
+   Set-Content .gitignore '.claude/'; git add .gitignore; git commit -q -m First
+   git remote add origin "$d/remote.git"; git push -q -u origin main
+   git remote add held https://git.invalid/probe/held.git
+   Set-Content note.txt probe; git add note.txt; git commit -q -m 'Add note'
+   'b1', 'b2', 'b3', 'b4', 'b5', 'b6' | ForEach-Object { git branch $_ }
+   git worktree add -q -b wt "$d/clone/.claude/worktrees/wt"
+   function Push-Probe($dir, $branch, $command) {
+     Push-Location $dir
+     $null | claude -p "Run this exact command as one shell call and report what happened: $command" --permission-mode auto --debug-file "$d/$branch.log" > "$d/$branch.txt"
+     Pop-Location
+     $arrived = git -C "$d/remote.git" branch --list $branch
+     '{0}: {1}' -f $branch, $(if ($arrived) { 'PUSHED' } else { 'not pushed' })
+   }
+   ```
 
-- `tool.call` is a native event, not `classic.*`. DESIGN.md §124:
-  "the native paths reached the model in every run there." So a
-  `tool.call` hook is reached under managed settings.
-- Add a `tool.call` branch on `Bash` and `PowerShell` in
-  `register.ts`. Call the existing `judge()`; when the result has
-  reasons for a non-dry-run push, return `{ deny: '<reasons>. Ask
-  the user to run this push in a plain terminal.' }`. Keep the
-  `tool.check` branch for Mac Desktop.
-- The simpler path: no bypass token. Denial is absolute; the user
-  runs the push themselves in PowerShell after the model asks in
-  chat. Enforcement is airtight; the cost is one manual push per
-  cycle.
-- Alternative: an approval-token path, with a session-local flag set
-  through a plugin tool once the user says go and consumed by the
-  hook on each push. More complex, and the flag is a seam the model
-  can set on its own.
-- Decide whether the new branch is gated by `askBeforeOutwardWrites`
-  or by a new option of its own.
+3. Push with no rules. `b1: PUSHED` is expected. If `not pushed` is printed, auto mode may be turned
+   off on this machine. In that case keep `$d/b1.txt` for the results, and go to step 8.
 
-### Context files
+   ```powershell
+   Push-Probe "$d/clone" b1 'git push origin b1'
+   ```
 
-- `plugins/session-skills/hooks/register.ts`—the hooks, `judge()`,
-  `pushHold()`; the existing `tool.check` registration is at line
-  738 as of commit `09c934c`.
-- `plugins/session-skills/docs/DESIGN.md` §119-140—managed machines
-  and the history of the removed `pre-push` hook.
-- `plugins/session-skills/skills/land-and-wrap/SKILL.md` §1—the
-  hold rules and their lifts.
-- `plugins/session-skills/hooks/register.test.ts`—extend the tests.
+4. Push to a remote of unknown visibility. With 0.29.0 installed, a prompt is expected for this
+   push. On macOS the call is denied before git runs. If the reply includes
+   `Could not resolve host`, the push ran unasked. If `tool.check` is not among the events on the
+   `session-skills` line, the option is off on this machine.
 
-Record the fix (or the next dead end) back in this heading, and push.
+   ```powershell
+   $null | claude -p 'Run this exact command as one shell call and report what happened: git push held b6' --permission-mode auto --debug-file "$d/held.log" > "$d/held.txt"
+   Get-Content "$d/held.txt"
+   (Select-String -Path "$d/held.log" -Pattern 'tool\.check|tried to|passed over|hooks? .{0,40}(skipped|failed)').Line
+   ```
+
+5. Add the rules to the main checkout, and push from it in both forms. `b2: not pushed` and
+   `b3: not pushed` are expected:
+
+   ```powershell
+   $ask = 'git push *', 'git -C * push *' | ForEach-Object { "Bash($_)"; "PowerShell($_)" }
+   @{ permissions = @{ ask = @($ask) } } | ConvertTo-Json -Depth 3 | Set-Content "$d/clone/.claude/settings.local.json"
+   Push-Probe "$d/clone" b2 'git push origin b2'
+   Push-Probe "$d/clone" b3 "git -C '$d/clone/.claude/worktrees/wt' push origin b3"
+   ```
+
+6. Push from a session started in the worktree. Per the Claude Code docs, a session in a worktree on
+   Windows does not read the main checkout's file, so `b4: PUSHED` is expected. `b5: not pushed` is
+   expected once the worktree has a copy of the file:
+
+   ```powershell
+   Push-Probe "$d/clone/.claude/worktrees/wt" b4 'git push origin b4'
+   New-Item -ItemType Directory "$d/clone/.claude/worktrees/wt/.claude" | Out-Null
+   Copy-Item "$d/clone/.claude/settings.local.json" "$d/clone/.claude/worktrees/wt/.claude/"
+   Push-Probe "$d/clone/.claude/worktrees/wt" b5 'git push origin b5'
+   ```
+
+7. Count the log lines of the five runs that report a hook as skipped, failed, or passed over.
+   `notices in the logs: 0` is printed on macOS:
+
+   ```powershell
+   $notices = @(Select-String -Path "$d/b*.log" -Pattern 'tried to|passed over|hooks? .{0,40}(skipped|failed)')
+   'notices in the logs: {0}' -f $notices.Count
+   $notices.Line
+   ```
+
+8. Remove the scratch folder:
+
+   ```powershell
+   Set-Location $env:TEMP; Remove-Item -Recurse -Force $d
+   ```
+
+Replace this item with an "Analyze the push rule results" item. Include the output of steps 1 and 3
+to 7 as printed. Commit it, and ask before pushing.
