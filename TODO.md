@@ -92,3 +92,74 @@ one that writes. On the Windows machine, in PowerShell 7:
 Replace this item with an "Analyze the Codex read-only sandbox results" item: the versions and
 features from step 1, and for each run, Codex's report of each command, any error text, and the
 `Test-Path` output. Then push.
+
+## Harden the session-skills push hold on managed Windows CLI
+
+On Mac Desktop with unmanaged settings, the current `tool.check` hook
+in `plugins/session-skills/hooks/register.ts` answers
+`{ decision: 'ask' }` for a held push and the ask prompt reaches the
+user. On Windows CLI 2.1.319 under managed settings
+(Team/Enterprise sign-in), `classic.*` events are routed past user
+plugins by `cc-plugin-sec-default`, `tool.check` among them, so the
+ask prompt is skipped and a public push is not blocked. On 2026-11-11
+a push to `main` ran without asking for the go.
+
+### Working
+
+- `judge()` in `register.ts` detects every held push: a hold reason
+  per `land-and-wrap` §1, a force push, and a host write through
+  `gh` or `glab`.
+- The per-clone config keys `session-skills.holdPublicPush`,
+  `holdFork`, and `holdPrText` are read and applied.
+- The hold-for-go rule is in `land-and-wrap` §1.
+- The `AGENTS.md` push rule that contradicted the hold is removed in
+  commit `09c934c` (2026-11-11).
+
+### Not working
+
+- Under managed settings on Windows CLI 2.1.319, `tool.check` is
+  skipped and a skipped-hook warning is printed.
+- An earlier version of the plugin had a `pre-push` hook via
+  `GIT_CONFIG_PARAMETERS` and a 1700-line command lexer. The bypass
+  was denied by the auto-mode classifier on both machines, and work
+  stopped on the managed machine because of the refusals, so the
+  whole design was removed (DESIGN.md §136-140).
+- The current DESIGN.md §119-134 workaround is to turn off
+  `askBeforeOutwardWrites` and rely on skill text plus an auto-mode
+  rule in managed settings; the managed-settings rule is "not
+  tested" (§134).
+- A prior Fable 5.2 session on the Mac ended without a working fix.
+
+### Path identified in this Windows session
+
+- `tool.call` is a native event, not `classic.*`. DESIGN.md §124:
+  "the native paths reached the model in every run there." So a
+  `tool.call` hook is reached under managed settings.
+- Add a `tool.call` branch on `Bash` and `PowerShell` in
+  `register.ts`. Call the existing `judge()`; when the result has
+  reasons for a non-dry-run push, return `{ deny: '<reasons>. Ask
+  the user to run this push in a plain terminal.' }`. Keep the
+  `tool.check` branch for Mac Desktop.
+- The simpler path: no bypass token. Denial is absolute; the user
+  runs the push themselves in PowerShell after the model asks in
+  chat. Enforcement is airtight; the cost is one manual push per
+  cycle.
+- Alternative: an approval-token path, with a session-local flag set
+  through a plugin tool once the user says go and consumed by the
+  hook on each push. More complex, and the flag is a seam the model
+  can set on its own.
+- Decide whether the new branch is gated by `askBeforeOutwardWrites`
+  or by a new option of its own.
+
+### Context files
+
+- `plugins/session-skills/hooks/register.ts`—the hooks, `judge()`,
+  `pushHold()`; the existing `tool.check` registration is at line
+  738 as of commit `09c934c`.
+- `plugins/session-skills/docs/DESIGN.md` §119-140—managed machines
+  and the history of the removed `pre-push` hook.
+- `plugins/session-skills/skills/land-and-wrap/SKILL.md` §1—the
+  hold rules and their lifts.
+- `plugins/session-skills/hooks/register.test.ts`—extend the tests.
+
+Record the fix (or the next dead end) back in this heading, and push.
