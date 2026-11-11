@@ -93,21 +93,47 @@ Replace this item with an "Analyze the Codex read-only sandbox results" item: th
 features from step 1, and for each run, Codex's report of each command, any error text, and the
 `Test-Path` output.
 
-## Analyze the push and post mode results
+## Check the interactive push prompt on the Windows machine
 
-Steps 2 and 3 pass. Step 4 is deferred, to be run interactively on the Windows
-machine.
+The headless steps of the push and post mode check passed on Windows: the `session.start` hook
+writes four `push` rules to `.claude/settings.local.json`, and a headless `git push` is asked about
+and declined. These steps check the two prompts that need a person. On the Windows machine, in
+PowerShell 7:
 
-Step 2: four `push` rules are written to `.claude/settings.local.json` by the
-`session.start` hook, and no notice is in the start log.
+1. Pull `main` in the clone of this repo, then set up a scratch clone. `$p` is the plugin in the
+   clone of this repo:
 
-Step 3: a permission prompt was raised on `git push origin b1` in the headless
-run, and declined under `--permission-mode auto`. No ref moved, and the remote
-has no `b1` branch. The command was given `--setting-sources 'user,project,local'`
-instead of the scripted `'project,local'`, since without `user` in the list a
-headless session on this Windows machine prints "Not logged in"—OS keychain
-auth is read only through the `user` settings source. The scripted list is
-enough for step 2, where the `session.start` hook runs before auth is needed;
-step 3 needs the agent to reply.
+   ```powershell
+   $p = (Join-Path (git rev-parse --show-toplevel) plugins/session-skills).Replace('\', '/')
+   $d = (Join-Path $env:TEMP pushmodeprobe).Replace('\', '/'); Remove-Item -Recurse -Force $d -ErrorAction Ignore
+   New-Item -ItemType Directory $d | Out-Null
+   git init -q --bare -b main "$d/remote.git"
+   git init -q -b main "$d/clone"; Set-Location "$d/clone"
+   git config user.name probe; git config user.email probe@example.invalid
+   Set-Content note.txt probe; git add note.txt; git commit -q -m First
+   git remote add origin "$d/remote.git"; git push -q -u origin main
+   'b2', 'b3' | ForEach-Object { git branch $_ }
+   ```
 
-The scratch scaffolding from step 1 has been removed.
+2. Start an interactive session. `user` is in the list of setting sources because a session on
+   the Windows machine is not logged in without it:
+
+   ```powershell
+   claude --plugin-dir $p --setting-sources 'user,project,local' --permission-mode auto
+   ```
+
+3. Enter `Run this exact command: git push origin b2`. A permission prompt should be raised.
+   Answer Yes.
+4. Enter `Switch this clone to auto-push with the set_push_policy tool`. A question that starts
+   with "Switch this clone to auto-push?" should be raised. Answer Switch.
+5. Enter `Run this exact command: git push origin b3`. It should run with no prompt.
+6. Exit the session, then list the branches on the remote and remove the scratch folder. The list
+   should be `b2`, `b3`, and `main`:
+
+   ```powershell
+   git -C "$d/remote.git" branch --list
+   Set-Location $env:TEMP; Remove-Item -Recurse -Force $d
+   ```
+
+Replace this item with an "Analyze the interactive push prompt results" item: for steps 3 to 5,
+whether each prompt was raised and what any warning on screen read, and the output of step 6.
