@@ -1,8 +1,10 @@
-// claude plugin test: where a new branch starts, the four tools, the push
-// hold, and the host-write hold against a faked git. The costly errors are a branch opened without commits held on the
-// local default branch, an unmerged branch deleted by the prune, and a public push run unasked.
+// claude plugin test: where a new branch starts, the tools, the push and post
+// modes, and the permission rules written for them, against a faked git. The
+// costly errors are a branch opened without commits held on the local default
+// branch, an unmerged branch deleted by the prune, and a clone in a confirm
+// mode with no rule in its settings file.
 import { expect, test } from 'claude-code/testing'
-import { localUrl, outward, pickBase, refLine, visibility, worktreeName } from './checkouts'
+import { askRules, outward, pickBase, POST_RULES, PUSH_RULES, refLine, worktreeName } from './checkouts'
 
 test('a new branch starts from origin, except where the local default branch has everything origin has', () => {
   expect(pickBase('main', false, true, false, false)).toEqual({ base: 'main' })
@@ -16,15 +18,6 @@ test('a new branch starts from origin, except where the local default branch has
   expect(pickBase('trunk', false, false, false, false).warning).toContain('neither origin/trunk nor trunk is a branch')
 })
 
-test('a visibility is one of three words, and anything else is dropped', () => {
-  expect(visibility('PUBLIC\n')).toBe('public')
-  expect(visibility('Private')).toBe('private')
-  expect(visibility('internal')).toBe('internal')
-  expect(visibility('HTTP 404: Not Found')).toBe('')
-  expect(visibility('')).toBe('')
-})
-
-// Each line is what git 2.56.0 printed for that ref in a scratch repo.
 test('a ref is read from the line with its name, and no such line is a ref that is absent', () => {
   const head = 'refs/remotes/origin/HEAD'
   expect(refLine('', head)).toBeNull()
@@ -57,6 +50,7 @@ function world(on: any, git: (argv: string) => Said, other?: (argv: string) => s
   const posix = (p: string) => (root.startsWith('/') ? given(p).replace(/^[A-Za-z]:/, '') : given(p))
   on('fs.exists', (_$: any, e: any) => ({ value: paths.includes(posix(e.path)) }))
   on('fs.read', (_$: any, e: any) => ({ value: files[posix(e.path)] ?? '' }))
+  on('fs.write', (_$: any, e: any) => { files[posix(e.path)] = e.text; return { value: undefined } })
   on('process.run', (_$: any, e: any) => {
     const argv = e.argv as string[]
     if (e.init?.cwd !== root) throw new Error(`ENOENT: no such file or directory, posix_spawn '${argv[0]}'`)
@@ -119,10 +113,10 @@ test('find_checkouts reports the base and each worktree, and a fetch that failed
 // A process is started in the session's directory unless another is given, and
 // a session that removed the worktree it had changed into has none.
 test('the tools answer after the session\'s directory is removed', async ($: any, on: any) => {
-  world(on, line => (line === 'rev-parse --show-toplevel' ? 128 : line === 'config --get session-skills.originVisibility' ? 'public' : held(line)))
+  world(on, line => (line === 'rev-parse --show-toplevel' ? 128 : line === 'config --get session-skills.pushMode' ? 'auto-push' : held(line)))
   expect((await call($, 'find_checkouts')).result).toContain('session directory: /repo/.claude/worktrees/removed\n')
   expect((await call($, 'prune_branches')).isError).toBeUndefined()
-  expect((await call($, 'landing_facts')).result).toContain('origin visibility: public (git config)')
+  expect((await call($, 'landing_facts')).result).toContain('push: auto-push (git config session-skills.pushMode)')
 })
 
 // A bare `git fetch` reads the remote of the current branch's upstream, which
@@ -555,19 +549,89 @@ test('prune_branches leaves a branch that a worktree has checked out under anoth
   expect(deleted(calls)).toEqual(['branch -D claude/r1-a'])
 })
 
-test('landing_facts reads git config first, and is unknown where no host tool is installed', async ($: any, on: any) => {
-  const config: Record<string, string> = { originVisibility: 'Private', landing: 'pr', holdFork: 'false', holdPrText: 'true' }
-  const git = (line: string) => {
-    if (line === 'remote get-url origin') return 'https://example.com/a/b.git'
-    if (line === 'remote get-url upstream') return 2
-    if (line.startsWith('config --get')) return config[line.split('.')[1]] ?? 1
-    if (line.startsWith(READ)) return shown(line)
-  }
-  const calls = world(on, git)
-  expect((await call($, 'landing_facts')).result).toBe('fork: no\norigin visibility: private (git config)\nlanding mode: pr (git config)\nholds lifted: holdFork')
-  expect(calls.filter(c => c.startsWith('gh') || c.startsWith('glab'))).toEqual([])
-  for (const key of Object.keys(config)) delete config[key]
-  expect((await call($, 'landing_facts')).result).toBe('fork: no\norigin visibility: unknown\nlanding mode: unknown\nholds lifted: none')
+test('the rules are written for both shells, with a push under -C and a gh api write told by its flags', () => {
+  for (const rule of ['Bash(git push *)', 'PowerShell(git push *)', 'Bash(git -C * push *)']) expect(PUSH_RULES).toContain(rule)
+  for (const rule of ['Bash(gh pr create *)', 'PowerShell(glab mr note *)', 'Bash(gh release create *)', 'Bash(gh api -X *)', 'Bash(gh api * --field *)']) expect(POST_RULES).toContain(rule)
+  for (const rule of ['Bash(gh pr view *)', 'Bash(gh api *)', 'Bash(glab mr list *)']) expect(POST_RULES).not.toContain(rule)
+})
+
+test('rules are added to a settings file beside what it has, and taken out without another key or rule', () => {
+  expect(JSON.parse(askRules('', ['a', 'b'])!)).toEqual({ permissions: { ask: ['a', 'b'] } })
+  const had = JSON.stringify({ model: 'x', permissions: { allow: ['Read'], ask: ['mine', 'a'] } })
+  expect(JSON.parse(askRules(had, ['a', 'b'])!)).toEqual({ model: 'x', permissions: { allow: ['Read'], ask: ['mine', 'a', 'b'] } })
+  expect(JSON.parse(askRules(had, [], ['a', 'b'])!)).toEqual({ model: 'x', permissions: { allow: ['Read'], ask: ['mine'] } })
+  expect(askRules('{"permissions":{"ask":["a"]}}', [], ['a'])).toBe('{}\n')
+  expect(askRules(had, ['a'])).toBeNull()
+  expect(askRules('', [])).toBeNull()
+  for (const text of ['[]', '{"permissions":{"ask":"a"}}']) expect(() => askRules(text, ['a']), text).toThrow()
+  expect(() => askRules('{ not json', ['a'])).toThrow()
+})
+
+// A clone at /repo with a worktree, a git config, and a file system that is written to.
+const LOCAL = '/repo/.claude/settings.local.json'
+const WT_LOCAL = '/repo/.claude/worktrees/r1-a/.claude/settings.local.json'
+function clone(on: any, config: Record<string, string>, files: Record<string, string> = {}, upstream = false, ignored = false) {
+  const w = { files, asked: [] as string[], answer: 'Switch' as string | null, toasts: [] as string[] }
+  on('fs.exists', (_$: any, e: any) => ({ value: e.path in files }))
+  on('fs.read', (_$: any, e: any) => {
+    if (!(e.path in files)) throw new Error('ENOENT')
+    return { value: files[e.path] }
+  })
+  on('fs.write', (_$: any, e: any) => { files[e.path] = e.text; return { value: undefined } })
+  // $.ui.ask is a call of AskUserQuestion, and rejects where it is dismissed.
+  on('tool.call', { tool: 'AskUserQuestion' }, (_$: any, e: any) => {
+    const question = e.questions[0].question
+    w.asked.push(question)
+    if (w.answer === null) throw new Error('no one to ask')
+    return { result: { questions: e.questions, answers: { [question]: w.answer } } }
+  })
+  on('ui.toast', (_$: any, e: any) => { w.toasts.push(e.text ?? String(e)); return { value: undefined } })
+  on('session.start', (_$: any, e: any) => e)
+  on('tool.register', () => ({ value: undefined }))
+  on('env.get', () => ({ value: undefined }))
+  on('session.repo', () => ({ value: { root: '/repo', remote: null, internal: false } }))
+  on('session.cwd', () => ({ value: '/repo/.claude/worktrees/r1-a/src' }))
+  on('process.run', (_$: any, e: any) => {
+    const line = (e.argv as string[]).slice(3).join(' ')
+    const said = (stdout: string, exitCode = 0) => ({ value: { exitCode, stdout, stderr: '' } })
+    if (e.argv[0] !== 'git') throw new Error('ENOENT')
+    if (line === 'remote get-url upstream') return upstream ? said('https://example.com/up/b.git\n') : said('', 2)
+    if (line === 'remote get-url origin') return said('https://example.com/a/b.git\n')
+    if (line.startsWith('config --get session-skills.')) return line.split('.')[1]! in config ? said(`${config[line.split('.')[1]!]}\n`) : said('', 1)
+    if (line.startsWith('config session-skills.')) {
+      const [key, value] = line.slice('config session-skills.'.length).split(' ')
+      config[key!] = value!
+      return said('')
+    }
+    if (line === 'rev-parse --show-toplevel') return said('/repo/.claude/worktrees/r1-a\n')
+    if (line === 'worktree list --porcelain -z') return said(LIST)
+    if (line.startsWith('check-ignore')) return said('', ignored ? 0 : 1)
+    if (line === 'rev-parse --path-format=absolute --git-common-dir') return said('/repo/.git\n')
+    return said('', 1)
+  })
+  return w
+}
+const asks = (text: string | undefined): string[] => (text ? JSON.parse(text).permissions?.ask ?? [] : [])
+
+test('landing_facts reports the modes with where each was read, and a confirm mode where none is set', async ($: any, on: any) => {
+  const config: Record<string, string> = {}
+  clone(on, config)
+  expect((await call($, 'landing_facts')).result).toBe('fork: no\npush: confirm-push (the default)\npost: confirm-post (the default)\nlanding: unknown')
+  Object.assign(config, { pushMode: 'auto-push', postMode: 'auto-post', landing: 'merge' })
+  expect((await call($, 'landing_facts')).result).toBe('fork: no\npush: auto-push (git config session-skills.pushMode)\npost: auto-post (git config session-skills.postMode)\nlanding: merge (git config)')
+  // A mode that is set is read before a key of 0.29.0, and a value that is no mode is not read.
+  Object.assign(config, { pushMode: 'confirm-push', postMode: 'auto', holdPublicPush: 'false', holdPrText: 'false' })
+  expect((await call($, 'landing_facts')).result).toContain('push: confirm-push (git config session-skills.pushMode)\npost: auto-post (git config session-skills.holdPrText false)')
+  delete config.pushMode
+  expect((await call($, 'landing_facts')).result).toContain('push: auto-push (git config session-skills.holdPublicPush false)')
+})
+
+test('in a fork a post is always confirmed, the push follows its mode, and the landing is a pull request', async ($: any, on: any) => {
+  clone(on, { pushMode: 'auto-push', postMode: 'auto-post', landing: 'merge', holdFork: 'false' }, {}, true)
+  expect((await call($, 'landing_facts')).result).toBe('fork: yes, an upstream remote is set\npush: auto-push (git config session-skills.pushMode)\npost: confirm-post (always, in a fork)\nlanding: pr (a fork)')
+  const ran = await call($, 'set_push_policy', { post: 'auto-post' })
+  expect(ran.isError).toBe(true)
+  expect(ran.text).toContain('a fork')
 })
 
 test('landing_facts reports a lookup of upstream that failed, and not that the repo is no fork', async ($: any, on: any) => {
@@ -578,32 +642,84 @@ test('landing_facts reports a lookup of upstream that failed, and not that the r
 })
 
 test('landing_facts reads a protected default branch, or a pull-request ruleset, as pr mode', async ($: any, on: any) => {
-  const git = (line: string) => (line === 'remote get-url origin' ? 'https://github.com/a/b.git' : line.startsWith(READ) ? shown(line) : line === 'remote get-url upstream' ? undefined : 1)
+  const git = (line: string) => (line === 'remote get-url origin' ? 'https://github.com/a/b.git' : line.startsWith(READ) ? shown(line) : line === 'remote get-url upstream' ? 2 : 1)
   const gh = (isProtected: string, rules: string) => (line: string) =>
-    line.includes('visibility') ? 'PUBLIC' : line.includes('nameWithOwner') ? 'a/b' : line.includes('/rules/') ? rules : line.startsWith('gh api') ? isProtected : undefined
+    line.includes('nameWithOwner') ? 'a/b' : line.includes('/rules/') ? rules : line.startsWith('gh api') ? isProtected : undefined
   let now = gh('', '')
   world(on, git, line => now(line))
   for (const [isProtected, rules, mode] of [['true', '', 'pr'], ['false', 'deletion\npull_request', 'pr'], ['false', 'deletion', 'merge']]) {
     now = gh(isProtected, rules)
-    expect((await call($, 'landing_facts')).result).toBe(`fork: yes, an upstream remote is set\norigin visibility: public (gh)\nlanding mode: ${mode} (gh)\nholds lifted: none`)
+    expect((await call($, 'landing_facts')).result).toContain(`landing: ${mode} (gh)`)
   }
 })
 
-test('a URL is on this machine, with a drive letter a path only on Windows', () => {
-  for (const url of ['/srv/r.git', './r', '../r', 'r', 'file:///x', 'http://localhost/r', 'ssh://git@127.0.0.1:22/r', 'http://[::1]:80/r', 'a/b:c', 'u@LocalHost:r']) {
-    expect(localUrl(url, false), url).toBe(true)
-  }
-  for (const url of ['C:/x', 'C:\\x', 'g:o/r', 'git@github.com:o/r.git', 'https://h/a/b.git', 'https://h/r?x=localhost', 'http://127.0.0.2/r']) {
-    expect(localUrl(url, false), url).toBe(false)
-  }
-  expect(localUrl('C:/x', true)).toBe(true)
-  expect(localUrl('C:\\x', true)).toBe(true)
-  expect(localUrl('gh:o/r', true)).toBe(false)
+test('a session start writes the rules of each confirm mode for the primary checkout and the directory it starts in', async ($: any, on: any) => {
+  const w = clone(on, {}, { [LOCAL]: JSON.stringify({ permissions: { allow: ['Read'], ask: ['mine'] } }), '/repo/.git/info/exclude': '# local\n' })
+  await $.session.start({ cwd: '/repo' })
+  expect(asks(w.files[LOCAL])).toEqual(['mine', ...PUSH_RULES, ...POST_RULES])
+  expect(JSON.parse(w.files[LOCAL]!).permissions.allow).toEqual(['Read'])
+  expect(asks(w.files[WT_LOCAL])).toEqual([...PUSH_RULES, ...POST_RULES])
+  expect(w.files['/repo/.git/info/exclude']).toBe('# local\n**/.claude/settings.local.json\n')
+  expect(w.toasts).toEqual([])
 })
 
+test('a session start writes no rule for an auto mode, takes none out, and leaves an ignored file out of the exclude file', async ($: any, on: any) => {
+  const before = JSON.stringify({ permissions: { ask: PUSH_RULES } })
+  const w = clone(on, { pushMode: 'auto-push', postMode: 'auto-post' }, { [LOCAL]: before }, false, true)
+  await $.session.start({ cwd: '/repo' })
+  expect(w.files).toEqual({ [LOCAL]: before })
+  delete w.files[LOCAL]
+  await $.session.start({ cwd: '/repo' })
+  expect(w.files).toEqual({})
+})
+
+test('a settings file that is not JSON is left as it is, and the user is told', async ($: any, on: any) => {
+  const w = clone(on, {}, { [LOCAL]: '{ not json' })
+  await $.session.start({ cwd: '/repo' })
+  expect(w.files[LOCAL]).toBe('{ not json')
+  expect(w.toasts.join()).toContain(LOCAL)
+})
+
+test('set_push_policy asks before a switch to an auto mode, then takes its rules out of every worktree', async ($: any, on: any) => {
+  const config: Record<string, string> = {}
+  const w = clone(on, config)
+  await $.session.start({ cwd: '/repo' })
+  const ran = await call($, 'set_push_policy', { push: 'auto-push' })
+  expect(w.asked).toHaveLength(1)
+  expect(w.asked[0]).toContain('auto-push')
+  expect(config).toEqual({ pushMode: 'auto-push' })
+  expect(asks(w.files[LOCAL])).toEqual(POST_RULES)
+  expect(asks(w.files[WT_LOCAL])).toEqual(POST_RULES)
+  expect(ran.result).toContain(`push: auto-push (git config session-skills.pushMode)\npost: confirm-post (the default)\nrules written: ${LOCAL}`)
+  // Back to a confirm mode with no question, and the rules are written again.
+  await call($, 'set_push_policy', { push: 'confirm-push' })
+  expect(w.asked).toHaveLength(1)
+  expect(asks(w.files[WT_LOCAL])).toEqual([...POST_RULES, ...PUSH_RULES])
+})
+
+test('set_push_policy changes nothing when the user keeps the mode, when nobody can be asked, or for a value that is no mode', async ($: any, on: any) => {
+  const config: Record<string, string> = {}
+  const w = clone(on, config)
+  w.answer = 'Keep confirming'
+  expect((await call($, 'set_push_policy', { push: 'auto-push', post: 'auto-post' })).result).toContain('push: confirm-push')
+  w.answer = null
+  expect((await call($, 'set_push_policy', { post: 'auto-post' })).isError).toBe(true)
+  expect((await call($, 'set_push_policy', { push: 'auto' })).isError).toBe(true)
+  expect((await call($, 'set_push_policy', {})).isError).toBe(true)
+  expect(config).toEqual({})
+  expect(w.files).toEqual({})
+})
+
+test('open_worktree writes the rules to the new worktree', async ($: any, on: any) => {
+  const files: Record<string, string> = {}
+  world(on, line => (line === 'remote get-url upstream' ? 2 : held(line)), undefined, [], files)
+  await call($, 'open_worktree', { name: 'parser-cache' })
+  expect(asks(files['/repo/.claude/worktrees/parser-cache/.claude/settings.local.json'])).toEqual([...PUSH_RULES, ...POST_RULES])
+})
+
+// The reader behind the request for a next step.
 // The reader behind the push and host-write holds.
 const pushes = (cmd: string, shell = 'Bash') => outward(cmd, shell).pushes
-const hosts = (cmd: string) => outward(cmd).hosts.map(h => h.what)
 
 test('a push is read with the directory it runs in, from -C or the last cd before it', () => {
   expect(pushes('git push')).toEqual([{ dir: undefined, force: false, dryRun: false }])
@@ -639,147 +755,6 @@ test('PowerShell escapes with a backtick and keeps a backslash in a path', () =>
   expect(pushes('git -C "C:\\a b" push', 'PowerShell')[0]!.dir).toBe('C:\\a b')
 })
 
-test('a gh or glab write is read, and a read is not', () => {
-  expect(hosts('gh pr comment 12 --body "x" && glab mr note 3 -m y')).toEqual(['gh pr comment', 'glab mr note'])
-  expect(hosts('gh api -X POST repos/o/r/issues')).toEqual(['gh api repos/o/r/issues'])
-  expect(hosts('gh api repos/o/r/labels -f name=x')).toEqual(['gh api repos/o/r/labels'])
-  expect(hosts("gh api graphql -f query='mutation { x }'")).toEqual(['gh api graphql'])
-  for (const cmd of ['gh pr view 1', 'gh api repos/o/r', "gh api graphql -f query='query { x }'", 'gh api -X GET repos/o/r/pulls -f state=open', 'glab mr list', 'gh repo set-default o/r', 'git log --grep gh']) {
-    expect(hosts(cmd), cmd).toEqual([])
-  }
-  expect(outward('cd /a && gh -R o/r pr create --fill').hosts).toEqual([{ what: 'gh pr create', dir: '/a', prCreate: true, otherRepo: true }])
-  expect(outward('GH_REPO=o/r gh pr create').hosts[0]!.otherRepo).toBe(true)
-  expect(outward('glab mr create --fill').hosts[0]!.prCreate).toBe(true)
-})
-
-test("a write to session-skills' git config is read, and a read of it is not", () => {
-  expect(outward('git config session-skills.holdPublicPush false').configs).toEqual(['git config session-skills.holdPublicPush false'])
-  expect(outward('git -C /r config --local session-skills.originVisibility private').configs).toHaveLength(1)
-  for (const cmd of ['git config --get session-skills.landing', 'git config get session-skills.landing', 'git config --list', 'git config user.name x']) expect(outward(cmd).configs, cmd).toEqual([])
-})
-
-// The engine's own verdict beneath the plugin is an allow.
-const verdict = ($: any, command: string, tool = 'Bash') => $.tool.check({ tool, input: { command } })
-function pushWorld(on: any, config: Record<string, string>, upstream = false) {
-  on('tool.check', () => ({ decision: 'allow' }))
-  return world(on, line => {
-    if (line === 'remote get-url origin' || line.startsWith('remote get-url --push --all')) return 'https://example.com/a/b.git'
-    if (line === 'remote get-url upstream') return upstream ? 'https://example.com/up/b.git' : 2
-    if (line === 'remote') return upstream ? 'origin\nupstream' : 'origin'
-    if (line === 'branch --show-current') return 'main'
-    if (line === 'config -z --list') return ''
-    if (line.startsWith('config --get')) return config[line.split('.')[1]!] ?? 1
-    if (line.startsWith('config --default= --get')) return config[line.split('.')[1]!] ?? ''
-  })
-}
-
-test('a push to a public origin, or of unknown visibility, is held, in either shell', async ($: any, on: any) => {
-  const config: Record<string, string> = { originVisibility: 'public' }
-  pushWorld(on, config)
-  for (const tool of ['Bash', 'PowerShell']) {
-    const held = await verdict($, 'git push origin main', tool)
-    expect(held.decision).toBe('ask')
-    expect(held.reason).toContain('origin is public')
-    expect(held.reason).toContain('git config session-skills.holdPublicPush false')
-  }
-  delete config.originVisibility
-  expect((await verdict($, 'git push')).reason).toContain("origin's visibility is unknown")
-})
-
-test('a push to a private origin, with the public hold lifted, or a dry run, is not held, but a force push is', async ($: any, on: any) => {
-  const config: Record<string, string> = { originVisibility: 'private' }
-  const calls = pushWorld(on, config)
-  expect((await verdict($, 'git push')).decision).toBe('allow')
-  const forced = await verdict($, 'git push -f')
-  expect(forced.decision).toBe('ask')
-  expect(forced.reason).toContain('Force push')
-  Object.assign(config, { originVisibility: 'public', holdPublicPush: 'false' })
-  expect((await verdict($, 'git push')).decision).toBe('allow')
-  delete config.holdPublicPush
-  calls.length = 0
-  expect((await verdict($, 'git push --dry-run origin main')).decision).toBe('allow')
-  expect((await verdict($, 'git log origin/main..main')).decision).toBe('allow')
-  expect(calls).toEqual([])
-})
-
-test('a push from a fork is held until holdFork is lifted, and then by visibility', async ($: any, on: any) => {
-  const config: Record<string, string> = { originVisibility: 'public' }
-  pushWorld(on, config, true)
-  expect((await verdict($, 'git push')).reason).toContain('git config session-skills.holdFork false')
-  config.holdFork = 'false'
-  expect((await verdict($, 'git push')).reason).toContain('holdPublicPush')
-  config.originVisibility = 'private'
-  expect((await verdict($, 'git push')).decision).toBe('allow')
-})
-
-test('the hold is read in the directory the push runs in, and a failed read holds the push', async ($: any, on: any) => {
-  on('tool.check', () => ({ decision: 'allow' }))
-  on('session.repo', () => ({ value: { root: '/repo', remote: null, internal: false } }))
-  const dirs: string[] = []
-  on('process.run', (_$: any, e: any) => {
-    dirs.push(e.argv[2])
-    const line = e.argv.slice(3).join(' ')
-    if (line === 'remote get-url upstream') return { value: { exitCode: e.argv[2] === '/broken' ? 128 : 2, stdout: '', stderr: 'fatal: no' } }
-    return { value: { exitCode: 0, stdout: line.includes('originVisibility') ? 'private\n' : 'https://example.com/a/b.git\n', stderr: '' } }
-  })
-  expect((await verdict($, 'git -C "/other repo" push origin')).decision).toBe('allow')
-  expect(new Set(dirs)).toEqual(new Set(['/other repo']))
-  const failed = await verdict($, 'cd /broken && git push origin')
-  expect(failed.decision).toBe('ask')
-  expect(failed.reason).toContain('could not be checked')
-  expect((await verdict($, 'cd "$WT" && git push origin')).reason).toContain('could not be read')
-})
-
-test('a gh write is held, and a PR opened in origin is not once holdPrText is lifted and the branch push is not held', async ($: any, on: any) => {
-  const config: Record<string, string> = { originVisibility: 'private' }
-  pushWorld(on, config)
-  expect((await verdict($, 'gh pr comment 1 --body hi')).reason).toContain('`gh pr comment` writes to the remote host')
-  expect((await verdict($, 'gh pr create --fill')).reason).toContain('holdPrText')
-  config.holdPrText = 'false'
-  expect((await verdict($, 'gh pr create --fill')).decision).toBe('allow')
-  expect((await verdict($, 'gh -R o/r pr create --fill')).decision).toBe('ask')
-  config.originVisibility = 'public'
-  expect((await verdict($, 'gh pr create --fill')).reason).toContain('it may push the branch')
-})
-
-test('a push, host write, or config write sent through Monitor, the terminal panel, or the IDE terminal is held too', async ($: any, on: any) => {
-  const config: Record<string, string> = { originVisibility: 'public' }
-  pushWorld(on, config)
-  const check = (tool: string, input: any = {}) => $.tool.check({ tool, input: { command: 'git push origin main', ...input } })
-  for (const tool of ['Monitor', 'mcp__terminal__run_in_terminal', 'mcp__idea__execute_terminal_command']) {
-    expect((await check(tool)).reason).toContain('Push held')
-    expect((await check(tool, { command: 'gh pr merge 1' })).reason).toContain('Host write held')
-    expect((await check(tool, { command: 'git config session-skills.originVisibility private' })).reason).toContain('Config write held')
-  }
-  config.originVisibility = 'private'
-  expect((await check('Monitor')).decision).toBe('allow')
-  expect((await check('mcp__terminal__run_in_terminal')).decision).toBe('allow')
-  // A reused tab, a ~ path, and the IDE terminal run in a directory the hook cannot read.
-  for (const [tool, input] of [['mcp__terminal__run_in_terminal', { tab_id: '3' }], ['mcp__terminal__run_in_terminal', { cwd: '~/pub' }], ['mcp__idea__execute_terminal_command', {}]] as const) {
-    expect((await check(tool, input)).reason).toContain('could not be read')
-  }
-  // The IDE terminal may be PowerShell, where a backtick continues the line.
-  expect((await check('mcp__idea__execute_terminal_command', { command: 'git push `\n-f origin main' })).reason).toContain('Force push')
-})
-
-test('a push with no session repo is held', async ($: any, on: any) => {
-  on('tool.check', () => ({ decision: 'allow' }))
-  on('session.repo', () => ({ value: null }))
-  expect((await verdict($, 'git push -f origin main')).decision).toBe('ask')
-})
-
-test("the engine's denial stands", async ($: any, on: any) => {
-  on('tool.check', () => ({ decision: 'deny', reason: 'refused by a rule' }))
-  world(on, () => {})
-  expect(await verdict($, 'git push')).toEqual({ decision: 'deny', reason: 'refused by a rule' })
-})
-
-test('with askBeforeOutwardWrites off, nothing is put to the user', { options: { askBeforeOutwardWrites: false } }, async ($: any, on: any) => {
-  pushWorld(on, { originVisibility: 'public' })
-  for (const cmd of ['git push -f origin main', 'gh pr merge 1', 'git config session-skills.holdPublicPush false']) expect((await verdict($, cmd)).decision, cmd).toBe('allow')
-})
-
-// Commands from the review of the reader, each once read wrongly.
 test('a redirection is not read as the remote', () => {
   for (const cmd of ['git push 2>&1 | tail -5', 'git push -u 2>&1', 'git push > /tmp/push.log 2>&1', 'git push >/dev/null', 'git push &>log']) {
     expect(pushes(cmd)[0]!.remote, cmd).toBeUndefined()
@@ -792,23 +767,10 @@ test('a braced variable or a substitution stays in its word, and a push inside a
   expect(pushes('git -C ${WT} push origin main')[0]!.dir).toBeNull()
   expect(pushes('git -C $(git rev-parse --show-toplevel) push origin main')[0]!.dir).toBeNull()
   expect(pushes('git -C `pwd` push origin main')[0]!.dir).toBeNull()
-  expect(outward('gh -R ${REPO} pr create --fill').hosts[0]!.otherRepo).toBe(true)
-  expect(hosts('gh api repos/${REPO}/issues/1/comments -f body=hi')).toHaveLength(1)
   expect(pushes('out=$(git push 2>&1)')).toHaveLength(1)
 })
 
 test('a PowerShell here-string body is not read, and the command after it is', () => {
-  expect(outward("$b = @'\nThis doesn't change behavior.\n'@\ngh pr create --title x --body $b", 'PowerShell').hosts.map(h => h.what)).toEqual(['gh pr create'])
+  expect(pushes("$b = @'\nThis doesn't change behavior, so git push\n'@\ngit commit -m $b", 'PowerShell')).toEqual([])
   expect(outward('$b = @"\nA "quote\n"@\ngit push -f', 'PowerShell').pushes[0]!.force).toBe(true)
-})
-
-test('gh pr update-branch and revert are writes', () => {
-  expect(hosts('gh pr update-branch 12 --rebase && gh pr revert 3')).toEqual(['gh pr update-branch', 'gh pr revert'])
-})
-
-test("a read of session-skills' git config is not a write, and a remote write that can lift a hold is", () => {
-  for (const cmd of ['git config session-skills.originVisibility', 'git config --local session-skills.holdFork']) expect(outward(cmd).configs, cmd).toEqual([])
-  for (const cmd of ['git config --unset session-skills.holdFork', 'git config unset session-skills.holdFork', 'git config set session-skills.holdFork false']) expect(outward(cmd).configs, cmd).toHaveLength(1)
-  for (const cmd of ['git remote remove upstream', 'git remote rm upstream', 'git remote rename upstream up', 'git remote set-url origin x']) expect(outward(cmd).configs, cmd).toHaveLength(1)
-  for (const cmd of ['git remote -v', 'git remote add upstream x', 'git remote get-url origin']) expect(outward(cmd).configs, cmd).toEqual([])
 })

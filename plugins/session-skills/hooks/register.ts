@@ -1,8 +1,9 @@
 // The plugin's hooks module: the rules a session starts with, the tools that
-// run the git work of both skills, and the tool a worktree session calls to edit
-// a file that is only in the primary checkout.
+// run the git work of both skills, the permission rules that put a push or a
+// post to the user, and the tool a worktree session calls to edit a file that
+// is only in the primary checkout.
 import type { Register } from 'claude-code'
-import { type Dir, type HostWrite, localUrl, outward, pickBase, refLine, visibility, worktreeName } from './checkouts'
+import { askRules, outward, pickBase, POST_RULES, PUSH_RULES, refLine, worktreeName } from './checkouts'
 import { splice } from './splice'
 
 const NONE = { type: 'object', properties: {} } as const
@@ -38,8 +39,18 @@ const TOOLS = {
     },
   },
   landing_facts: {
-    description: "Report the facts used to choose how work leaves its branch in this repo: whether it is a fork, origin's visibility, the landing mode (merge or pr), and which holds the user lifted. Read from per-clone git config first, then gh or glab where installed. Read-only.",
+    description: "Report the facts used to choose how work leaves its branch in this clone: whether it is a fork, the push mode (confirm-push or auto-push), the post mode (confirm-post or auto-post), and the landing mode (merge or pr), each with where it was read. Read from per-clone git config first, then gh for the landing mode where installed. Read-only.",
     inputSchema: NONE,
+  },
+  set_push_policy: {
+    description: "Set this clone's push mode, its post mode, or both, in per-clone git config, and write the matching permission rules to .claude/settings.local.json in the primary checkout and every worktree. In a confirm mode a push, or a post to the host with gh or glab, raises a permission prompt in every permission mode. The user is asked before a switch to an auto mode. Call it only when the user asks for a mode in this conversation.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        push: { type: 'string', enum: ['confirm-push', 'auto-push'], description: 'confirm-push: the user confirms each git push in the permission prompt. auto-push: a push runs unasked.' },
+        post: { type: 'string', enum: ['confirm-post', 'auto-post'], description: 'confirm-post: the user confirms each PR, issue, comment, or release written with gh or glab. auto-post: those run unasked. A fork is always confirm-post.' },
+      },
+    },
   },
 } as const
 // Every command is run by argument vector, so the same code serves bash, Git
@@ -216,6 +227,8 @@ async function openWorktree($: any, e: any): Promise<string> {
     const pulled = await git($, path, 'lfs', 'pull')
     if (pulled.exitCode !== 0) warnings.push(`LFS files were left as pointers, so run \`git lfs pull\` in the worktree: ${firstLine(pulled.stderr) || `exit ${pulled.exitCode}`}`)
   }
+  // A session started in the worktree reads its own settings file on Windows.
+  await writeRules($, main, [path]).catch(err => warnings.push(`the push and post rules were not written to the worktree: ${(err as Error).message}`))
   const lines = [`worktree: ${path}`, `branch: claude/${name}`, `opened from: ${base}`, `primary checkout: ${main}`, `default branch: ${def}`]
   if (await $.fs.exists(`${main}/${notes}`)) {
     // `ln -s` into a directory that is there links inside it, and reports success.
@@ -395,41 +408,95 @@ async function pruneBranches($: any): Promise<string> {
 
 const setting = ($: any, dir: string, key: string) => out(git($, dir, 'config', '--get', `session-skills.${key}`))
 
-const VIEW = [['gh', ['--json', 'visibility', '-q', '.visibility']], ['glab', ['-F', 'json', '--jq', '.visibility']]] as const
+// The push and post modes of a clone, each with where it was read. Unset is a
+// confirm mode. The keys of 0.29.0 that lifted a hold are still read, and a
+// fork has no auto-post, since a post there is written to someone else's project.
+type Modes = { fork: boolean; push: string; pushFrom: string; post: string; postFrom: string }
+async function readModes($: any, main: string): Promise<Modes> {
+  const fork = (await remoteUrl($, main, 'upstream')) !== null
+  const [push, post, oldPush, oldPost] = await Promise.all(['pushMode', 'postMode', 'holdPublicPush', 'holdPrText'].map(key => setting($, main, key)))
+  const from = (key: string) => `git config session-skills.${key}`
+  const pushed = push === 'confirm-push' || push === 'auto-push' ? [push, from('pushMode')] : oldPush === 'false' ? ['auto-push', `${from('holdPublicPush')} false`] : ['confirm-push', 'the default']
+  const posted = fork ? ['confirm-post', 'always, in a fork']
+    : post === 'confirm-post' || post === 'auto-post' ? [post, from('postMode')] : oldPost === 'false' ? ['auto-post', `${from('holdPrText')} false`] : ['confirm-post', 'the default']
+  return { fork, push: pushed[0]!, pushFrom: pushed[1]!, post: posted[0]!, postFrom: posted[1]! }
+}
+const modeLines = (m: Modes) => [`push: ${m.push} (${m.pushFrom})`, `post: ${m.post} (${m.postFrom})`]
 
-// A URL's visibility from gh or glab, or '' for both where it is unknown.
-async function lookUp($: any, url: string): Promise<[string, string]> {
-  let found: [string, string] = ['', '']
-  for (const [from, argv] of VIEW) {
-    const read = visibility(await out(run($, [from, 'repo', 'view', url, ...argv])))
-    if (read) {
-      found = [read, from]
-      break
+// Writes the ask rules of each confirm mode to `.claude/settings.local.json` in
+// each directory, and with `lift` takes out the rules of an auto mode. Returns
+// the files written. A rule there is read by a session started in that
+// directory, prompts in every permission mode, and is applied by a running
+// interactive session at once. A session run with -p applies it from its next
+// start. The file is excluded from git where nothing ignores it yet.
+async function writeRules($: any, main: string, dirs: string[], lift = false): Promise<string[]> {
+  const m = await readModes($, main)
+  const add = [...(m.push === 'confirm-push' ? PUSH_RULES : []), ...(m.post === 'confirm-post' ? POST_RULES : [])]
+  const drop = lift ? [...PUSH_RULES, ...POST_RULES].filter(rule => !add.includes(rule)) : []
+  const written: string[] = []
+  for (const dir of new Set(dirs)) {
+    const path = `${dir.replace(/[\\/]+$/, '')}/.claude/settings.local.json`
+    const had: string = (await $.fs.exists(path)) ? await $.fs.read(path) : ''
+    let next: string | null
+    try {
+      next = askRules(had, add, drop)
+    } catch (err) {
+      throw new Error(`${path} was left as it is: ${(err as Error).message}`)
     }
+    if (next === null) continue
+    await $.fs.write(path, next)
+    written.push(path)
   }
-  return found
+  // Exit 1 is a path nothing ignores, and any other failure leaves the exclude file alone.
+  if (written.length && (await git($, main, 'check-ignore', '-q', '.claude/settings.local.json')).exitCode === 1) {
+    const dir = await out(git($, main, 'rev-parse', '--path-format=absolute', '--git-common-dir'))
+    const had: string = dir ? await $.fs.read(`${dir}/info/exclude`).catch(() => '') : ''
+    if (dir) await $.fs.write(`${dir}/info/exclude`, `${had}${had && !had.endsWith('\n') ? '\n' : ''}**/.claude/settings.local.json\n`)
+  }
+  return written
 }
 
-// origin's visibility and where it was read, or '' for both where it is unknown.
-async function originVisibility($: any, dir: string): Promise<[string, string]> {
-  const url = (await remoteUrl($, dir, 'origin')) ?? ''
-  const vis = visibility(await setting($, dir, 'originVisibility'))
-  if (vis) return [vis, 'git config']
-  return url ? lookUp($, url) : ['', '']
+// The rules for the directory a session starts in, and for the primary
+// checkout, whose file a worktree session reads on macOS. Rules are only
+// added here: taking one out is the user's decision, made in set_push_policy.
+async function startRules($: any): Promise<void> {
+  const repo = await $.session.repo().catch(() => null)
+  if (!repo?.root) return
+  const top = await git($, await $.session.cwd(), 'rev-parse', '--show-toplevel')
+  await writeRules($, repo.root, [repo.root, ...(top.exitCode === 0 ? [top.stdout.replace(/\n$/, '')] : [])])
+}
+
+async function setPushPolicy($: any, e: any): Promise<string> {
+  const main = await primary($)
+  const now = await readModes($, main)
+  const wanted = [['pushMode', e.push, now.push, ['confirm-push', 'auto-push']], ['postMode', e.post, now.post, ['confirm-post', 'auto-post']]].filter(w => w[1] !== undefined) as [string, string, string, string[]][]
+  if (!wanted.length) throw new Error('neither push nor post was given')
+  for (const [, mode, , modes] of wanted) if (!modes.includes(mode)) throw new Error(`${JSON.stringify(mode)} is not one of ${modes.join(', ')}`)
+  if (now.fork && e.post === 'auto-post') throw new Error('this clone is a fork, where a post is always confirmed')
+  const lifted = wanted.filter(([, mode, was]) => mode.startsWith('auto-') && mode !== was).map(([, mode]) => mode)
+  if (lifted.length) {
+    const what = lifted.map(mode => (mode === 'auto-push' ? 'every git push' : 'every PR, issue, comment, and release written with gh or glab')).join(', and ')
+    const answer = await $.ui.ask(`Switch this clone to ${lifted.join(' and ')}? Claude then runs ${what} here without asking.`, ['Switch', 'Keep confirming']).catch(() => {
+      throw new Error('nobody could be asked, so the modes are left as they are')
+    })
+    if (answer !== 'Switch') return ['The user kept the modes as they are.', ...modeLines(now)].join('\n')
+  }
+  for (const [key, mode] of wanted) await must($, main, 'config', `session-skills.${key}`, mode)
+  const written = await writeRules($, main, (await worktrees($, main)).map(w => w.path), true)
+  return [...modeLines(await readModes($, main)), ...written.map(path => `rules written: ${path}`)].join('\n')
 }
 
 async function landingFacts($: any): Promise<string> {
   const main = await primary($)
-  const config = (key: string) => setting($, main, key)
-  const fork = (await remoteUrl($, main, 'upstream')) !== null
+  const modes = await readModes($, main)
   const url = (await remoteUrl($, main, 'origin')) ?? ''
-  const [vis, visFrom] = await originVisibility($, main)
 
-  // GitHub returns `protected` from its plain branch endpoint to any reader,
-  // and its protection endpoint needs admin rights, so the first is read, plus
-  // the branch's rulesets.
-  let mode = await config('landing')
-  let modeFrom = 'git config'
+  // A fork never merges into its default branch. Elsewhere, GitHub returns
+  // `protected` from its plain branch endpoint to any reader, and its
+  // protection endpoint needs admin rights, so the first is read, plus the
+  // branch's rulesets.
+  let mode = modes.fork ? 'pr' : await setting($, main, 'landing')
+  let modeFrom = modes.fork ? 'a fork' : 'git config'
   if (mode !== 'merge' && mode !== 'pr') {
     mode = ''
     const repo = url && (await out(run($, ['gh', 'repo', 'view', url, '--json', 'nameWithOwner', '-q', '.nameWithOwner'])))
@@ -442,15 +509,7 @@ async function landingFacts($: any): Promise<string> {
       modeFrom = 'gh'
     }
   }
-
-  const lifted = []
-  for (const hold of ['holdPublicPush', 'holdFork', 'holdPrText']) if ((await config(hold)) === 'false') lifted.push(hold)
-  return [
-    `fork: ${fork ? 'yes, an upstream remote is set' : 'no'}`,
-    `origin visibility: ${vis ? `${vis} (${visFrom})` : 'unknown'}`,
-    `landing mode: ${mode ? `${mode} (${modeFrom})` : 'unknown'}`,
-    `holds lifted: ${lifted.join(', ') || 'none'}`,
-  ].join('\n')
+  return [`fork: ${modes.fork ? 'yes, an upstream remote is set' : 'no'}`, ...modeLines(modes), `landing: ${mode ? `${mode} (${modeFrom})` : 'unknown'}`].join('\n')
 }
 
 // A tool's answer, or its error as the result: nothing is thrown at the model.
@@ -461,189 +520,6 @@ async function answer(name: string, run: () => Promise<string>) {
     const text = `${name}: ${(err as Error).message}`
     return { result: text, text, isError: true }
   }
-}
-
-// The directory a command in the Bash tool runs in: the tool's working
-// directory, which a cd in an earlier call moves, or a path read against it.
-// In a linked worktree the session's repo is the primary checkout, but the
-// branch checked out is the worktree's.
-async function where($: any, dir: string | undefined): Promise<string> {
-  if (dir !== undefined && /^(?:[A-Za-z]:)?[\\/]/.test(dir)) return dir
-  const cwd = (await $.session.cwd().catch(() => '')) || (await primary($))
-  return dir === undefined ? cwd : `${cwd.replace(/[\\/]+$/, '')}/${dir}`
-}
-
-// One git config value, '' where it is not set. A read that fails throws:
-// Claude Code reports a git that crashed as exit 1, which `--get` alone also
-// returns for a key that is not set.
-async function configValue($: any, dir: string, key: string): Promise<string> {
-  const r = await git($, dir, 'config', '--default=', '--get', key)
-  if (r.exitCode !== 0) failed(r)
-  return r.stdout.trim()
-}
-
-// The remote a `git push` with none given goes to: the branch's pushRemote,
-// then remote.pushDefault, then the branch's remote, then origin. The branch is
-// '' on a detached HEAD, and is printed without the `heads/` that symbolic-ref
-// adds where a tag has the same name.
-async function pushRemote($: any, dir: string): Promise<string> {
-  const head = await git($, dir, 'branch', '--show-current')
-  if (head.exitCode !== 0) failed(head)
-  const branch = head.stdout.trim()
-  for (const key of [branch && `branch.${branch}.pushRemote`, 'remote.pushDefault', branch && `branch.${branch}.remote`]) {
-    const name = key && (await configValue($, dir, key))
-    if (name) return name
-  }
-  return 'origin'
-}
-
-// Every git config entry read in `dir`, as git prints it, in the order git
-// reads them. A boolean key with no value is true.
-async function configList($: any, dir: string): Promise<[string, string][]> {
-  const r = await git($, dir, 'config', '-z', '--list')
-  if (r.exitCode !== 0) failed(r)
-  const entries: [string, string][] = []
-  for (const entry of r.stdout.split('\0')) {
-    const nl = entry.indexOf('\n')
-    const key = nl < 0 ? entry : entry.slice(0, nl)
-    if (key.trim()) entries.push([key, nl < 0 ? 'true' : entry.slice(nl + 1)])
-  }
-  return entries
-}
-
-// Every URL a remote pushes to, or null where git has no such remote.
-async function pushUrls($: any, dir: string, name: string): Promise<string[] | null> {
-  const r = await git($, dir, 'remote', 'get-url', '--push', '--all', name)
-  if (r.exitCode === 2) return null
-  if (r.exitCode !== 0) failed(r)
-  return r.stdout.split(/\r?\n/).map(u => u.trim()).filter(Boolean)
-}
-
-// A session on Windows is told by its drive-letter paths, there being no platform call.
-const onWindows = (dir: string) => /^[A-Za-z]:[\\/]/.test(dir)
-
-// Whether every URL a push goes to is on this machine:
-// `git push .`, a path, or a remote whose push URLs all are.
-async function localTarget($: any, dir: string, remote: string | null | undefined): Promise<boolean> {
-  if (remote === null) return false
-  const name = remote ?? (await pushRemote($, dir))
-  if (name === '.') return true
-  const urls = await pushUrls($, dir, name)
-  return urls === null ? localUrl(name, onWindows(dir)) : urls.length > 0 && urls.every(u => localUrl(u, onWindows(dir)))
-}
-
-// The visibility gh or glab reads for every URL: private only where each one is
-// private, and '' where any one is unknown. A path on this machine is private.
-async function urlsVisibility($: any, urls: string[], windows: boolean): Promise<string> {
-  let worst = urls.length ? 'private' : ''
-  for (const url of urls) {
-    const vis = localUrl(url, windows) ? 'private' : (await lookUp($, url))[0]
-    if (!vis) return ''
-    if (vis !== 'private') worst = vis
-  }
-  return worst
-}
-
-// Why a push run in `dir` waits for the user, by the holds in land-and-wrap §1,
-// or '' when nothing holds it. The visibility is read for the remote the push
-// goes to: origin's set in git config, else each URL it pushes to.
-async function pushHold($: any, dir: string, remote: string | null | undefined): Promise<string> {
-  const lift = (hold: string) => `The user can lift it for this clone with \`git config session-skills.${hold} false\`.`
-  const waits = `so the push waits for the user's go. ${lift('holdPublicPush')}`
-  // A push to this machine replaces nothing a reviewer read on a host, in a fork too.
-  if (await localTarget($, dir, remote)) return ''
-  if ((await remoteUrl($, dir, 'upstream')) !== null && (await setting($, dir, 'holdFork')) !== 'false') return `this repo is a fork, and a fork never pushes. ${lift('holdFork')}`
-  if ((await setting($, dir, 'holdPublicPush')) === 'false') return ''
-  if (remote === null) return `the remote it pushes to could not be read, ${waits}`
-  const name = remote ?? (await pushRemote($, dir))
-  const urls = await pushUrls($, dir, name)
-  if (!urls) return `it pushes to \`${name}\`, which is not a remote of this repo, ${waits}`
-  const origin = await pushUrls($, dir, 'origin')
-  const isOrigin = name === 'origin' || (!!origin && urls.every(u => origin.includes(u)))
-  const vis = (isOrigin && visibility(await setting($, dir, 'originVisibility'))) || (await urlsVisibility($, urls, onWindows(dir)))
-  if (vis === 'private') return ''
-  const what = isOrigin ? 'origin' : `the remote \`${name}\``
-  return `${vis ? `${what} is ${vis}` : isOrigin ? "origin's visibility is unknown" : `the visibility of ${what} is unknown`}, ${waits}`
-}
-
-// Why gh or glab may open a PR or MR in a repo other than origin's, or '' when
-// it opens it there. Both CLIs take the repo from GH_REPO or GITLAB_REPO first,
-// then from a `gh-resolved` or `glab-resolved` key on a remote, which `gh repo
-// set-default` writes, and then prefer a remote named upstream, github, or
-// gitlab to origin. So only a clone with origin alone, resolved to itself, qualifies.
-// shortcut: a GH_REPO set in a shell profile is not seen, since the hook reads Claude Code's own environment.
-async function otherBase($: any, dir: string, what: string): Promise<string> {
-  const glab = what.startsWith('glab')
-  const name = glab ? 'GITLAB_REPO' : 'GH_REPO'
-  const repo = await (glab ? $.env.get('GITLAB_REPO') : $.env.get('GH_REPO')).catch(() => '')
-  if (repo) return `${name} is set to ${repo}`
-  const others = (await must($, dir, 'remote')).split(/\r?\n/).map(r => r.trim()).filter(r => r && r !== 'origin')
-  if (others.length) return `this clone has ${others.map(r => `\`${r}\``).join(', ')} besides origin, and the PR may open there`
-  // A read that fails holds the PR.
-  for (const [key, value] of new Map(await configList($, dir))) {
-    if (/^remote\.origin\.(?:gh|glab)-resolved$/.test(key) && value !== 'base') return `${key} is set to ${value}`
-  }
-  return ''
-}
-
-// Why a host write waits for the user, or '' when it does not. Only a PR or MR
-// opened in origin's repo, with holdPrText lifted, past the fork hold, and with
-// no hold on the branch push it may make, goes unasked.
-async function hostHold($: any, w: HostWrite): Promise<string> {
-  const write = `\`${w.what}\` writes to the remote host`
-  if (!w.prCreate || w.otherRepo) return `${write}.`
-  if (w.dir === null) return `${write}, and the repo it runs in could not be read from the command.`
-  const dir = await where($, w.dir)
-  const lift = (hold: string) => `The user can lift it for this clone with \`git config session-skills.${hold} false\`.`
-  if ((await remoteUrl($, dir, 'upstream')) !== null && (await setting($, dir, 'holdFork')) !== 'false') return `${write}, and this repo is a fork, which writes nothing there. ${lift('holdFork')}`
-  if ((await setting($, dir, 'holdPrText')) !== 'false') return `${write}, and a PR's text waits for the user's go. ${lift('holdPrText')}`
-  const other = await otherBase($, dir, w.what)
-  if (other) return `${write}, and ${other}.`
-  const push = await pushHold($, dir, 'origin')
-  return push ? `${write}, and it may push the branch: ${push}` : ''
-}
-
-// Each tool that runs a shell command, with the shells its command is read in
-// and the directory it starts in: undefined for the Bash tool's, null where the
-// hook cannot read it. A terminal tab starts in `cwd` or the session's directory,
-// and a reused one wherever its shell was left. The IDE terminal starts in its
-// project, in the IDE's shell, which may be PowerShell.
-const SHELLS: Record<string, (input: any) => { shells: string[]; dir: Dir }> = {
-  Bash: () => ({ shells: ['Bash'], dir: undefined }),
-  PowerShell: () => ({ shells: ['PowerShell'], dir: undefined }),
-  Monitor: () => ({ shells: ['Bash'], dir: undefined }),
-  // shortcut: a tab with no cwd, or a relative one, is read against the Bash tool's directory, not the session's starting one; read the start directory if a session that cd'd elsewhere pushes from a tab.
-  mcp__terminal__run_in_terminal: i => ({ shells: ['Bash'], dir: i.tab_id ? null : typeof i.cwd !== 'string' || !i.cwd ? undefined : i.cwd.startsWith('~') ? null : i.cwd }),
-  mcp__idea__execute_terminal_command: () => ({ shells: ['Bash', 'PowerShell'], dir: null }),
-}
-
-// Why a shell tool's input waits for the user, by the holds in land-and-wrap
-// §1. A force push waits whatever the holds, since it replaces commits a
-// reviewer may have read.
-async function judge($: any, start: (input: any) => { shells: string[]; dir: Dir }, input: any): Promise<string[]> {
-  const reasons: string[] = []
-  const add = (reason: string) => reasons.includes(reason) || reasons.push(reason)
-  // The engine skips a hook that throws, and the command would run unasked.
-  try {
-    const { shells, dir: outer } = start(input)
-    for (const shell of shells) {
-      const { pushes, hosts, configs } = outward(String(input.command ?? ''), shell, outer)
-      for (const p of pushes.filter(p => !p.dryRun)) {
-        if (p.force) add('Force push: this replaces commits on the remote branch that a reviewer may already have read.')
-        const why = p.dir === null ? "the repo it runs in could not be read from the command, so the push waits for the user's go."
-          : await where($, p.dir).then(dir => pushHold($, dir, p.remote)).catch(err => `the push hold could not be checked: ${(err as Error).message}`)
-        if (why) add(`Push held: ${why}`)
-      }
-      for (const w of hosts) {
-        const why = await hostHold($, w).catch(err => `the hold on \`${w.what}\` could not be checked: ${(err as Error).message}`)
-        if (why) add(`Host write held: ${why}`)
-      }
-      for (const c of configs) add(`Config write held: \`${c}\` can lift a hold or change where a push goes, so it waits for the user's go.`)
-    }
-  } catch (err) {
-    add(`The command could not be checked for a push or a host write: ${(err as Error).message}.`)
-  }
-  return reasons
 }
 
 const NEXT_STEP ='This command pushed work. End the reply with the next step, under the session rules: the hand-off block for the next unit of work, or one line stating that this session carries on with it. When nothing can start yet, write one line on what the next item waits on, then the block for when it can start. When nothing comes next at all, say so in one line.'
@@ -680,7 +556,7 @@ async function head($: any): Promise<string> {
   return Array.isArray(messages) ? JSON.stringify(messages[0] ?? null) : ''
 }
 
-export const register: Register = (on, options) => {
+export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.tool.register({
       name: 'edit_primary_file',
@@ -707,6 +583,8 @@ export const register: Register = (on, options) => {
         isDeferred: false,
       })
     }
+    // A rule that cannot be written leaves a push unasked in auto mode, so the user is told.
+    await startRules($).catch(err => $.ui.toast(`session-skills: the push and post rules were not written. ${(err as Error).message}`))
     return next(e)
   })
 
@@ -727,23 +605,6 @@ export const register: Register = (on, options) => {
       if (!pushed) return ran
       return { ...ran, context: [...(ran.context ?? []), NEXT_STEP] }
     })
-  }
-
-  // A held push, a force push, and a write to the host with gh or glab are put
-  // to the user in the permission prompt, in every mode: a session that pushed
-  // without reading land-and-wrap pushed to this public repo on 2026-11-06. A
-  // subagent's is held too. Under managed settings `cc-plugin-sec-default` may
-  // skip this hook and warn about it, so it can be turned off there with the option
-  // (docs/DESIGN.md, "Managed machines").
-  if (options.askBeforeOutwardWrites !== false) {
-    for (const [tool, start] of Object.entries(SHELLS)) {
-      on('tool.check', { tool }, async ($, e: any, next: any) => {
-        const verdict = await next(e)
-        if (verdict.decision === 'deny') return verdict
-        const reasons = await judge($, start, e.input ?? {})
-        return reasons.length ? { decision: 'ask', reason: reasons.join(' ') } : verdict
-      })
-    }
   }
 
   // A title set in a turn is applied when the turn ends, since /rename waits for
@@ -798,6 +659,7 @@ export const register: Register = (on, options) => {
   on('tool.call', { tool: 'mcp__session-skills__prune_branches' }, async $ => answer('prune_branches', () => pruneBranches($)))
   on('tool.call', { tool: 'mcp__session-skills__remove_worktree' }, async ($, e: any) => answer('remove_worktree', () => removeWorktree($, e)))
   on('tool.call', { tool: 'mcp__session-skills__landing_facts' }, async $ => answer('landing_facts', () => landingFacts($)))
+  on('tool.call', { tool: 'mcp__session-skills__set_push_policy' }, async ($, e: any) => answer('set_push_policy', () => setPushPolicy($, e)))
 
   on('tool.call', { tool: 'mcp__session-skills__edit_primary_file' }, async ($, e: any) => {
     try {

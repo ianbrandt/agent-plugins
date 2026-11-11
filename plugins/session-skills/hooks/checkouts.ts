@@ -1,6 +1,6 @@
 // The rules behind the worktree and landing tools, apart from git: where a new
-// branch starts, what a visibility lookup may return, a worktree's name, and
-// the pushes and host writes a shell command makes.
+// branch starts, a worktree's name, the permission rules that put a push or a
+// post to the user, and the pushes a shell command makes.
 
 
 // Where a new branch starts. `origin/<default>` after a fetch, except that a
@@ -27,43 +27,68 @@ export function refLine(stdout: string, ref: string): { symref: string } | null 
   return line === undefined ? null : { symref: line.slice(ref.length + 1) }
 }
 
-// The one word a visibility lookup may return. A CLI's error text is dropped.
-export function visibility(text: string): string {
-  const v = text.trim().toLowerCase()
-  return ['public', 'private', 'internal'].includes(v) ? v : ''
-}
-
 export const worktreeName = (name: string, id = '') => (id ? `${id.toLowerCase()}-${name}` : name)
 
-// Whether a URL is a path on this machine or points to a loopback host. Without
-// `://`, a colon before any slash makes it scp-style, except a drive letter on Windows: elsewhere git
-// reads `C:/x` as host C.
-export function localUrl(url: string, windows: boolean): boolean {
-  if (url.startsWith('file://')) return true
-  const at = url.indexOf('://')
-  let host: string
-  if (at >= 0) host = url.slice(at + 3).split(/[/?#]/)[0]
+// A post is a write that publishes text or a release under the user's name: the
+// gh and glab subcommands below, by noun, and a write through `gh api`, which
+// is told by its flags.
+const POSTS: Record<string, Record<string, string>> = {
+  gh: {
+    pr: 'create new merge edit close reopen comment review ready lock unlock update-branch revert',
+    issue: 'create new edit close reopen comment delete pin unpin transfer lock unlock develop',
+    release: 'create edit delete upload delete-asset',
+  },
+  glab: {
+    mr: 'create new merge update close reopen note approve revoke delete rebase',
+    issue: 'create new update close reopen note delete',
+    release: 'create update delete upload',
+  },
+}
+const API_WRITE = ['-X', '--method', '-f', '-F', '--field', '--raw-field', '--input']
+
+// A permission rule for each shell tool. A ` *` at the end of a pattern also
+// matches the command with nothing after it, and a `* ` inside one matches at
+// least one word, so `git -C * push *` and `git push *` are two rules. Both
+// were measured on Claude Code 2.1.322.
+const both = (patterns: string[]) => patterns.flatMap(p => [`Bash(${p})`, `PowerShell(${p})`])
+// shortcut: `git -c key=value push`, a push in a script or an alias, and a tool that takes a command as an MCP input match no rule; add a pattern if an agent is seen pushing that way.
+export const PUSH_RULES = both(['git push *', 'git -C * push *'])
+export const POST_RULES = both([
+  ...Object.entries(POSTS).flatMap(([cli, nouns]) => Object.entries(nouns).flatMap(([noun, verbs]) => verbs.split(' ').map(verb => `${cli} ${noun} ${verb} *`))),
+  ...API_WRITE.flatMap(flag => [`gh api ${flag} *`, `gh api * ${flag} *`]),
+])
+
+// The text of a settings file with the rules in `add` in `permissions.ask` and
+// the ones in `drop` out of it, or null where the file already reads that way.
+// Every other key and rule is kept. Text that is not a JSON object throws, and
+// the file is then left as it is.
+export function askRules(text: string, add: string[], drop: string[] = []): string | null {
+  const settings = text.trim() ? JSON.parse(text) : {}
+  if (typeof settings !== 'object' || settings === null || Array.isArray(settings)) throw new Error('it is not a JSON object')
+  const permissions = settings.permissions ?? {}
+  const had: unknown[] = permissions.ask ?? []
+  if (typeof permissions !== 'object' || Array.isArray(permissions) || !Array.isArray(had)) throw new Error('its permissions.ask is not a list')
+  const kept = had.filter(rule => !drop.includes(rule as string))
+  const ask = [...kept, ...add.filter(rule => !kept.includes(rule))]
+  if (ask.length === had.length && ask.every((rule, i) => rule === had[i])) return null
+  if (ask.length) settings.permissions = { ...permissions, ask }
   else {
-    const colon = url.indexOf(':')
-    if (colon < 0) return true
-    host = url.slice(0, colon)
-    if (host.includes('/') || (windows && /^[A-Za-z]$/.test(host))) return true
+    delete permissions.ask
+    if (Object.keys(permissions).length) settings.permissions = permissions
+    else delete settings.permissions
   }
-  host = host.slice(host.lastIndexOf('@') + 1)
-  host = host.startsWith('[') ? host.slice(1).split(']')[0] : host.split(':')[0]
-  return /^(?:localhost|127\.0\.0\.1|::1)$/i.test(host)
+  return `${JSON.stringify(settings, null, 2)}\n`
 }
 
 // The directory a command runs in: a path, undefined for the tool's own, or
-// null where it cannot be read from the command, and the push then waits.
+// null where it cannot be read from the command.
 export type Dir = string | null | undefined
 export type Push = { dir: Dir; remote?: string | null; force: boolean; dryRun: boolean }
-export type HostWrite = { what: string; dir: Dir; prCreate: boolean; otherRepo: boolean }
 
 // A shell command is read loosely, as the retired outward-write guard read it:
 // split into simple commands on separators outside quotes, with quotes and
-// escapes resolved. git, gh, and glab are found in any word of a simple
-// command, so `sudo git push` is read and `echo git push` is asked about too.
+// escapes resolved. git is found in any word of a simple command, so
+// `sudo git push` is read, and so is `echo git push`.
 // shortcut: a push inside a quoted substitution, a git or gh alias, `eval`, or a script is not read, and a cd inside a subshell moves later commands too; read those if an agent is seen pushing that way.
 
 // Heredoc bodies are data to their command, unless a shell reads them.
@@ -224,78 +249,10 @@ function push(args: string[], dir: Dir): Push {
   return p
 }
 
-// The gh and glab subcommands that write to the host, by noun.
-const WRITES: Record<string, Record<string, string>> = {
-  gh: {
-    pr: 'create new merge edit close reopen comment review ready lock unlock update-branch revert',
-    issue: 'create new edit close reopen comment delete pin unpin transfer lock unlock develop',
-    release: 'create edit delete upload delete-asset',
-    repo: 'create edit delete archive unarchive rename fork sync',
-    label: 'create edit delete clone',
-    workflow: 'run enable disable',
-    run: 'cancel rerun delete',
-    cache: 'delete',
-    secret: 'set delete',
-    variable: 'set delete',
-    gist: 'create edit delete',
-  },
-  glab: {
-    mr: 'create new merge update close reopen note approve revoke delete rebase',
-    issue: 'create new update close reopen note delete',
-    release: 'create update delete upload',
-    repo: 'create delete archive fork transfer update',
-    label: 'create delete',
-    ci: 'run retry cancel delete trigger',
-    schedule: 'create delete run',
-    variable: 'set update delete',
-  },
-}
-const API_FIELD = /^(?:-[fF]|--field|--raw-field|--input|--form)(?:=|$)/
-
-function hostWrite(cli: string, args: string[], before: string[], dir: Dir): HostWrite | null {
-  const pos: string[] = []
-  let otherRepo = before.some(w => /^(?:GH_REPO|GITLAB_REPO)=/.test(w))
-  let method = ''
-  let field = false
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i]!
-    if (a === '-R' || a === '--repo') {
-      otherRepo = true
-      i++
-    } else if (a.startsWith('--repo=')) otherRepo = true
-    else if (a === '-X' || a === '--method') method = args[++i] ?? ''
-    else if (/^(?:-X|--method=)/.test(a)) method = a.replace(/^(?:-X=?|--method=)/, '')
-    else if (API_FIELD.test(a)) field = true
-    else if (!a.startsWith('-')) pos.push(a)
-  }
-  const [noun = '', verb = ''] = pos
-  if (noun === 'api') {
-    const graphql = verb === 'graphql' && args.some(a => /\bmutation\b/.test(a) || /=@/.test(a))
-    const writes = method ? /^(?:POST|PUT|PATCH|DELETE)$/i.test(method) : verb === 'graphql' ? graphql : field
-    return writes ? { what: `${cli} api ${verb}`, dir, prCreate: false, otherRepo } : null
-  }
-  if (!WRITES[cli]![noun]?.split(' ').includes(verb)) return null
-  const prCreate = (noun === 'pr' || noun === 'mr') && (verb === 'create' || verb === 'new')
-  return { what: `${cli} ${noun} ${verb}`, dir, prCreate, otherRepo }
-}
-
-const READ_CONFIG = /^(?:--get|--get-all|--get-regexp|--get-urlmatch|-l|--list|get|list)$/
-const WRITE_CONFIG = /^(?:--unset|--unset-all|--add|--replace-all|--remove-section|--rename-section|-e|--edit|set|unset|remove-section|rename-section|edit)$/
-
-// Whether a `git config` command writes a session-skills key: one with a value
-// after the key, or a write option, and no read option.
-function writesOwnKey(args: string[]): boolean {
-  const k = args.findIndex(a => /^session-skills\./i.test(a))
-  if (k < 0 || args.some(a => READ_CONFIG.test(a))) return false
-  return args.some(a => WRITE_CONFIG.test(a)) || args.slice(k + 1).some(a => !a.startsWith('-'))
-}
-
-// The pushes, host writes, and writes that can lift a hold (a session-skills
-// key, or a remote removed, renamed, or moved) in a command, read in `shell`
-// from the directory `outer`.
-export function outward(cmd: string, shell = 'Bash', outer?: Dir): { pushes: Push[]; hosts: HostWrite[]; configs: string[] } {
+// The pushes in a command, read in `shell` from the directory `outer`.
+export function outward(cmd: string, shell = 'Bash', outer?: Dir): { pushes: Push[] } {
   const ps = shell === 'PowerShell'
-  const found = { pushes: [] as Push[], hosts: [] as HostWrite[], configs: [] as string[] }
+  const found = { pushes: [] as Push[] }
   let dir = outer
   for (const words of commands(ps ? stripHereStrings(cmd) : stripHeredocs(cmd), ps)) {
     const first = name(words[0]!)
@@ -311,14 +268,8 @@ export function outward(cmd: string, shell = 'Bash', outer?: Dir): { pushes: Pus
         if (words[i] === '-C') d = join(d, words[++i])
         else if (GIT_VALUE.has(words[i]!)) i++
       }
-      const args = words.slice(i + 1)
-      if (words[i] === 'push') found.pushes.push(push(args, d))
-      const remoteWrite = words[i] === 'remote' && /^(?:remove|rm|rename|set-url)$/.test(args[0] ?? '')
-      if ((words[i] === 'config' && writesOwnKey(args)) || remoteWrite) found.configs.push(words.slice(g).join(' '))
+      if (words[i] === 'push') found.pushes.push(push(words.slice(i + 1), d))
     }
-    const h = words.findIndex(w => name(w) === 'gh' || name(w) === 'glab')
-    const w = h >= 0 && hostWrite(name(words[h]!), words.slice(h + 1), words.slice(0, h), dir)
-    if (w) found.hosts.push(w)
   }
   return found
 }

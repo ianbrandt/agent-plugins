@@ -192,7 +192,7 @@ test('the user is told when the rename is refused', async ($: any, on: any) => {
 })
 
 // The context added to a command's result, with the command's own result
-// beneath, in a repo with a private origin, so no push is held.
+// beneath.
 function pushes(on: any) {
   const w = { result: { result: {} } as any }
   on('session.repo', () => ({ value: { root: '/repo', remote: null, internal: false } }))
