@@ -105,6 +105,30 @@ test('find_checkouts reports the base and each worktree, and a fetch that failed
   expect(text).toContain('warning: fetch failed, so origin/main may be behind')
 })
 
+// A branch in review, or one the primary checkout was switched away from, is
+// in no worktree. A session that has only added files has only untracked ones.
+test('find_checkouts lists a branch in no worktree that has commits, and counts changed and untracked paths', async ($: any, on: any) => {
+  const calls = world(on, line => {
+    if (line === 'for-each-ref --format=%(refname:lstrip=2) refs/heads') return 'claude/r1-a\nclaude/r2-b\nmain\nold'
+    if (line === 'rev-list --count refs/heads/main..refs/heads/claude/r2-b') return '2'
+    if (line === 'status --porcelain') return ' M a.txt\nM  b.txt\n?? new.txt'
+    return held(line)
+  })
+  const text = (await call($, 'find_checkouts')).result
+  expect(text).toContain('claude/r1-a  3 commits not on main\nbranches in no worktree, with commits not on main:\n  claude/r2-b  2 commits\nchanged or untracked paths in the primary checkout: 3')
+  expect(calls.filter(c => c.endsWith('..refs/heads/claude/r1-a')).length).toBe(1)
+})
+
+test('find_checkouts has neither line for a clean checkout with no such branch', async ($: any, on: any) => {
+  world(on, held)
+  expect((await call($, 'find_checkouts')).result).not.toMatch(/branches in no worktree|untracked/)
+})
+
+test('find_checkouts reports a list of branches it could not read', async ($: any, on: any) => {
+  world(on, line => (line === 'for-each-ref --format=%(refname:lstrip=2) refs/heads' ? { exitCode: 128, stdout: '', stderr: 'fatal: bad config line 1 in file .git/config\n' } : held(line)))
+  expect((await call($, 'find_checkouts')).result).toContain('warning: the branches in no worktree were not read: fatal: bad config line 1')
+})
+
 // A process is started in the session's directory unless another is given, and
 // a session that removed the worktree it had changed into has none.
 test('the tools answer after the session\'s directory is removed', async ($: any, on: any) => {

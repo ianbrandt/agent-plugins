@@ -10,7 +10,7 @@ import { splice } from './splice'
 const NONE = { type: 'object', properties: {} } as const
 const TOOLS = {
   find_checkouts: {
-    description: "Fetch, then report the repo's primary checkout, its default branch, the ref a new branch should start from, and every worktree with its branch and the number of commits it has that the base lacks. Read-only apart from the fetch.",
+    description: "Fetch, then report the repo's primary checkout, its default branch, the ref a new branch should start from, every worktree with its branch and the number of commits it has that the base lacks, each branch in no worktree that has such commits, and how many changed or untracked paths the primary checkout has. Read-only apart from the fetch.",
     inputSchema: NONE,
   },
   prune_branches: {
@@ -157,10 +157,25 @@ async function findCheckouts($: any): Promise<string> {
   const top = await git($, cwd, 'rev-parse', '--show-toplevel')
   const here = top.exitCode === 0 ? top.stdout.replace(/\n$/, '') : ''
   const rows = []
-  for (const w of await worktrees($, main)) {
+  const count = (n: string | number, noun: string) => `${n} ${noun}${String(n) === '1' ? '' : 's'}`
+  const trees = await worktrees($, main)
+  for (const w of trees) {
     const ahead = w.branch === '(detached)' ? '' : await out(git($, main, 'rev-list', '--count', `${baseRef}..refs/heads/${w.branch}`))
-    rows.push(`  ${w.path}  ${w.branch}${ahead && ahead !== '0' ? `  ${ahead} ${ahead === '1' ? 'commit' : 'commits'} not on ${base}` : ''}`)
+    rows.push(`  ${w.path}  ${w.branch}${ahead && ahead !== '0' ? `  ${count(ahead, 'commit')} not on ${base}` : ''}`)
   }
+  // Work on a branch that no worktree has checked out is found here: a branch
+  // in review, or one the primary checkout was switched away from.
+  // shortcut: one rev-list a branch, where %(ahead-behind) is one call but needs git 2.41; switch once a repo with hundreds of local branches is slow here.
+  const refs = await git($, main, 'for-each-ref', '--format=%(refname:lstrip=2)', 'refs/heads')
+  if (refs.exitCode !== 0) warnings.push(`the branches in no worktree were not read: ${firstLine(refs.stderr) || `exit ${refs.exitCode}`}`)
+  const loose: string[] = []
+  for (const b of refs.exitCode !== 0 ? [] : refs.stdout.split(/\r?\n/).filter(b => b && !trees.some(w => w.branch === b))) {
+    const ahead = await out(git($, main, 'rev-list', '--count', `${baseRef}..refs/heads/${b}`))
+    if (ahead && ahead !== '0') loose.push(`  ${b}  ${count(ahead, 'commit')}`)
+  }
+  // A switch takes uncommitted changes along with it, and a session that has
+  // only added files so far has nothing but untracked ones.
+  const dirty = (await out(git($, main, 'status', '--porcelain'))).split(/\r?\n/).filter(Boolean).length
   return [
     `primary checkout: ${main}`,
     `default branch: ${def}`,
@@ -168,6 +183,8 @@ async function findCheckouts($: any): Promise<string> {
     `session directory: ${here || cwd}`,
     'worktrees, the primary checkout first:',
     ...rows,
+    ...(loose.length ? [`branches in no worktree, with commits not on ${base}:`, ...loose] : []),
+    ...(dirty ? [`changed or untracked paths in the primary checkout: ${dirty}`] : []),
     ...warnings.map(w => `warning: ${w}`),
   ].join('\n')
 }

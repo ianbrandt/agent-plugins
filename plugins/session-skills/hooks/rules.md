@@ -75,8 +75,8 @@ call is lost among that call's output, and a closing line such as "the handoff i
 user search back for the block.
 
 Where the repo tracks work in a backlog, the entry point is that backlog plugin's invocation.
-It resolves in-flight work by itself, from the primary checkout, so the snippet needs no worktree
-path—and a freehand prompt reconstructing that state is how a resume becomes a second branch on
+It resolves in-flight work by itself, from the primary checkout, so the snippet needs no branch or
+worktree path—and a freehand prompt reconstructing that state is how a resume becomes a second branch on
 work already half-built.
 
 ## Push and post only at the user's request
@@ -99,14 +99,15 @@ that backlog.
 Where the finding should outlive the session, write it into the repo's backlog in that backlog's
 form, including work that needs a machine or an account this session does not have. A
 suggested task is worth adding only alongside that, never instead of it, and only for
-self-contained work that needs no decision from the user and would start in its own worktree now.
+self-contained work that needs no decision from the user and would start on its own branch now.
 
 ## The skills behind these rules
 
-`work-in-worktree`—getting the work into the right worktree before touching code, off a
+`work-on-a-branch`—getting the work onto the right branch before touching code, off a
 **fetched** default branch: a clean working tree is no evidence the checkout is current, and a
 file another machine edits too, such as a shared to-do, needs that fetch even for a one-line edit
-with no worktree involved.
+on the default branch. A branch in the primary checkout is the default, and a worktree is opened
+only by a concurrency plugin.
 `land-and-wrap`—how finished work leaves its branch, and the rest of the wrap-up. **Invoke it at
-the end of any session that opened a worktree**, including one where a repo-local landing runbook
+the end of any session that opened a branch or a worktree**, including one where a repo-local landing runbook
 already merged the work: that runbook covers the landing, not the wrap-up.
