@@ -276,7 +276,7 @@ async function codexVersion($: EngineInterface): Promise<string> {
   return version
 }
 
-// The reviewed repo's own .claude/settings.local.json can turn the worktree off, since Claude Code
+// The reviewed repo's .claude/settings.local.json can turn the worktree off, since Claude Code
 // does not apply a project's pluginConfigs to options. One tracked in HEAD or the index, or not
 // ignored, could be part of the change under review, so it is not read. ls-tree refuses icase
 // pathspecs, and --with-tree=HEAD lists HEAD's paths too.

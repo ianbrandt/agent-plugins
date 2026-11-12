@@ -28,7 +28,7 @@ function tooLarge(run: RunState, prompt: string): Result | undefined {
   const what = run.ask === undefined ? "The document is too large to review: the reviewer's prompt with its latest version and diff" : 'The question is too large: the prompt with the question and the answers so far'
   return { error: `${what} is ${Math.ceil(size / 2 ** 10)} KiB as JSON, over the limit of ${promptLimitBytes / 2 ** 10} KiB.` }
 }
-// An ask run measures both sides' next prompts on a copy, so a refused round leaves the run as it was.
+// In an ask run, both sides' next prompts are measured on a copy, so a refused round leaves the run as it was.
 export const nextTooLarge = (run: RunState) => sides.map(side => tooLarge(run, newAttempt({ ...run, attempts: [...run.attempts] }, side).prompt)).find(large => large !== undefined)
 const tool = (run: RunState, name: string) => `${run.ask === undefined ? 'plan' : 'ask'}_${name}`
 const sha256 = async (text: string) =>

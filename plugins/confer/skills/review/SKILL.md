@@ -38,8 +38,8 @@ Act on each result's `status`:
 - `paused`: Codex hit a usage, budget, or rate limit. Tell the user the limit and `retryAt`, then
   stop. Call `review_round` again when the user says to go on.
 - `probe`: each finding in `findings` was disputed twice. Probe it: read the code and, where you
-  can, run the failing scenario or a test. A probe that writes a file removes it before the next
-  call, since the reviewed state is checked for changes on that call. Record each with
+  can, run the failing scenario or a test. Remove any file a probe writes before the next call,
+  since the reviewed state is checked for changes on that call. Record each with
   `review_settle { run, id, outcome, evidence }`: `confirmed`, `refuted`, or `inconclusive`.
 - An ending (`complete`, `nothing-to-review`, `incomplete`, `drifted`, `failed`, `cancelled`, or
   `expired`): print the report as below.
@@ -59,7 +59,7 @@ From `report`, print:
 - A finding with `same` was found by both reviewers: print it once, found by both, with a link to
   each location in `same` that differs from its own.
 - A finding with `stillPresent` was left in place by a fix: print it once, with each finding in
-  `stillPresent` as the fix review's evidence, the fix it suggests, and its location.
+  `stillPresent` as the fix review's evidence, its suggested fix, and its location.
 - Unresolved findings with both positions, then refuted, withdrawn, preexisting, and fixed ones.
   A fixed finding is not counted in `Found N issues`.
 - For an ending other than `complete`, the findings in `singleReviewer` as single-reviewer

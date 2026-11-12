@@ -194,7 +194,7 @@ test('a reviewer is not started when its running status cannot be saved', async 
   expect(await call($, 'review_round', { run: round1.run })).toMatchObject({ status: 'round', round: 1, retry: expect.stringContaining('The reviewer could not start') })
 })
 
-// A run this process saved, and a $ whose clock can be held while another call reads a newer state.json.
+// A run this process saved, and a $ with a clock that can be held while another call reads a newer state.json.
 function replaced(id: string, attempt: object) {
   const run = { id, dir: `/c/tmp/confer/${id}`, repoDir: top, status: 'running', phases: [{ number: 0, round: 1 }], findings: [], attempts: [{ phase: 0, round: 1, side: 'claude', ...attempt }], updatedAt: 1 } as unknown as RunState
   const written: Record<string, string> = {}

@@ -24,7 +24,7 @@ const tools = 'Skill,ToolSearch,Agent,Read,Grep,Glob,mcp__confer__review_start,m
 
 // Builds the case's project as a fresh repository: base/ committed, then head/ copied over it and committed as the change.
 function build(c) {
-  // Under the run's own folder, so two runs at once do not rebuild each other's checkouts.
+  // Under the run's folder, so two runs at once do not rebuild each other's checkouts.
   const dir = checking ? join(base, 'repos', c.id) : join(run, 'repos', c.id)
   rmSync(dir, { recursive: true, force: true })
   mkdirSync(dir, { recursive: true })

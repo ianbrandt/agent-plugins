@@ -12,15 +12,15 @@ uses native events only. Under some managed settings, a user plugin's `classic.*
   Its tools are `Read`, `Grep`, `Glob`, and `mcp__confer__git`, which runs read-only git commands.
   It has no Bash because it may read a hostile branch, and Bash is not sandboxed on macOS.
 - The session that runs the rounds makes the `Agent` call for the Claude side, and the mod rewrites
-  it in `agent.spawn`. A hook cannot wait for a subagent within its 10 s budget, and a plugin's own
-  `Agent` call is refused. `$.agent.spawn` takes no effort, so one reviewer agent type is registered
-  per effort, `reviewer-low` through `reviewer-max`.
+  it in `agent.spawn`. A hook cannot wait for a subagent within its 10 s budget, and an `Agent`
+  call made by a plugin is refused. `$.agent.spawn` takes no effort, so one reviewer agent type is
+  registered per effort, `reviewer-low` through `reviewer-max`.
 - The model and effort for both sides come from the run's tier ([references/tiers.md](../references/tiers.md)).
   Codex has no model aliases and passes the model id to its provider as given. The Codex model for
   each tier is therefore a plugin setting. The provider is set in Codex's config, never by Confer.
 - Fable 5.2 runs the Claude side at the critical tier, at high, and at the escalation tier, at xhigh.
   On FrontierCode 2.0 in the 2026-11-09 launch post, Fable 5.2 scored 45.3% at high for $6.72
-  a task, against 43.4% for $5.18 for Opus 5.5 at xhigh. At max it scored below its own xhigh
+  a task, against 43.4% for $5.18 for Opus 5.5 at xhigh. At max it scored below its xhigh
   for about three times the cost, so it is not run at max at any tier.
 - Before a critical or escalation run, Confer sends Fable 5.2 a one-line completion. Where that call
   is refused by the engine or answered with a 404, the run falls back to Opus 5.5, at xhigh for

@@ -247,7 +247,7 @@ test('findings a same mark links are one issue, in the order raised', () => {
   expect(ids(issues(chained.filter(isConfirmed)))).toEqual([['C1'], ['C2', 'X1']])
 })
 
-test('a group holds at most one finding per side', () => {
+test('a group has at most one finding per side', () => {
   const { findings } = applyRound(round1.findings, {
     phase: 1,
     round: 2,
@@ -273,7 +273,7 @@ test('a same mark links only confirmed findings', () => {
   expect(issues(findings.filter(isConfirmed)).map((g) => g.map((f) => f.id))).toEqual([['C2'], ['X1']])
 })
 
-test('a finding that says a selected finding is still present joins its issue', () => {
+test('a fix-phase finding joins the issue of the finding in its `of`', () => {
   const agreed = (f: Finding, change: Partial<Finding> = {}): Finding => ({ ...f, status: 'agreed', ...change })
   const [c1, c2, x1] = round1.findings
   const phase2 = (id: string, side: 'claude' | 'codex', change: Partial<Finding>): Finding =>

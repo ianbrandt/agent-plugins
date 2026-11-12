@@ -27,7 +27,7 @@ own slugs.
 3. **Read the catalog, where one is set.** If `config.toml` includes a
    `model_catalog_json` entry, read that JSON file. Expect
    `{ "models": [{ "slug": "...", "priority": N }, ...] }`. Sort the entries
-   by `priority` ascending (lower number = higher slot in Codex's catalog UI).
+   by `priority` ascending (lower number = listed higher in Codex's catalog UI).
    If the catalog cannot be read or parsed, warn the user and fall through to
    the no-catalog case in step 4.
 4. **Build the tier-to-slug mapping.**

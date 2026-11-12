@@ -54,7 +54,7 @@ test('a copy that is no longer the cached one is not saved', async () => {
   expect(written).toEqual({})
 })
 
-// A state.json as another session left it, read through a $ whose reads can be held, and a held read can return an earlier text.
+// A state.json as another session left it, read through a $ with reads that can be held, and a held read can return an earlier text.
 function disk(id: string) {
   const file = { text: '' as string | undefined, held: undefined as Promise<string | void> | undefined }
   const written: Record<string, string> = {}
@@ -162,9 +162,9 @@ async function expectDropped(id: string, unreadable: string | undefined) {
   expect(written).toEqual({})
 }
 
-test('a run whose state.json no longer parses is dropped, so its copy is not saved', () => expectDropped('abcdef09', '{'))
+test('a run is dropped when its state.json no longer parses, so its copy is not saved', () => expectDropped('abcdef09', '{'))
 
-test('a run whose state.json is gone is dropped, so its copy is not saved', () => expectDropped('abcdef0a', undefined))
+test('a run is dropped when its state.json is gone, so its copy is not saved', () => expectDropped('abcdef0a', undefined))
 
 test('a run this process created is kept while its state.json cannot be read', async () => {
   const { $, file } = disk('abcdef0b')

@@ -15,7 +15,7 @@ const word: Option = { value: 'required', matches: /^[\w-]+$/ }
 // `%G` placeholders run gpg, and Git reads `%+G`, `%-G`, and `% G` as the same placeholder.
 const format: Option = { value: 'required', matches: /^(?![\s\S]*%[-+ ]?G)/ }
 const builtInFormats = ['oneline', 'short', 'medium', 'full', 'fuller', 'reference', 'email', 'mboxrd', 'raw']
-// Any other name is looked up as pretty.<name> in the user's config, which may hold a %G placeholder.
+// Any other name is looked up as pretty.<name> in the user's config, which may contain a %G placeholder.
 const isPretty = (value: string) => builtInFormats.includes(value) || ((value.includes('%') || /^t?format:/.test(value)) && format.matches!.test(value))
 const pretty: Option = { value: 'required', matches: { test: isPretty } }
 

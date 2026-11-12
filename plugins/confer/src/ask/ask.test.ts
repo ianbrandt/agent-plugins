@@ -213,7 +213,7 @@ test('an unsure pick asks which tier to run the question at', async ($, on) => {
   expect(asked).toEqual(['Which tier should Confer run this question at?'])
 })
 
-test('outside a Git checkout ask_start warns as a plan run does, and both prompts name the folder', async ($, on) => {
+test('outside a Git checkout ask_start warns as a plan run does, and the folder is in both prompts', async ($, on) => {
   const { files } = world(on, { answers: noRepo })
   on('session.cwd', () => ({ value: '/work' }))
 
@@ -275,7 +275,7 @@ test('the round-1 prompt fences the question as untrusted, and asks for one answ
   expect(prompt).not.toContain('"verdict"')
 })
 
-test('ask_start refuses a question whose prompt is over 256 KiB once escaped as JSON', async ($, on) => {
+test('ask_start refuses a question when its prompt is over 256 KiB once escaped as JSON', async ($, on) => {
   const { files } = world(on)
 
   expect(await begin($, { args: '"a"\n'.repeat(50_000) })).toEqual({ error: expect.stringContaining('The question is too large') })
@@ -297,7 +297,7 @@ const claudeFirst = first('Retry with a key.')
 const codexFirst = first('Retry five times.')
 const kib = 2 ** 10
 const sizeOf = (text: string) => new TextEncoder().encode(text).length
-// A round-1 reply whose answer is padded to a size, with short reasons.
+// A round-1 reply with its answer padded to a size, and short reasons.
 const padded = (text: string, pad: string) => JSON.stringify({ answers: [{ id: 'A1', answer: `${text} ${pad}`, reasons: 'short' }], coverage: ['a.ts'] })
 const overLimit = (reply: string) => `The reply is ${Math.ceil(sizeOf(reply) / kib)} KiB, over the limit of 64 KiB.`
 
@@ -524,13 +524,13 @@ test('a run of another kind is refused with the tool to call', async ($, on) => 
   expect(state(files, ask.run).status).toBe('running')
 })
 
-// The snake_case words of the instructions that are not fields of the result, which name tools.
+// The snake_case words of the instructions that are not fields of the result, which are tool names.
 const toolsIn = (result: any): string[] => {
   const fields = new Set([...Object.keys(result), ...Object.keys(result.agent ?? {})])
   return (result.instructions.replace(/mcp__confer__/g, '').match(/\b[a-z]+(?:_[a-z]+)+\b/g) ?? []).filter((word: string) => !fields.has(word))
 }
 
-test('the instructions of each status call only registered tools', async ($, on) => {
+test('only registered tools are in the instructions of each status', async ($, on) => {
   const { registered, clock } = world(on, { answers: noRepo, codex: [usageLimit, codexSays(codexFirst)] })
   on('session.cwd', () => ({ value: '/work' }))
 

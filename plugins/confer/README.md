@@ -70,8 +70,8 @@ To review something else, pass it as the target:
 ```
 
 - A branch or commit is reviewed from where it left the default branch.
-- `main...feature/rate-limit` reviews the branch from where the two diverged, and
-  `main..feature/rate-limit` reviews the commits between them.
+- For `main...feature/rate-limit`, the branch is reviewed from where the two diverged. For
+  `main..feature/rate-limit`, the commits between them are reviewed.
 - A path limits the findings to that file or directory.
 - A PR number needs the GitHub CLI, `gh`.
 
@@ -118,7 +118,7 @@ Each side answers on its own first. Then they rule on each other's answers until
 ### Choose the models
 
 Confer picks the models and effort for each run from how complex and critical the work is, and
-asks when it is unsure. Set the tier yourself with `--tier`:
+asks you when the work falls between two tiers. Set the tier yourself with `--tier`:
 
 ```shell
 /confer:review --tier critical
@@ -131,9 +131,9 @@ run, pass `--claude-model`, `--claude-effort`, `--codex-model`, or `--codex-effo
 /confer:ask --codex-effort high Is this lock ordering safe?
 ```
 
-The `critical` and `escalation` tiers run Claude Fable 5.2, and fall back to Claude Opus 5.5 where
-the account is not served Fable 5.2. The Codex model for each tier, the maximum number of rounds,
-and the review worktree are plugin settings.
+Claude Fable 5.2 runs at the `critical` and `escalation` tiers, and Claude Opus 5.5 runs there
+instead where the account is not served Fable 5.2. The Codex model for each tier, the maximum
+number of rounds, and the review worktree are plugin settings.
 
 ### Run with nobody watching
 

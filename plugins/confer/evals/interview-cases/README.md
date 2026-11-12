@@ -10,7 +10,7 @@ conductor has to find before it drafts the plan. Nothing here comes from a real 
     label, `summary`, and `terms`.
   - `questions`: the questions the conductor should ask, each with a unique `question` label,
     `summary`, `terms`, and the scripted `answer`.
-  - `needless`: questions the project already answers, each with `question`, `summary`, and
+  - `needless`: questions already answered in the project, each with `question`, `summary`, and
     `terms`.
   - `sections`: the sections the plan needs, each with `section` and `terms`.
 - `repo/`: the project, committed as the one commit of a fresh repository.

@@ -33,7 +33,7 @@ Act on each result's `status`:
 - `round`: send ONE message with two tool calls: `Agent` with exactly the `subagent_type`,
   `description`, and `prompt` in `agent`, and nothing else set, and `ask_round { run }`.
   The mod replaces the prompt and model and holds the `Agent` call until the reviewer returns.
-  A `round` with `retry` asks the same side again after a refused reply.
+  A `round` with `retry` is a second request to the same side after a refused reply.
 - `waiting`: if `agent` is present, the reviewer never started: send the same two calls again.
   Otherwise call `ask_round { run }` again.
 - `paused`: Codex hit a usage, budget, or rate limit. Tell the user the limit and `retryAt`, then

@@ -836,7 +836,7 @@ test('review_start does not expire this session\'s run from an older state.json'
 })
 
 // round() read its time, failEndedAgent() saved a later one, and the Codex attempt's save then queued the earlier one.
-test('review_start does not forget a run whose queued save was stamped before one on disk', async ($, on) => {
+test('review_start does not forget a run when its queued save was stamped before one on disk', async ($, on) => {
   let isArmed = false
   let writes = 0
   let round1Run = ''
@@ -874,7 +874,7 @@ test('review_start does not forget a run whose queued save was stamped before on
   expect(codexPrompts).toHaveLength(1)
 })
 
-test('a run whose directory was deleted is no longer held in memory', async ($, on) => {
+test('a run is no longer kept in memory once its directory is deleted', async ($, on) => {
   const w: ReturnType<typeof world> = world(on, {
     match: key => {
       if (key.startsWith('rm ')) for (const path of Object.keys(w.files)) if (path.startsWith(`${root}/${key.split(' ').at(-1)}/`)) delete w.files[path]
@@ -1112,7 +1112,7 @@ test('an Agent call that returns without a reply fails its attempt', async ($, o
   expect(next).toMatchObject({ status: 'round', round: 1, retry: 'The reviewer returned no answer.' })
 })
 
-// review_cancel was refused while an attempt whose agent had ended stayed running.
+// review_cancel was refused while an attempt stayed running after its agent had ended.
 test('cancel goes ahead once $.agent.list() shows the reviewer ended', async ($, on) => {
   world(on, { agents: [{ id: 'agent-1', description: 'd', type: 'confer:reviewer-high', status: 'killed' }] })
 
@@ -1191,7 +1191,7 @@ test('a failed Codex attempt is run again at once, and a timeout of the second e
 })
 
 // Two fast Codex failures ended the run while the Claude reviewer still read the worktree, which the end removed.
-test('a run whose Codex side failed waits for the running Claude reviewer before it ends', async ($, on) => {
+test('after its Codex side fails, a run waits for the running Claude reviewer before it ends', async ($, on) => {
   const commit = 'c'.repeat(40)
   const { runs } = world(on, {
     codex: [unknownModel, unknownModel],
@@ -1309,7 +1309,7 @@ test('three dots review the second commit from the merge base of the two', async
   expect(keys.some(key => key.includes('--is-ancestor'))).toBe(false)
 })
 
-test('a range whose first commit is not an ancestor of the second is refused, pointing to three dots', async ($, on) => {
+test('a range is refused when its first commit is not an ancestor of the second, with three dots suggested', async ($, on) => {
   const { runs, files } = world(on, {
     answers: rangeSides('first..last', { [`git -C ${top} merge-base --is-ancestor ${rangeBase} ${rangeHead}`]: { exitCode: 1 } }),
   })
@@ -1376,7 +1376,7 @@ test('a path with two dots in its name, or a parent segment, is a path target', 
   expect(runs.some(r => r.key.endsWith(' g^{commit}') || r.key.endsWith(' h.ts^{commit}'))).toBe(false)
 })
 
-test('a PR whose head moved ends the run failed, and its refs are removed', async ($, on) => {
+test('a PR head that moved ends the run failed, and the PR refs are removed', async ($, on) => {
   const pr = { url: 'https://github.com/o/r/pull/7', number: 7, title: 't', body: 'b', headRefOid: 'a'.repeat(40), baseRefName: 'main' }
   const { runs, files } = world(on, { match: key => (/rev-parse --verify refs\/confer\/\w+\/head\^\{commit\}$/.test(key) ? { stdout: `${'b'.repeat(40)}\n` } : undefined) })
 
@@ -1679,7 +1679,7 @@ test('a run that reclaim expires does not replace a findings file that a later r
   expect(files[out]).toBe(written)
 })
 
-test('review_start expires another session\'s run whose state.json has no phases and starts its own run', async ($, on) => {
+test('review_start expires another session\'s run with no phases in its state.json, and starts its own run', async ($, on) => {
   const { files, clock } = world(on)
 
   const old = await begin($)

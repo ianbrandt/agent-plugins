@@ -177,13 +177,13 @@ test('the session registers the four plan tools after git', async ($, on) => {
   expect(registered.slice(-5)).toEqual(['git', 'plan_start', 'plan_round', 'plan_revision', 'plan_cancel'])
 })
 
-// The snake_case words of the instructions that are not fields of the result, which name tools.
+// The snake_case words of the instructions that are not fields of the result, which are tool names.
 const toolsIn = (result: any): string[] => {
   const fields = new Set([...Object.keys(result), ...Object.keys(result.agent ?? {})])
   return (result.instructions.replace(/mcp__confer__/g, '').match(/\b[a-z]+(?:_[a-z]+)+\b/g) ?? []).filter((word: string) => !fields.has(word))
 }
 
-test('the instructions of each status call only registered tools', async ($, on) => {
+test('only registered tools are in the instructions of each status', async ($, on) => {
   const { registered, clock } = world(on, { codex: [usageLimit, codexSays(first([point('x')]))] })
 
   const round1 = await begin($)
@@ -274,7 +274,7 @@ test('plan_round sends Codex the version and diff from the run directory when th
   expect(codexPrompts.at(-1)).toContain('DIFF-OF-V2')
 })
 
-test('plan_round refuses a run whose version file is missing or changed', async ($, on) => {
+test('plan_round refuses a run when its version file is missing or changed', async ($, on) => {
   const { files, codexPrompts, round1 } = await firstRound($, on)
   await call($, 'plan_revision', { run: round1.run })
   files[`${root}/${round1.run}/v2.md`] = 'edited'
@@ -286,7 +286,7 @@ test('plan_round refuses a run whose version file is missing or changed', async 
   expect(codexPrompts).toHaveLength(1)
 })
 
-test('plan_round refuses a run whose diff file is missing or changed', async ($, on) => {
+test('plan_round refuses a run when its diff file is missing or changed', async ($, on) => {
   const { files, codexPrompts, round1 } = await firstRound($, on, { match: key => (key.endsWith('v1.md v2.md') ? { stdout: 'DIFF-OF-V2\n', exitCode: 1 } : undefined) })
   files[file] = version2
   await call($, 'plan_revision', { run: round1.run })
@@ -348,7 +348,7 @@ test('a round returns the points by status, and plan_revision sends version 2 wi
   expect(prompt).toContain(first([point('x')]))
 })
 
-test('plan_revision with the file unchanged says so in the prompt', async ($, on) => {
+test('an unchanged file is stated in the plan_revision prompt', async ($, on) => {
   const { files, spawned, round1 } = await firstRound($, on)
 
   const round2 = await call($, 'plan_revision', { run: round1.run })
@@ -475,7 +475,7 @@ test('the Claude reviewer of a plan round can call the git tool', async ($, on) 
 
 const noRepo = { 'git rev-parse --show-toplevel': { exitCode: 128 } }
 
-test('outside a Git checkout both reviewers start in the session folder, and both prompts name it', async ($, on) => {
+test('outside a Git checkout both reviewers start in the session folder, and it is in both prompts', async ($, on) => {
   const { spawned, codexPrompts, codexDirs, files } = world(on, { answers: noRepo, codex: [codexSays(first())] })
   on('session.cwd', () => ({ value: '/work' }))
 
@@ -508,7 +508,7 @@ test('outside a Git checkout a UNC folder with backslashes becomes a Windows pat
   expect(state(files, round1.run)).toMatchObject({ top: '', repoDir: '//server/share' })
 })
 
-test('when Git refuses the folder, plan_start says so with Git\'s message', async ($, on) => {
+test('when Git refuses the folder, Git\'s message is in the plan_start warning', async ($, on) => {
   const stderr = "fatal: detected dubious ownership in repository at '/work'"
   world(on, { answers: { 'git rev-parse --show-toplevel': { exitCode: 128, stderr } } })
   on('session.cwd', () => ({ value: '/work' }))
@@ -519,7 +519,7 @@ test('when Git refuses the folder, plan_start says so with Git\'s message', asyn
   expect(round1.instructions).toMatch(/^Tell the user the warning\. /)
 })
 
-test('outside a Git checkout a POSIX folder whose first name starts with a backslash is kept, and Codex reads it under the read-only sandbox', async ($, on) => {
+test('outside a Git checkout a POSIX folder with a first name that starts with a backslash is kept, and Codex reads it under the read-only sandbox', async ($, on) => {
   const { codexPrompts, files, runs } = world(on, { answers: noRepo, codex: [codexSays(first())] })
   on('session.cwd', () => ({ value: '/\\work/project' }))
 
@@ -579,7 +579,7 @@ test('plan_cancel ends a plan run and refuses a review run', async ($, on) => {
   expect(state(files, round1.run).status).toBe('cancelled')
 })
 
-test('plan_cancel on a plan run with a reviewer running names plan_cancel', async ($, on) => {
+test('plan_cancel on a plan run with a reviewer running is refused with plan_cancel as the tool to call again', async ($, on) => {
   world(on)
   const round1 = await begin($)
   await $.agent.spawn({ prompt: 'p', description: round1.agent.description, subagentType: 'confer:reviewer-high', tool_use_id: 'toolu_r', background: true } as never)
@@ -622,7 +622,7 @@ test('plan_cancel during a round words the summary for a plan review', async ($,
   expect(cancelled.report.summary).toContain('during the plan review')
 })
 
-test('plan_start refuses a document whose prompt is over 256 KiB once escaped as JSON', async ($, on) => {
+test('plan_start refuses a document when its prompt is over 256 KiB once escaped as JSON', async ($, on) => {
   const { files } = world(on)
   // 200,000 bytes, and 350,000 once each quote and newline is escaped.
   files[file] = '"a"\n'.repeat(50_000)

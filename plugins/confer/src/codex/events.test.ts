@@ -49,7 +49,7 @@ test('a usage limit is checked before a budget or rate limit', () => {
   expect(classify('Budget has been exceeded, rate limit reached')).toEqual({ status: 'budget_limit' })
 })
 
-test('a model whose name mentions a budget or a rate limit is not a limit', () => {
+test('a model with a budget or a rate limit in its name is not a limit', () => {
   expect(classify("The 'budget-test' model is not supported.")).toBeUndefined()
   expect(classify("The 'rate-limit-test' model is not supported.")).toBeUndefined()
   expect(classify('The model budget-test does not exist. Max tokens exceeded.')).toBeUndefined()

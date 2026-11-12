@@ -827,7 +827,7 @@ for (const [where, fields, stats, error] of [
   })
 }
 
-test('an output directory whose worktree would be the checkout is refused', async ($, on) => {
+test('an output directory is refused when its worktree would be the checkout', async ($, on) => {
   const top = `${outDir}-worktree`
   world(on, {
     answers: { [`git -C ${top} rev-parse --show-toplevel`]: { stdout: `${top}\n` } },

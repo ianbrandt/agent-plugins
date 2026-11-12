@@ -161,7 +161,7 @@ test('-c, --config-env, and -C are refused as Git options', () => {
 
 type Run = { argv: readonly string[]; init?: ProcessRunInit }
 
-// A test's own hooks may not call $.process.run, so runGitTool gets a stand-in with only that call.
+// A test's hooks may not call $.process.run, so runGitTool gets a stand-in with only that call.
 function git(answer: Partial<ProcessRunResult> = {}) {
   const runs: Run[] = []
   const run = async (argv: readonly string[], init?: ProcessRunInit) => {

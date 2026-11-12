@@ -68,7 +68,7 @@ export function score(c: Case, report: Report) {
   }
 }
 
-// A design point has a section heading in `path` and no line, so a gap is raised by a point whose evidence or fix matches one of its terms.
+// A design point has a section heading in `path` and no line, so a gap is raised by a point when the point's evidence or fix matches one of the gap's terms.
 // shortcut: a term can match a point about something else; read the unmatched and missed lists when a score looks off.
 type Gap = { defect: string; terms: string[] }
 export type DesignCase = { id: string; gaps: Gap[] }
@@ -179,7 +179,7 @@ const hits = (t: Terms, text: string) => t.terms.some(term => new RegExp(term, '
 
 export const scripted = (c: InterviewCase, question: string) => c.questions.find(q => hits(q, question))
 export const recommended = (q: Pick<Choice, 'options'>) => (q.options.find(o => o.label.includes('(Recommended)')) ?? q.options[0])?.label
-// shortcut: a plain-text question whose subject is on another line than its "?" is counted as other; match blocks instead if a case shows it.
+// shortcut: a plain-text question with its subject on another line than its "?" is counted as other; match blocks instead if a case shows it.
 export const questionsIn = (text: string) => text.split('\n').filter(l => l.includes('?'))
 
 export function scoreInterview(c: InterviewCase, file: string | undefined, log: string) {

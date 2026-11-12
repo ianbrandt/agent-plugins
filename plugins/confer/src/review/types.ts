@@ -11,7 +11,7 @@ export type ReportedFinding = {
   line?: number
   evidence: string
   fix: string
-  // In a fix phase: the id of the earlier finding this one says is still present.
+  // In a fix phase: the id of the earlier finding that the reviewer reports as still present.
   of?: string
   // In a fix phase: a defect older than the fix, reported without keeping the loop going.
   preexisting?: boolean
