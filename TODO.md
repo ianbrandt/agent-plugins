@@ -1,5 +1,26 @@
 # To do
 
+## Pull the trimmed global CLAUDE.md on the Windows machine
+
+In claude-usage 9d4a585, the rules that the plugins now cover are cut from `global/CLAUDE.md`. Update
+the plugins before pulling, or a session there loses rules its installed plugins don't have yet.
+On the Windows machine:
+
+1. Update the plugins. `claude plugin list` should show `session-skills` 0.32.0,
+   `parallel-session-skills` 0.5.0, and `roadmap-skills` 0.23.0 or later:
+
+   ```shell
+   claude plugin marketplace update ianbrandt
+   claude plugin update session-skills@ianbrandt
+   claude plugin update parallel-session-skills@ianbrandt
+   claude plugin update roadmap-skills@ianbrandt
+   ```
+
+2. Run `git pull` in the clone of claude-usage, and check that `git log -1 --oneline` shows
+   9d4a585 or later.
+
+Clear this item in a commit once both steps pass.
+
 ## Run `/confer:review` once on the Windows machine
 
 `/confer:review` has run against real models on macOS, but never on Windows. On the Windows
