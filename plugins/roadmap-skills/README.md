@@ -31,10 +31,11 @@ design doc or the done-record and the directory is deleted, so only notes for
 work still open or parked are left.
 
 Where the plan lives is a separate question from how finished work lands. To
-land it, `land-and-wrap` checks whether the repo is a fork, whether its default
-branch is protected, whether its origin is public, and any `git config` override
-the user set per clone. Work in a repo you own lands in its default branch even
-when the roadmap is local-only.
+land it, `land-and-wrap` reads four facts about the clone: whether the repo is a
+fork, its landing mode (a merge into the default branch or a pull request), and
+its push and post modes, which set whether the user confirms each push and each
+post to the host. Work in a repo you own lands the same way whether the roadmap
+is tracked or local-only.
 
 An optional lane hint (`/next-roadmap-item R1`) biases the pick without
 overriding the no-collision rules. Point the hint at an item that's already in
