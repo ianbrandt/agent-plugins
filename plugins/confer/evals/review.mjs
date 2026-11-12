@@ -1,25 +1,31 @@
-// Usage: npm run eval:review -- <routine|complex|critical|check> [case id ...]
+// Usage: npm run eval:review -- <routine|complex|critical|check> [--claude-model <m>] [--claude-effort <e>] [--codex-model <m>] [--codex-effort <e>] [case id ...]
 // check builds each case and verifies its findings without running a review.
-// Reviews each case with no one present and appends a scored row to ~/.claude/tmp/confer-evals/runs/<stamp>-<tier>/results.jsonl.
+// Reviews each case with no one present and appends a scored row to ~/.claude/tmp/confer-evals/runs/<stamp>-<tier>[-<override values>]/results.jsonl.
+// An override flag is passed to /confer:review with its value, so one tier can be measured on another model or effort.
 import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { base, commit, git, headless, must, runDir, tiers } from './headless.mjs'
 import { row, score } from './score.ts'
 
-const [tier, ...ids] = process.argv.slice(2)
+const [tier, ...rest] = process.argv.slice(2)
+const overrides = []
+const ids = []
+for (let i = 0; i < rest.length; i++) rest[i].startsWith('--') ? overrides.push(rest[i], rest[++i]) : ids.push(rest[i])
 const checking = tier === 'check'
-if (!checking && !tiers.includes(tier ?? '')) {
-  console.error('Usage: npm run eval:review -- <routine|complex|critical|check> [case id ...]')
+const flags = ['--claude-model', '--claude-effort', '--codex-model', '--codex-effort']
+if (!checking && (!tiers.includes(tier ?? '') || overrides.some((w, i) => i % 2 === 0 ? !flags.includes(w) : w === undefined))) {
+  console.error('Usage: npm run eval:review -- <routine|complex|critical|check> [--claude-model <m>] [--claude-effort <e>] [--codex-model <m>] [--codex-effort <e>] [case id ...]')
   process.exit(2)
 }
 const here = dirname(fileURLToPath(import.meta.url))
-const run = checking ? '' : runDir(tier)
+const run = checking ? '' : runDir([tier, ...overrides.filter((_, i) => i % 2 === 1)].join('-'))
 const tools = 'Skill,ToolSearch,Agent,Read,Grep,Glob,mcp__confer__review_start,mcp__confer__review_round,mcp__confer__review_settle,mcp__confer__review_fixes,mcp__confer__review_cancel,mcp__confer__git'
 
 // Builds the case's project as a fresh repository: base/ committed, then head/ copied over it and committed as the change.
 function build(c) {
-  const dir = join(base, 'repos', c.id)
+  // Under the run's own folder, so two runs at once do not rebuild each other's checkouts.
+  const dir = checking ? join(base, 'repos', c.id) : join(run, 'repos', c.id)
   rmSync(dir, { recursive: true, force: true })
   mkdirSync(dir, { recursive: true })
   must(git(dir, 'init', '-q'), 'git init')
@@ -61,7 +67,7 @@ for (const c of cases.filter(c => ids.length === 0 || ids.includes(c.id))) {
   let out
   try {
     const cwd = build(c)
-    const text = headless(cwd, `/confer:review --tier ${tier} --findings "${findings}"`, tools)
+    const text = headless(cwd, `/confer:review --tier ${tier} ${overrides.map(w => `${w} `).join('')}--findings "${findings}"`, tools)
     appendFileSync(log, text)
     out = row(c, tier, existsSync(findings) ? JSON.parse(readFileSync(findings, 'utf8')) : undefined, text, { findings, log }, score)
   } catch (e) {
