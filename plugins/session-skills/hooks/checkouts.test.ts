@@ -710,3 +710,28 @@ test('a PowerShell here-string body is not read, and the command after it is', (
   expect(pushes("$b = @'\nThis doesn't change behavior, so git push\n'@\ngit commit -m $b", 'PowerShell')).toEqual([])
   expect(outward('$b = @"\nA "quote\n"@\ngit push -f', 'PowerShell').pushes[0]!.force).toBe(true)
 })
+
+// The reader behind the refusal of a chained push or post.
+const alone = (cmd: string, shell = 'Bash') => {
+  const r = outward(cmd, shell)
+  return r.pushes.length + r.posts + r.others === 1
+}
+
+test('a push or a post is alone with a redirection, a cd before it, or a pipe into an output filter', () => {
+  for (const cmd of ['git push', 'git -C /repo push -u origin b 2>&1', 'cd /repo && git push', 'git push origin b 2>&1 | tail -5', 'git push 2>&1 | grep -v remote:', 'gh pr create --title t --body-file b.md | cat', 'gh pr create --body "$(cat b.md)"', 'glab mr create', 'gh api -X POST repos/a/b/issues']) {
+    expect(alone(cmd), cmd).toBe(true)
+  }
+  expect(alone('git push 2>&1 | Select-Object -Last 5', 'PowerShell')).toBe(true)
+})
+
+test('a push or a post with another command before or after it is not alone', () => {
+  for (const cmd of ['./test.sh && git commit -m x && git push -u origin b', 'git push; echo done', 'git fetch -q origin\ngit push', 'git push || true', 'git push && gh pr create', 'git push --dry-run && git push', 'git commit -m x && gh pr create', 'git push | sh']) {
+    expect(alone(cmd), cmd).toBe(false)
+  }
+  expect(alone('git commit -m x; git push', 'PowerShell')).toBe(false)
+})
+
+test('a post is read by its noun and verb, and a gh api call by a flag that writes', () => {
+  for (const cmd of ['gh pr create', 'gh issue comment 3 -b x', 'gh release upload v1 a.zip', 'glab mr note 3', 'gh api --method PATCH repos/a/b', 'gh api repos/a/b/issues -f title=x']) expect(outward(cmd).posts, cmd).toBe(1)
+  for (const cmd of ['gh pr view 3', 'gh pr checks', 'gh api repos/a/b', 'gh run list', 'git commit -m "gh pr create"']) expect(outward(cmd).posts, cmd).toBe(0)
+})

@@ -52,6 +52,11 @@ its subcommand first. The prompt comes from permission rules matched against the
 a push inside a script, an alias, `git -c`, or a terminal tool raises no prompt: never push or post
 that way.
 
+Run a push or a post in a call of its own. On a Bash or PowerShell call in a confirm mode, a push
+or a post chained with another command is refused by this plugin's hook, since the user does not
+recognize a push at the end of a chain in the prompt. A redirection, a `cd` before the command, and
+a pipe into `tail`, `head`, `grep`, or `cat` are not read as chained.
+
 **In an unattended run, attempt no push and no post in a confirm mode**: a `claude -p` run, a
 scheduled run, a conductor's lane. Nobody can answer the prompt, so the work is left as local
 commits, and a post as a draft file (§2 `pr` step 6). In an auto mode the same run pushes and

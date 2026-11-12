@@ -437,6 +437,7 @@ async function answer(name: string, run: () => Promise<string>) {
   }
 }
 
+const CHAINED = 'In a confirm mode a push or a post is run by itself, so the user can recognize it in the permission prompt. Run the other commands first, then the push or the post in a call of its own. A redirection, a cd before it, and a pipe into tail, head, grep, or cat are fine.'
 const NEXT_STEP ='This command pushed work. End the reply with the next step, under the session rules: the hand-off block for the next unit of work, or one line stating that this session carries on with it. When nothing can start yet, write one line on what the next item waits on, then the block for when it can start. When nothing comes next at all, say so in one line.'
 
 const TITLE_RULES: Record<string, string> = { 'claude-desktop': 'title-desktop', cli: 'title-cli' }
@@ -508,15 +509,22 @@ export const register: Register = on => {
   // push's own result, so the reply is written with it in view.
   for (const tool of ['Bash', 'PowerShell']) {
     on('tool.call', { tool }, async ($, e: any, next: any) => {
+      let read = { pushes: [] as { dryRun: boolean }[], posts: 0, others: 0 }
+      try {
+        read = outward(String(e.command ?? ''), tool)
+      } catch {}
+      const pushed = read.pushes.some(p => !p.dryRun)
+      // On 2026-11-11 a push that was the last of three chained commands was not
+      // recognized in its permission prompt. Where the modes cannot be read the command runs.
+      if ((pushed || read.posts) && read.pushes.length + read.posts + read.others > 1) {
+        const m = await primary($).then(main => readModes($, main)).catch(() => null)
+        if (m && ((pushed && m.push === 'confirm-push') || (read.posts && m.post === 'confirm-post'))) return { deny: CHAINED }
+      }
       const ran = await next(e)
       if (e.agentId || ran.deny !== undefined || (ran as any).isError) return ran
       // A push that failed pushed nothing, whatever the command's exit code,
       // and git's last line for it is left by a pipe through tail.
       if (JSON.stringify(ran.result ?? '').includes('failed to push some refs')) return ran
-      let pushed = false
-      try {
-        pushed = outward(String(e.command ?? ''), tool).pushes.some(p => !p.dryRun)
-      } catch {}
       if (!pushed) return ran
       return { ...ran, context: [...(ran.context ?? []), NEXT_STEP] }
     })

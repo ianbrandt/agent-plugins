@@ -109,6 +109,13 @@ A fork is always `confirm-post`, since its posts are published in someone else's
 `holdPublicPush false` and `holdPrText false`, the keys of 0.29.0, are still read as the auto
 modes. `holdFork` and `originVisibility` are no longer read.
 
+In a confirm mode a `tool.call` hook on `Bash` and `PowerShell` refuses a push or a post that is
+chained with another command, before the prompt. On 2026-11-11 a push that was the last of three
+chained commands was not recognized in its prompt. A redirection, a `cd` before the command, and a
+pipe into `tail`, `head`, `grep`, `cat`, `Select-Object`, or `Select-String` are not read as
+chained. A command inside a substitution is, and so is a dry run beside a push. A subagent's call
+is refused too. Where the modes cannot be read, the command runs.
+
 In a confirm mode the prompt is raised by `permissions.ask` rules in `.claude/settings.local.json`,
 which Claude Code applies in every permission mode. The rules are `git push *` and
 `git -C * push *`, one for each post subcommand, such as `gh pr create *`, and `gh api` with each

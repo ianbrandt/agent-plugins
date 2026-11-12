@@ -91,7 +91,8 @@ rules in [`hooks/rules.md`](hooks/rules.md) are added to the first prompt, and a
 `/clear` and compaction. The push and post modes are kept in per-clone `git config`, as
 `session-skills.pushMode` and `session-skills.postMode`. For a confirm mode the plugin writes
 `permissions.ask` rules to `.claude/settings.local.json` in the primary checkout and each worktree,
-which also works under managed settings. A push inside a script or an alias matches no rule. A
+which also works under managed settings. A push inside a script or an alias matches no rule. In a confirm mode a push
+or a post chained with another command is refused, so that the prompt shows the push alone. A
 `claude -p` session applies a rules file written at its own start only from the next session.
 The result of a `git push` includes a request for the
 next step, so the reply is written with it in view. In the terminal the session title is set with `/rename` when the

@@ -194,9 +194,9 @@ test('the user is told when the rename is refused', async ($: any, on: any) => {
 // The context added to a command's result, with the command's own result
 // beneath.
 function pushes(on: any) {
-  const w = { result: { result: {} } as any }
+  const w = { result: { result: {} } as any, mode: 'private' }
   on('session.repo', () => ({ value: { root: '/repo', remote: null, internal: false } }))
-  on('process.run', (_$: any, e: any) => ({ value: e.argv.includes('upstream') ? { exitCode: 2, stdout: '', stderr: '' } : { exitCode: 0, stdout: 'private\n', stderr: '' } }))
+  on('process.run', (_$: any, e: any) => ({ value: e.argv.includes('upstream') ? { exitCode: 2, stdout: '', stderr: '' } : { exitCode: 0, stdout: `${w.mode}\n`, stderr: '' } }))
   on('tool.call', { tool: 'Bash' }, () => w.result)
   on('tool.call', { tool: 'PowerShell' }, () => w.result)
   return w
@@ -208,7 +208,7 @@ const bash = async ($: any, command: string, more: any = {}, tool = 'Bash') => {
 
 test('the next step is requested in the result of a push, in either shell', async ($: any, on: any) => {
   pushes(on)
-  for (const command of ['git -C "/repo" push origin main', 'git fetch -q origin && git push', 'git push']) expect(await bash($, command)).toHaveLength(1)
+  for (const command of ['git -C "/repo" push origin main', 'cd /repo && git push 2>&1 | tail -3', 'git push']) expect(await bash($, command)).toHaveLength(1)
   expect(await bash($, 'git push origin main', {}, 'PowerShell')).toHaveLength(1)
 })
 
@@ -225,6 +225,21 @@ test('no request comes with a command that pushed nothing, a failed push, or a s
   // A push that failed in a command that ran on exits 0.
   w.result = { result: { stdout: "error: failed to push some refs to 'https://h/a/b.git'\n", stderr: '' } }
   expect(await bash($, 'git push origin b 2>&1 | tail -3')).toEqual([])
+})
+
+test('a push or a post chained with another command is refused in a confirm mode, and runs in an auto mode', async ($: any, on: any) => {
+  const w = pushes(on)
+  const deny = async (command: string, more: any = {}) => (await $.tool.call({ tool: 'Bash', command, ...more })).deny
+  for (const command of ['./test.sh && git commit -m x && git push -u origin b', 'git push && gh pr create', 'git commit -m x; gh pr create']) expect(await deny(command), command).toContain('by itself')
+  expect(await deny('git commit -m x && git push', { agentId: 'a1' })).toContain('by itself')
+  expect((await $.tool.call({ tool: 'PowerShell', command: 'git commit -m x; git push' })).deny).toContain('by itself')
+  for (const command of ['git push', 'git push 2>&1 | tail -3', 'git fetch && git push --dry-run', 'gh pr view 3 && git log']) expect(await deny(command), command).toBeUndefined()
+  w.mode = 'auto-push'
+  expect(await deny('git commit -m x && git push')).toBeUndefined()
+  expect(await deny('git commit -m x && gh pr create')).toContain('by itself')
+  w.mode = 'auto-post'
+  expect(await deny('git commit -m x && gh pr create')).toBeUndefined()
+  expect(await deny('git commit -m x && git push')).toContain('by itself')
 })
 
 test('no prompt is submitted at the end of a turn that pushed', async ($: any, on: any) => {
@@ -300,7 +315,8 @@ test('a push mentioned only inside a quoted argument gets no request', async ($:
 })
 
 test('a push after a commit message heredoc with an odd quote in it gets the request', async ($: any, on: any) => {
-  pushes(on)
+  // In a confirm mode a push after another command is refused.
+  pushes(on).mode = 'auto-push'
   for (const command of [
     `git commit -F - <<'EOF'\nIt's done\nEOF\ngit push`,
     `git commit -m "$(cat <<'EOF'\nQuote a " here\nEOF\n)" && git push`,

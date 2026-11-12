@@ -247,14 +247,28 @@ function push(args: string[], dir: Dir): Push {
   return p
 }
 
-// The pushes in a command, read in `shell` from the directory `outer`.
-export function outward(cmd: string, shell = 'Bash', outer?: Dir): { pushes: Push[] } {
+// A command that only moves to a directory, or only filters what the one before it printed.
+const CD = ['cd', 'pushd', 'set-location', 'sl', 'chdir', 'push-location']
+const FILTER = ['tail', 'head', 'grep', 'cat', 'select-object', 'select-string']
+const isPost = (words: string[]): boolean => {
+  const g = words.findIndex(w => name(w) in POSTS)
+  if (g < 0) return false
+  const [noun, verb] = [words[g + 1] ?? '', words[g + 2] ?? '']
+  if (name(words[g]!) === 'gh' && noun === 'api') return words.slice(g + 2).some(w => API_WRITE.includes(w))
+  return (POSTS[name(words[g]!)]![noun] ?? '').split(' ').includes(verb)
+}
+
+// The pushes in a command, read in `shell` from the directory `outer`, the
+// number of posts, and the number of other commands, apart from a cd and an
+// output filter. A push or a post is chained where the three add up to more than one.
+// shortcut: a command inside a substitution counts as another command, so `git push origin "$(git branch --show-current)"` reads as chained; read a substitution apart if that form is refused often.
+export function outward(cmd: string, shell = 'Bash', outer?: Dir): { pushes: Push[]; posts: number; others: number } {
   const ps = shell === 'PowerShell'
-  const found = { pushes: [] as Push[] }
+  const found = { pushes: [] as Push[], posts: 0, others: 0 }
   let dir = outer
   for (const words of commands(ps ? stripHereStrings(cmd) : stripHeredocs(cmd), ps)) {
     const first = name(words[0]!)
-    if (['cd', 'pushd', 'set-location', 'sl', 'chdir', 'push-location'].includes(first)) {
+    if (CD.includes(first)) {
       dir = join(dir, words.slice(1).find(w => !w.startsWith('-')))
       continue
     }
@@ -266,8 +280,13 @@ export function outward(cmd: string, shell = 'Bash', outer?: Dir): { pushes: Pus
         if (words[i] === '-C') d = join(d, words[++i])
         else if (GIT_VALUE.has(words[i]!)) i++
       }
-      if (words[i] === 'push') found.pushes.push(push(words.slice(i + 1), d))
+      if (words[i] === 'push') {
+        found.pushes.push(push(words.slice(i + 1), d))
+        continue
+      }
     }
+    if (isPost(words)) found.posts++
+    else if (!FILTER.includes(first)) found.others++
   }
   return found
 }
