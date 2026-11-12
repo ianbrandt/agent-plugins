@@ -60,7 +60,7 @@ a pipe into `tail`, `head`, `grep`, or `cat` are not read as chained.
 **In an unattended run, attempt no push and no post in a confirm mode**: a `claude -p` run, a
 scheduled run, a conductor's lane. Nobody can answer the prompt, so the work is left as local
 commits, and a post as a draft file (§2 `pr` step 6). In an auto mode the same run pushes and
-posts.
+posts. In a `claude -p` session this plugin's hook refuses a push or a post in a confirm mode.
 
 Whether the user is asked at the moment of a push depends on the mode. Whether the work is pushed
 at all depends on what the user asked for: landing work they asked for includes its push, and a

@@ -19,7 +19,7 @@ e2e/run.sh first /tmp/e2e-1
 
 [`setup.sh`](setup.sh) builds the scratch repo: a bare `origin.git`, a two-item local-only roadmap,
 and `session-skills.landing merge`, so the item is fast-forwarded into `main`. The clone is on
-`confirm-push`, the default, and the run is unattended, so no push is attempted.
+`confirm-push`, the default, so a push in the `-p` session is refused by the `session-skills` hook.
 The session transcript goes to `<dir>/session.jsonl` and the repo's state afterward to
 `<dir>/state.txt`. `python3 e2e/calls.py <dir>/session.jsonl` prints the plugins loaded and each
 tool call with the first line of its result.

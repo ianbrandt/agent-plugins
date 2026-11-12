@@ -116,6 +116,14 @@ pipe into `tail`, `head`, `grep`, `cat`, `Select-Object`, or `Select-String` are
 chained. A command inside a substitution is, and so is a dry run beside a push. A subagent's call
 is refused too. Where the modes cannot be read, the command runs.
 
+In a `claude -p` session, where `CLAUDE_CODE_ENTRYPOINT` is `sdk-cli`, the same hook refuses every
+push or post in a confirm mode, chained or not. Nobody answers a prompt there. On 2026-11-11 a
+first `-p` session in a `confirm-push` clone pushed its merge. Whether that session applies the rules
+file written at its start is not settled. On 2.1.322 the rules were applied only from the next
+session in one probe, but in three later `e2e/run.sh first` runs the push was stopped by the rule in
+the same session. A push is refused as well in a `-p` run with
+`--permission-prompt-tool`, where a tool could answer the prompt.
+
 In a confirm mode the prompt is raised by `permissions.ask` rules in `.claude/settings.local.json`,
 which Claude Code applies in every permission mode. The rules are `git push *` and
 `git -C * push *`, one for each post subcommand, such as `gh pr create *`, and `gh api` with each

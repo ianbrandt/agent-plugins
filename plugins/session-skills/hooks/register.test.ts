@@ -242,6 +242,19 @@ test('a push or a post chained with another command is refused in a confirm mode
   expect(await deny('git commit -m x && git push')).toContain('by itself')
 })
 
+test('in a -p session every push or post is refused in a confirm mode, and runs in an auto mode', async ($: any, on: any) => {
+  const w = pushes(on)
+  on('env.get', () => ({ value: 'sdk-cli' }))
+  const deny = async (command: string) => (await $.tool.call({ tool: 'Bash', command })).deny
+  for (const command of ['git push', 'git -C /repo push origin main', 'gh pr create']) expect(await deny(command), command).toContain('nobody')
+  for (const command of ['git push --dry-run', 'git log', 'gh pr view 3']) expect(await deny(command), command).toBeUndefined()
+  w.mode = 'auto-push'
+  expect(await deny('git push')).toBeUndefined()
+  expect(await deny('gh pr create')).toContain('nobody')
+  w.mode = 'auto-post'
+  expect(await deny('gh pr create')).toBeUndefined()
+})
+
 test('no prompt is submitted at the end of a turn that pushed', async ($: any, on: any) => {
   pushes(on)
   const sent: string[] = []

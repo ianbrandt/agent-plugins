@@ -438,6 +438,7 @@ async function answer(name: string, run: () => Promise<string>) {
 }
 
 const CHAINED = 'In a confirm mode a push or a post is run by itself, so the user can recognize it in the permission prompt. Run the other commands first, then the push or the post in a call of its own. A redirection, a cd before it, and a pipe into tail, head, grep, or cat are fine.'
+const HEADLESS = 'This session runs with -p, so nobody can answer the permission prompt for a push or a post in a confirm mode. Leave the work as local commits, and a post as a draft file, and say so in the reply.'
 const NEXT_STEP ='This command pushed work. End the reply with the next step, under the session rules: the hand-off block for the next unit of work, or one line stating that this session carries on with it. When nothing can start yet, write one line on what the next item waits on, then the block for when it can start. When nothing comes next at all, say so in one line.'
 
 const TITLE_RULES: Record<string, string> = { 'claude-desktop': 'title-desktop', cli: 'title-cli' }
@@ -516,9 +517,13 @@ export const register: Register = on => {
       const pushed = read.pushes.some(p => !p.dryRun)
       // On 2026-11-11 a push that was the last of three chained commands was not
       // recognized in its permission prompt. Where the modes cannot be read the command runs.
-      if ((pushed || read.posts) && read.pushes.length + read.posts + read.others > 1) {
+      // Nobody answers a prompt in a -p session, and on 2026-11-11 one pushed in a
+      // confirm-push clone, with the ask rules written at its start.
+      // shortcut: a push is refused in a -p run with --permission-prompt-tool too, where a tool could answer the prompt; read the flag if such runs appear.
+      const headless = (await $.env.get('CLAUDE_CODE_ENTRYPOINT').catch(() => '')) === 'sdk-cli'
+      if ((pushed || read.posts) && (headless || read.pushes.length + read.posts + read.others > 1)) {
         const m = await primary($).then(main => readModes($, main)).catch(() => null)
-        if (m && ((pushed && m.push === 'confirm-push') || (read.posts && m.post === 'confirm-post'))) return { deny: CHAINED }
+        if (m && ((pushed && m.push === 'confirm-push') || (read.posts && m.post === 'confirm-post'))) return { deny: headless ? HEADLESS : CHAINED }
       }
       const ran = await next(e)
       if (e.agentId || ran.deny !== undefined || (ran as any).isError) return ran
