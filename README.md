@@ -48,12 +48,12 @@ invoked.
   voice spec built out of your writing, hands each draft over for your go, and logs what your edits
   change. With `writing-conventions` installed, the general rules from those edits are added to
   that plugin's always-on file.
-- [`session-skills`](plugins/session-skills) puts a unit of work in its own git worktree and gets it
-  back out again, landing it by what the repo is rather than by a mode you declare. It also has two
+- [`session-skills`](plugins/session-skills) puts a unit of work on its own branch and gets it
+  back off again, landing it by what the repo is rather than by a mode you declare. It also has two
   small session-start rules: how a session gets its title, and a per-turn judgment
   of whether the work is better served by continuing here or handing off to a fresh session.
 - [`parallel-session-skills`](plugins/parallel-session-skills) keeps two or three sessions off each
-  other's files, through a claim ledger of the paths each lane will touch. It also has the
+  other's files, with a git worktree for each and a claim ledger of the paths each lane will touch. It also has the
   unattended conductor that runs several lanes at once and refills them as they finish. Install it
   if you run more than one session against a repo at a time; it needs `session-skills`.
 - [`roadmap-skills`](plugins/roadmap-skills) backs a lane with a markdown backlog: `Rn` items in

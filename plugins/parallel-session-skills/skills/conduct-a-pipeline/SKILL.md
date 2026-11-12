@@ -10,7 +10,7 @@ description: >-
   a pipeline that died without notifying, and the stop conditions. Trigger on
   "run several items unattended", "autopilot", "keep the pipeline full", or any
   multi-lane run with nobody watching. NOT for a single unit of work (that's
-  work-in-worktree, then claim-a-lane, then land-and-wrap), and NOT for deciding
+  work-on-a-branch, then land-and-wrap), and NOT for deciding
   what the candidates are—that comes from the repo's backlog plugin.
 ---
 
@@ -21,12 +21,12 @@ file-disjoint units of work in flight, builds each in its own worktree via a bac
 and processes each as it finishes—a rolling pipeline, refilled after every completion, running until
 candidates run out or the plan is invalidated.
 
-Per-lane mechanics come from `work-in-worktree` for the worktree and the backlog seam,
+Per-lane mechanics come from `work-on-a-branch` for the backlog seam, `work-in-worktree` for the worktree,
 `claim-a-lane` for the claim ledger, and `land-and-wrap` for landing. This skill adds the conductor
 layer and the **unattended deviations**—each one exists because there is no human in the loop.
 *This skill is the Workflow orchestration opt-in for every unit built under it.*
 
-**Candidates come from the backlog** (`work-in-worktree` §0), not from here. A backlog plugin supplies
+**Candidates come from the backlog** (`work-on-a-branch` §0), not from here. A backlog plugin supplies
 an ordered list of workable units and records each one done in its own form; this skill covers how
 many run at once, what happens when one fails, and when to stop. With no backlog plugin, the user
 supplies the list up front and the conductor runs it dry.
@@ -53,7 +53,7 @@ The conductor roots in the **main checkout** and never edits repo files outside 
 the run-state file and the PR draft files excepted. **It reaches a lane only by absolute path and
 `git -C <worktree>`, never by `cd`**: in the desktop app, one `cd <lane worktree> &&` in a
 conductor's Bash call moved the session's working directory into that lane. Get the candidate list from the backlog; if it
-is empty, stop. Run the hygiene pass once—`work-in-worktree` §4's prune, then `claim-a-lane` §2's dead-claim reap. Then:
+is empty, stop. Run the hygiene pass once—`work-on-a-branch` §4's prune, then `claim-a-lane` §2's dead-claim reap. Then:
 
 - **Read how units land** with `mcp__session-skills__landing_facts` (`land-and-wrap` §1): fork-ness,
   the landing mode, the push mode, and the post mode. For a landing mode still unknown, skip the
@@ -79,12 +79,12 @@ unpolled it occupies its slot forever. So **whenever builds are in flight, arm a
 pipeline is the one stall no completion event can break.
 
 **Candidates:** re-derive after every completion. The backlog supplies what is workable and in what
-order (`work-in-worktree` §0); from that list, remove what is unavailable at the session layer:
+order (`work-on-a-branch` §0); from that list, remove what is unavailable at the session layer:
 
 - **claimed**—it is listed in a live claim;
 - **not disjoint**—any path it expects to edit falls inside a live claim's `touches` globs, or inside
   those of a unit staged this run (kept in the run-state file);
-- **already in flight** by any of `work-in-worktree` §2's three tells. **The conductor never takes the
+- **already in flight** by any of `work-on-a-branch` §2's three tells. **The conductor never takes the
   resume path**: a unit in flight stays out of candidates rather than being resumed here—it is an
   attended session's to finish. **A missing claim does not make it open**: a session that wrapped
   cleanly deleted its own claim and left the work in flight, so check the backlog's pin and `git
@@ -98,14 +98,14 @@ paths can't be predicted well enough to declare declares the broadest glob it mi
 costs parallelism and never costs correctness.
 
 **Fill:** while in-flight < cap, claimed < max-items, and a candidate exists: open its worktree +
-branch per `work-in-worktree` §3 and write its claim per `claim-a-lane` §3, **with its
+branch per `work-in-worktree` §2 and write its claim per `claim-a-lane` §3, **with its
 `touches` globs**—the conductor is the one reader that depends on them being accurate, since it is
 holding several lanes open at once. Where the branch needs a name for its destination
-(`work-in-worktree` §3: `pr` mode or a fork), give it one then, since nobody is present at landing to
+(`work-on-a-branch` §3: `pr` mode or a fork), give it one then, since nobody is present at landing to
 supply one. **Pass the unit's ID as `open_worktree`'s `id` input.** It names the worktree directory
 `<id>-<color-animal>` and the branch `claude/<id>-<color-animal>`; a branch named for its destination
-is renamed after the worktree opens (`work-in-worktree` §3), while the directory keeps its name.
-A backlog that pins a unit by branch or worktree name (`work-in-worktree` §2's tell 1 or 2) can then
+is renamed after the worktree opens (`work-in-worktree` §2), while the directory keeps its name.
+A backlog that pins a unit by branch or worktree name (`work-on-a-branch` §2's tell 1 or 2) can then
 read the ID straight off the worktree directory for as long as it exists, which matters most in `pr`
 mode, where the worktree outlives the fill that opened it.
 
@@ -186,12 +186,14 @@ Per `land-and-wrap` §2 `merge`, with these unattended deviations:
   lives outside the tree—an untracked local-only file, an issue tracker—there is no commit to make;
   record it once the unit passes the build gate, through the backlog plugin's own mechanics.
 - **Build gate** (step 3), on the rebased tip.
-- Fast-forward-merge from the main checkout. On `--ff-only` refusal—a human session landed inside
+- Fast-forward the default branch from the main checkout, by `land-and-wrap` §2's `merge` step 3:
+  it has the command for a main checkout that a human session has put on another branch. On
+  `--ff-only` refusal, or a rejected `git fetch .`—a human session landed inside
   your rebase→build window—**re-rebase onto the moved branch and retry, bounded (3 attempts)**; never
   relax `--ff-only`.
 - **Push** in `auto-push`, and never with the landing mode unknown. In `confirm-push` keep landing
   each unit on the local default branch, attempt no push, and present the accumulated unpushed
-  range (`origin/$DEFAULT..$DEFAULT`) at stop, for the user to push. Then delete the claim; remove the worktree and branch; update the run-state file.
+  range (`origin/$DEFAULT..$DEFAULT`) at stop, for the user to push. Then delete the claim; remove the worktree (`work-in-worktree` §3) and its branch; update the run-state file.
 
 ### 2b. `pr`—push each branch in `auto-push`, and write its PR text to a file
 

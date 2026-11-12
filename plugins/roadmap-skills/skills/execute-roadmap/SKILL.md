@@ -19,11 +19,11 @@ conditions—lives in `parallel-session-skills`' `conduct-a-pipeline`. Run that 
 supplies the two inputs it takes from the backlog and consumes its output.
 
 It requires both `session-skills` and `parallel-session-skills` installed—**check for both by name,
-and stop if either is missing**. A run that finds `conduct-a-pipeline` but not `work-in-worktree`
-gets all the way to opening a worktree per a skill that isn't there, once per lane, unattended.
+and stop if either is missing**. A run that finds `conduct-a-pipeline` but not `work-on-a-branch`
+gets all the way to opening a worktree with no base to open it from, once per lane, unattended.
 Neither absence fails loudly on its own. Per-item mechanics are
 inherited the same way: [`next-roadmap-item`](../next-roadmap-item/SKILL.md) for finding the plan of
-record (its §1) and the selection gates (its §3), `work-in-worktree` for the worktree, `claim-a-lane`
+record (its §1) and the selection gates (its §3), `work-in-worktree` for each lane's worktree, `claim-a-lane`
 for the ledger, `land-and-wrap` for landing.
 
 ## 0. Arguments
@@ -60,9 +60,9 @@ ordered workable list. From the roadmap that is:
 Everything else the conductor filters on—claimed, not disjoint, already in flight, flagged or staged
 this run—is the session layer's and needs nothing from here.
 
-The roadmap's **pin** is `work-in-worktree` §2's tell 1: a branch or worktree recorded in an item's
+The roadmap's **pin** is `work-on-a-branch` §2's tell 1: a branch or worktree recorded in an item's
 entry is the durable in-flight record, and it is why an unclaimed item is not automatically free. A
-pin for a branch that `work-in-worktree` §4 reports as merged (or whose content is already on
+pin for a branch that `work-on-a-branch` §4 reports as merged (or whose content is already on
 `origin/$DEFAULT`) marks the item done rather than in flight: delete it, append its done-record to `$HISTORY`
 (`MERGED-UPSTREAM` on a fork), and remove the worktree if this run created it (`next-roadmap-item`
 §2 has the same rule).
@@ -83,7 +83,7 @@ the `pr` exception below:
   every other lane is editing the same file.
 - **A local-only roadmap** (every fork, and any owned repo keeping its plan off the record): the
   files are untracked and live only in the primary checkout, so there is no commit to make—delete
-  the item and **append its done-record to the changelog** through `work-in-worktree`'s
+  the item and **append its done-record to the changelog** through `work-on-a-branch` §5's
   primary-checkout edit mechanics, once the unit passes the build gate. On a fork the entry includes
   a status keyword (`BUILT-LOCAL` / `DRAFTED` / `FILED` / `PR-READY` / `MERGED-UPSTREAM`, per
   next-roadmap-item §6). The changelog records the reasoning behind each item: capture what commit
@@ -95,7 +95,7 @@ the PR, so the item still reads as open on the default branch with no pin attach
 tell there is the item's worktree, named for its ID (`conduct-a-pipeline` §2's Fill paragraph), for as
 long as it exists. On a local-only roadmap, append the changelog entry now under `PR-READY`, or
 `FILED` where the conductor opened the PR, and pin the item to its branch in place of deleting it.
-The pin is `work-in-worktree` §2's tell 1, so no later run re-picks the item, and the same merged-pin
+The pin is `work-on-a-branch` §2's tell 1, so no later run re-picks the item, and the same merged-pin
 rule as §2 above clears it once the branch merges.
 
 In every reply, the per-completion log line and the wrap-up included, an item is its ID with a few

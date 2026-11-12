@@ -5,26 +5,48 @@ How the plugin is wired, for anyone changing it. The [README](../README.md) cove
 ## Tools and session rules
 
 One hooks module, `hooks/register.ts`, which is a Claude Code mod. It was run on Claude Code
-2.1.314 and later, and on nothing older. It registers seven tools, named
+2.1.314 and later, and on nothing older. It registers five tools, named
 `mcp__session-skills__<tool>`, and the skills call them where they once had bash to adapt:
 
 - `find_checkouts` fetches, then returns the primary checkout, the default branch, the ref a new
-  branch should start from, and every worktree (`work-in-worktree` §1 and §2).
-- `open_worktree` opens a worktree and branch from that ref and links the repo's local notes
-  directory into it (§3).
+  branch should start from, every worktree, each branch in no worktree that has commits the base
+  lacks, and the number of changed or untracked paths in the primary checkout
+  (`work-on-a-branch` §1 to §3).
 - `prune_branches` prunes stale worktree registrations and deletes merged branches, including one a
   host squashed on merge, and never removes a worktree (§4).
-- `remove_worktree` runs `git worktree remove` from the primary checkout, then deletes the
-  worktree's directory where it is still on disk, as it is on Windows. A path outside
-  `.claude/worktrees` is refused, and a path already unregistered is a no-op (§4, and
-  `land-and-wrap` §2).
 - `landing_facts` returns whether the repo is a fork, the push mode, the post mode, and the landing
   mode (`land-and-wrap` §1).
 - `set_push_policy` sets the push mode, the post mode, or both, and writes the permission rules
   for them (see "Push and post modes").
 - `edit_primary_file` edits a file that is only in the primary checkout, such as an untracked
-  roadmap: one passage is replaced, or text is appended, and nothing is written when the passage
-  has drifted.
+  roadmap, from a session in a worktree: one passage is replaced, or text is appended, and nothing
+  is written when the passage has drifted.
+
+No tool opens a branch. `work-on-a-branch` §3 has the one command for it,
+`git switch -c <branch> --no-track <base>`, which reads the same in every shell.
+
+## Where the work goes
+
+Through 0.30.0 every unit of work got a git worktree, opened by this plugin's `open_worktree`. A
+worktree is for sessions that run side by side, so `open_worktree` and `remove_worktree` are now
+registered by `parallel-session-skills`, and a branch in the primary checkout is the default.
+
+- The primary checkout is busy when it is on a branch other than the default or has changed or
+  untracked paths. Untracked ones count because a session that has only added files has nothing
+  else. A session never switches a busy checkout: with `parallel-session-skills` installed it
+  opens a worktree, and without it the session stops and reports what is there.
+- A branch stays checked out in the primary checkout until its work lands: `land-and-wrap`
+  switches back to the default branch for the merge, and after a pull request is opened. A branch
+  in review is then in no worktree, which is why `find_checkouts` lists those. Each is counted
+  with one `git rev-list`, since `%(ahead-behind)` needs git 2.41.
+- In `merge` mode a branch in the primary checkout lands by `git switch <default>`, then
+  `git merge --ff-only <branch>`, from a clean tree. For work in a worktree, the merge is run in
+  the primary checkout only where the default branch is checked out there. Where another branch
+  is, the merge would go into that branch, so the default branch is moved with
+  `git fetch . <branch>:<default>`, and git refuses that for anything but a fast-forward. The
+  branch is given in the push, as `git push origin <default>`, for the same reason.
+- `edit_primary_file` stays here because a session that the host starts in a worktree needs it
+  with only this plugin installed.
 
 In the terminal, `set_session_title` keeps the title, and a `turn.complete` hook applies it with
 `$.command.run({ command: 'rename' })`. The call is refused from a `tool.call` hook, since `/rename`
@@ -34,7 +56,7 @@ transcript, and the next turn gets a reminder that the user named the session. N
 tool, and the model prints a `/rename` block instead.
 
 `hooks/checkouts.test.ts` and `hooks/register.test.ts` run under `claude plugin test`. The
-tool definitions are in every session's context, at roughly 1,150 tokens for the seven, counted as
+tool definitions are in every session's context, at roughly 800 tokens for the five, counted as
 four characters to a token.
 
 The module adds `hooks/rules.md` to the first prompt of every session, and again to a prompt or
@@ -51,7 +73,7 @@ on, or a line on what the next item waits on. The third applies whenever somethi
 into the repo's backlog where it should outlive the session, and never leave it in a host's
 suggested-task feature on its own. The fourth is that a push or a post runs only at the user's
 request, written as a plain command. All four apply to every session that did real work, including
-the ones that never open a worktree and so never load `land-and-wrap`. That is why they are injected
+the ones that never open a branch and so never load `land-and-wrap`. That is why they are injected
 by a hook, and why they ship with the plugin instead of sitting in a personal global `CLAUDE.md`.
 
 `{{wrap-up}}` in `rules.md` is replaced with `wrap-up-desktop.md` in the desktop app and removed
@@ -95,7 +117,8 @@ the file has, in three places:
 
 - A `session.start` hook adds the rules for the primary checkout and for the directory the session
   starts in. It never takes a rule out.
-- `open_worktree` adds them for the new worktree.
+- `open_worktree` of `parallel-session-skills` copies the primary checkout's ask rules to a new
+  worktree.
 - `set_push_policy` writes the two git config keys, then adds and removes rules in the primary
   checkout and every worktree in `git worktree list`. Before a switch to an auto mode the user is
   asked with `$.ui.ask`, which is rejected in a `-p` run, and the modes then stay as they are.

@@ -1,6 +1,6 @@
 {
   "name": "parallel-session-skills",
-  "description": "Keeps several sessions working one repo at once off each other's files: claim a lane in a shared ledger before writing code, reap dead claims without killing a live sibling, and conduct 2-5 lanes at once when a run has nobody watching it.",
+  "description": "Keeps several sessions working one repo at once off each other's files: open a git worktree for each, claim a lane in a shared ledger before writing code, reap dead claims without killing a live sibling, and conduct 2-5 lanes at once when a run has nobody watching it.",
   "author": {
     "name": "Ian Brandt"
   },

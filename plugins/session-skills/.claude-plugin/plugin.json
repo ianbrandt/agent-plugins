@@ -1,13 +1,13 @@
 {
   "name": "session-skills",
-  "description": "Puts a session in its own git worktree and gets it back out again: adopt the worktree work is already in flight on or open a fresh one, and land the work by what the repo is rather than by a declared mode.",
+  "description": "Puts a unit of work on its own branch and gets it back off again: pick up the branch work is already in flight on or open a new one, and land the work by what the repo is rather than by a declared mode.",
   "author": {
     "name": "Ian Brandt"
   },
   "repository": "https://github.com/ianbrandt/agent-plugins",
   "license": "MIT",
   "keywords": [
-    "worktree",
+    "branch",
     "session",
     "landing",
     "wrap-up",

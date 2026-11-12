@@ -38,10 +38,10 @@ when the roadmap is local-only.
 
 An optional lane hint (`/next-roadmap-item R1`) biases the pick without
 overriding the no-collision rules. Point the hint at an item that's already in
-flight and partially built and the skill **resumes** it, adopting that item's
-existing worktree and continuing its branch instead of opening a new one off the
-default branch. It finds the lane from the pin in the roadmap or an existing
-worktree, not from the claim ledger—a session releases its claim at wrap whether
+flight and partially built and the skill **resumes** it, continuing that item's
+existing branch instead of opening a new one off the default branch. It finds
+the branch from the pin in the roadmap or from the branch's name, not from the
+claim ledger—a session releases its claim at wrap whether
 or not its item finished.
 
 ### `execute-roadmap`
@@ -61,8 +61,8 @@ work depends on the backlog being a markdown file.
 
 ## What it pairs with
 
-The worktree and landing are handled in `session-skills`, and the claim ledger
-in `parallel-session-skills`. This plugin is a **backlog plugin** for both: it
+The branch and landing are handled in `session-skills`, and a worktree and the
+claim ledger in `parallel-session-skills`. This plugin is a **backlog plugin** for both: it
 supplies what is workable, where an item is already in flight, and how a landed
 item gets recorded, from a markdown file rather than an issue tracker. The
 dependency runs one way: these skills call into those, never the reverse, so a

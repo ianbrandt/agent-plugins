@@ -1,7 +1,7 @@
 ---
 name: land-and-wrap
 description: >-
-  Get finished work out of its worktree and close the session cleanly. Decides
+  Get finished work off its branch and close the session cleanly. Decides
   how work lands from facts about the clone itself—whether it is a fork of
   someone else's project, its push mode and post mode, and whether its default
   branch takes direct pushes—rather than from the backlog it tracks work in:
@@ -12,15 +12,15 @@ description: >-
   Then the wrap-up actions every session runs whether or not the work finished:
   release any lease, stop stray background tasks, leave a resume record. Trigger
   when work is committed and ready to leave its branch, and at the end of any
-  session that opened a worktree. NOT for how a wrap-up should read (that's
-  the writing-conventions rules), and NOT for getting into the worktree in the
-  first place (that's work-in-worktree).
+  session that opened a branch or a worktree. NOT for how a wrap-up should read
+  (that's the writing-conventions rules), and NOT for getting onto the branch in
+  the first place (that's work-on-a-branch).
 ---
 
 # Land and wrap
 
 Two separate jobs, and the second one runs even when the first doesn't: **landing** moves finished
-work out of its worktree, and the **wrap-up** closes the session whether the work finished, stalled,
+work off its branch, and the **wrap-up** closes the session whether the work finished, stalled,
 or was abandoned.
 
 ## 1. What decides how work lands
@@ -98,7 +98,7 @@ handling.
 
 **Bring the docs first.** Finishing includes every piece of documentation the change touches: the
 subsystem's design doc (the durable *why*) plus any user-facing surface. Then **record it done**
-through whatever backlog plugin the repo uses (`work-in-worktree` §0), in that backlog's form. With
+through whatever backlog plugin the repo uses (`work-on-a-branch` §0), in that backlog's form. With
 no backlog at all, the landing commit is the record and there is nothing else to write. Keep any
 such edit minimal, localized, and in its own final commit—a backlog file is a collision seam every
 other lane is also editing.
@@ -108,28 +108,43 @@ runbook), otherwise land by the mode from §1.
 
 ### `merge`
 
-1. **Rebase onto the default branch**—`git -C "$WT" rebase "$DEFAULT"`.
+`$WT` is the checkout the work is in, and it is `$MAIN` itself unless the work is in a worktree
+(`work-on-a-branch` §1).
+
+1. **Rebase onto the default branch**—`git -C "$WT" rebase "$DEFAULT"`. Work committed on the
+   default branch itself has nothing to rebase onto or merge: fetch, run
+   `git -C "$MAIN" rebase "origin/$DEFAULT"` where `origin` has commits it lacks, build, and go to
+   step 4.
 2. **Build, risk-based, from `$WT`**: rebuild when the rebase pulled in changes to a seam this work
    touches; skip it for a disjoint lap or one that moved only docs and fixtures. A bare `git rebase`
-   or a bare build command targets whatever the shell's cwd is, which in a session launched from the
-   repo root is the default branch in the primary checkout—a false green.
-3. **Fast-forward-merge from the main checkout**—`git -C "$MAIN" merge --ff-only "$BRANCH"`. If it
+   or a bare build command targets whatever the shell's cwd is, which may be another checkout—a
+   false green.
+3. **Fast-forward the default branch.** Read what the primary checkout is on,
+   `git -C "$MAIN" branch --show-current`, and take the case that matches. If the default branch
    can't fast-forward, say so rather than forcing a merge commit.
+   - **It is on `$BRANCH`**, the work's branch: the tree has to be clean first, since a switch takes
+     uncommitted changes along, so `git -C "$MAIN" status --porcelain -uno` prints nothing. Then
+     `git -C "$MAIN" switch "$DEFAULT"`, and `git -C "$MAIN" merge --ff-only "$BRANCH"`.
+   - **It is on `$DEFAULT`**, and the work is in a worktree: `git -C "$MAIN" merge --ff-only "$BRANCH"`.
+   - **It is on any other branch**, and the work is in a worktree: another unit of work is checked
+     out there, and a merge run in that checkout would go into its branch. Move the default branch
+     without a checkout: `git -C "$MAIN" fetch . "$BRANCH:$DEFAULT"`. git refuses that for anything
+     but a fast-forward.
 4. **Push, by the push mode** (§1). In `confirm-push`, present the unpushed range
-   (`git -C "$MAIN" log --oneline "origin/$DEFAULT..$DEFAULT"`) and run `git -C "$MAIN" push` in
-   the same turn. In `auto-push`, run it. End the turn that pushed with §4's "Say what's left",
-   since the landing closes there.
-5. **After §4's release, remove your own worktree** with `mcp__session-skills__remove_worktree`,
-   passing `$WT` as `path`, then call `mcp__session-skills__prune_branches`, which deletes the
-   merged branch. Do not run `git branch -d` in its place. A session started inside the worktree
-   removes it the same way: the tool runs `git worktree remove` from the primary checkout, so the
-   session's shell is unaffected, but a shell left sitting in a removed directory fails on its
-   next call and restarts in the home directory.
+   (`git -C "$MAIN" log --oneline "origin/$DEFAULT..$DEFAULT"`) and run
+   `git -C "$MAIN" push origin "$DEFAULT"` in the same turn. In `auto-push`, run it. The branch is
+   given in the command because the primary checkout may be on another one. End the turn that
+   pushed with §4's "Say what's left", since the landing closes there.
+5. **After §4's release, clear the merged branch.** Where the work was in a worktree, remove that
+   worktree with the concurrency plugin's worktree skill (`work-on-a-branch` §0's lease seam),
+   whether this session opened it, resumed the work in it, or was started in it. Where no such
+   skill is installed, leave the worktree and say so in the wrap-up. Then call `mcp__session-skills__prune_branches`, which deletes the
+   merged branch once it is checked out nowhere. Do not run `git branch -d` in its place.
 
 ### `pr`
 
 1. **Check the branch name.** It becomes the PR head and stays on the host, so it should have
-   been named for its destination when the worktree opened (`work-in-worktree` §3). If it still
+   been named for its destination when it was opened (`work-on-a-branch` §3). If it still
    has its `claude/` name, ask the user for one, rename it, and update the lease and any backlog pin
    that records the old name.
 2. **Rebase onto the remote default branch**—`git -C "$WT" fetch -q && git -C "$WT" rebase
@@ -155,6 +170,11 @@ runbook), otherwise land by the mode from §1.
    exits 1 the directory is not ignored yet, so append `/.claude/pr-drafts/` on a line of its own
    to `$MAIN/.git/info/exclude` with the same tool.
 
+7. **Free the primary checkout**, where the branch is checked out there and everything is
+   committed: `git -C "$MAIN" switch "$DEFAULT"`. The next unit of work then finds the checkout
+   free, and the session that takes up a review fix switches to the branch again
+   (`work-on-a-branch` §2).
+
 **Post a body from a file, and diff it on the way out and on the way back.** Take the body out of a
 draft by its heading, never by a line range: `sed -n '/^## Body$/,$p' draft.md | tail -n +2`. An
 off-by-one range truncates the body silently, and `gh` prints a URL either way. Strip the final
@@ -167,11 +187,13 @@ a local draft can be stale. Before `gh pr edit` or `gh issue edit`, fetch the cu
 `gh pr view --json body --jq .body`, apply the change to that, and diff to confirm that only the
 intended part changed.
 
-The branch and worktree stay until the PR merges, since review fixes go on the same branch. A
-backlog record kept in a tracked file rides in the PR and merges with it. One kept outside the tree
-records the item as in review until the PR merges, so a declined PR leaves it open. Once the PR has
-merged, the session holding its worktree removes it, by the rules in `work-in-worktree` §4, and that
-section's cleanup then deletes the branch.
+The branch stays until the PR merges, since review fixes go on the same branch, and so does its
+worktree where it has one. A backlog record kept in a tracked file rides in the PR and merges with
+it.
+One kept outside the tree records the item as in review until the PR merges, so a declined PR leaves
+it open. Once the PR has merged, the session holding a worktree for it removes that worktree
+with the concurrency plugin's worktree skill, and `work-on-a-branch` §4's prune then
+deletes the branch.
 
 ## 3. Landing in a fork—a pull request against upstream
 
@@ -183,10 +205,11 @@ then open the PR. Every post from a fork is confirmed, and no setting turns that
 text is published in someone else's project. Open the PR with
 `gh pr create --repo <upstream owner/repo> --head <fork owner>:"$BRANCH"`, or
 `glab mr create -R <upstream project> -H <fork project> --push=false`. The fork's branch is named
-for its destination in `work-in-worktree` §3, before the first push.
+for its destination in `work-on-a-branch` §3, before the first push.
 
 1. **Commit atomically on the feature branch**—decomposition-ordered, past-tense, one logical change
-   each, in the target project's commit style. The branch and worktree stay until the PR merges.
+   each, in the target project's commit style. The branch stays until the PR merges, and so does
+   its worktree where it has one.
 2. **Draft outreach as local files first**—`NNN-issue-draft.md`, `NNN-pr-draft.md`,
    `NNN-comment-draft.md`, keyed by the upstream number once known and by the work's ID before
    then, in whatever local notes directory the repo keeps them in, or `.claude/pr-drafts/` where it
@@ -210,22 +233,26 @@ is a wasted branch at best, and a hand-rolled reimplementation of a public API a
 
 ## 4. Wrap-up actions—every session, finished or not
 
-**Release any lease you hold, always—where the repo runs a concurrency plugin** (`work-in-worktree`
+**Release any lease you hold, always—where the repo runs a concurrency plugin** (`work-on-a-branch`
 §0's lease seam). A session that never wrote one has nothing to release and skips to the next action;
 a session that did releases it whether or not the work finished. A lease covers the session, not the
 work, and one held past its session blocks its lane for every unattended run until something expires
 it.
 
 **The release step is in the plugin that maintains the ledger**—run it now. Identify the lane by the
-`$WT` `work-in-worktree` set, **written out literally, never re-derived with `git rev-parse
+`$WT` its worktree was opened at, **written out literally, never re-derived with `git rev-parse
 --show-toplevel`**: a session launched from the repo root works the lane through absolute paths and
 leaves its cwd in the primary checkout, so `--show-toplevel` returns `$MAIN`, and a release keyed off
 the wrong tree removes nothing and leaks the real lease. Confirm the lease is gone before moving
 on.
 
-**Unfinished work's resume record is its branch and worktree**, plus the backlog's pin when it
-records one. Leave both standing, and state the branch name in the wrap-up—that is what the next
-session finds.
+**Unfinished work's resume record is its branch**, plus its worktree where it has one and the
+backlog's pin when it records one. Leave them standing, and state the branch name in the
+wrap-up—that is what the next session finds.
+
+**Unfinished work on a branch in the primary checkout stays checked out there.** Say so in the
+wrap-up: the next session for other work finds the checkout busy (`work-on-a-branch` §3), and the
+one that resumes this work finds its branch already checked out.
 
 The rest, in order:
 
@@ -241,7 +268,7 @@ The rest, in order:
   one (new scope, or this context has grown long). For a fresh one, write a **launch snippet** in
   the format given in this plugin's `hooks/rules.md`, including the model and effort in the picker's
   terms, chosen from `tier-model-and-effort` where it is installed rather than from memory. Where
-  the repo has a backlog plugin (`work-in-worktree` §0's backlog seam), its invocation is the
+  the repo has a backlog plugin (`work-on-a-branch` §0's backlog seam), its invocation is the
   snippet's entry point: it finds the in-flight work itself, so state the unfinished **branch**
   alongside it and leave the recap out.
 - **Title the session if it has no title yet, or a better one fits now**, the way the session rules

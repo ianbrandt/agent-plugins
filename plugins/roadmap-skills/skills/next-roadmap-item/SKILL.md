@@ -7,14 +7,14 @@ description: >-
   fork—and bootstraps one if the repo has none. Trigger on "tackle a roadmap
   item", "claim a task and get going", or starting work without colliding with
   the other sessions. Also resumes an item already in flight and partially
-  built—more building on an in-flight item is this skill, which adopts that
-  item's existing worktree. An optional lane hint ("R1") only biases the pick.
+  built—more building on an in-flight item is this skill, which picks up that
+  item's existing branch. An optional lane hint ("R1") only biases the pick.
   Also the way into a task the user states directly ("upgrade X", "fix Y") in a
   repo that has a roadmap: the task gets an item, written first on a local-only
-  roadmap and in the lane's worktree on a tracked one, and this skill runs on
-  that item's ID. NOT for reading, summarizing, or editing the roadmap, and NOT for the worktree
-  mechanics themselves (that's work-in-worktree) or the claim ledger (that's
-  claim-a-lane) or landing finished work (that's land-and-wrap).
+  roadmap and on the item's branch on a tracked one, and this skill runs on
+  that item's ID. NOT for reading, summarizing, or editing the roadmap, and NOT for the branch
+  mechanics themselves (that's work-on-a-branch), a worktree or the claim ledger (that's
+  work-in-worktree and claim-a-lane), or landing finished work (that's land-and-wrap).
 ---
 
 # Next roadmap item—parallel-safe session cold-start
@@ -27,13 +27,15 @@ a bare ID. The user is not reading the roadmap beside the conversation, so they 
 `R12` alone. This holds for every item mentioned, including one filed in passing and one left open
 in the wrap-up.
 
-This skill is a **backlog plugin**: it fills the backlog seam `work-in-worktree` §0 defines,
+This skill is a **backlog plugin**: it fills the backlog seam `work-on-a-branch` §0 defines,
 using a markdown roadmap in place of an issue tracker. What is workable (§3), where an item is
 already in flight (§2), and how a landed item is recorded (§6). Everything else about the session
-belongs to three skills this one calls rather than copies:
+belongs to four skills this one calls rather than copies:
 
-- **`work-in-worktree`**—adopting or opening the worktree, and the primary-checkout path rules.
-- **`claim-a-lane`**—the shared claim ledger and sibling etiquette, where the repo runs one.
+- **`work-on-a-branch`**—picking up or opening the item's branch, in the primary checkout by
+  default, and the primary-checkout path rules.
+- **`work-in-worktree`** and **`claim-a-lane`**—the worktree and the shared claim ledger, for an
+  item worked beside another session. Both ship in `parallel-session-skills`.
 - **`land-and-wrap`**—how finished work leaves its branch, and what every session does at its end.
 
 **Take sequencing from the roadmap and disjointness from the claim ledger.** A gate ("R3 waits on
@@ -70,40 +72,43 @@ needs no changelog: the landing commit that deletes the item *is* the record. A 
 untracked, so it is not in git history and is recorded in `$HISTORY` instead.
 
 Both files live **only in the primary checkout** when they are untracked, which is by design—one
-shared plan, not per-worktree copies. `work-in-worktree` has the mechanics for editing a
-primary-checkout file from a worktree session.
+shared plan, not per-worktree copies. `work-on-a-branch` §5 has the mechanics for editing a
+primary-checkout file from a session in a worktree.
 
 **This is not the same question as how work lands.** That is determined from the repo, as
 described in `land-and-wrap` §1: fork-ness, the landing mode, and the per-clone push
 and post modes. Work in a repo you own lands in its default branch even when the roadmap is
 local-only.
 
-## 2. Get into a lane
+## 2. Get onto the item's branch
 
-Run **`work-in-worktree`** now: locate `$MAIN` and `$WT`, then resume an in-flight worktree or open a
-fresh one. If it is not among the available skills, **stop and tell the user to install
-`session-skills`**—nothing below fails loudly without it, so proceeding just edits the default branch
-in the primary checkout.
+Run **`work-on-a-branch`** now: locate `$MAIN`, then resume the item's in-flight branch or open a
+new one. The branch is in the primary checkout unless that skill's §3 sends the work to a worktree:
+the user asked for one, or the primary checkout is busy. If the skill is not among the available
+skills, **stop and tell the user to install `session-skills`**—nothing below fails loudly without
+it, so proceeding just edits the default branch in the primary checkout.
 
-Whether this run is a resume is determined by `work-in-worktree` §2's resume tells, and **tell 1 is
+Whether this run is a resume is determined by `work-on-a-branch` §2's resume tells, and **tell 1 is
 an item's own text in `$ROADMAP`**: a build rule pinning the item to one branch or worktree is the
 durable in-flight record, outliving every session that touched it. **A pin for a branch that
-`work-in-worktree` §4 reports as merged (or whose content is already on `origin/$DEFAULT`) marks the
+`work-on-a-branch` §4 reports as merged (or whose content is already on `origin/$DEFAULT`) marks the
 item done, not in flight**: delete it and append its done-record to `$HISTORY` (`MERGED-UPSTREAM` on
 a fork) rather than resuming it.
 
-Run `work-in-worktree` §4's prune too. Then run **`claim-a-lane`**'s §1 and §2—orient against
-siblings, reap dead claims—and come back here to pick. Writing the claim (its §3) happens after the pick, not before. `claim-a-lane`
+Run `work-on-a-branch` §4's prune too. Then run **`claim-a-lane`**'s §1 and §2—orient against
+siblings, reap dead claims—and come back here to pick. That read applies wherever the work is: an
+item picked for a branch in the primary checkout still has to be disjoint from every live claim.
+**A claim is written only for work in a worktree** (`claim-a-lane` §3), after the pick, not before.
+A session on a branch in the primary checkout is in no lane and writes none. `claim-a-lane`
 ships in `parallel-session-skills`; where it isn't installed the repo has no ledger, so **say so in
-one line** and skip every ledger step below. The pick then rests on the roadmap's gates alone, and
-two sessions running that way can collide on the same files with nothing to catch it.
+one line** and skip every ledger step below. The pick then rests on the roadmap's gates alone.
 
 ## 3. Pick a disjoint, unclaimed item
 
 Choose an **unclaimed** item that is **workable**—its gates met—and whose file-touch set is
-**disjoint** from every live claim's `touches` globs (`claim-a-lane` §3). Write the paths you expect
-to edit into your own claim; `$ROADMAP` itself is the seam every item eventually touches, so declare
-it and keep the edit minimal, localized, and last.
+**disjoint** from every live claim's `touches` globs (`claim-a-lane` §3). Where the work is in a
+worktree, write the paths you expect to edit into your own claim; `$ROADMAP` itself is the seam
+every item eventually touches, so declare it and keep the edit minimal, localized, and last.
 
 - **Only the active burndown is pickable.** Items are claimable to-dos with stable `Rn` IDs
   (sub-items `Rn.m`); an ID is never reused and an item keeps it for life. Parked, deferred,
@@ -139,7 +144,7 @@ claim disappears, or a commit lands), then pick. A hint doesn't change this.
 priority position, with the problem and the paths it touches. On a local-only roadmap, write it
 before anything else. On a tracked roadmap, take the ID before §2 and write the item now, in the
 copy under `$WT`, raise the `Highest ID used` line to the new ID in the same edit, and commit it
-there: the lane's worktree is where a tracked roadmap is edited, and it was not open before §2. Then it is a hinted pick like any other, and the gates above still
+there: the item's branch is where a tracked roadmap is edited, and it was not open before §2. Then it is a hinted pick like any other, and the gates above still
 apply to it. The same instruction is added to the first prompt by this plugin's hook, in every repo
 that has a roadmap, because a session handed "upgrade X" does not otherwise reach this skill.
 
@@ -154,8 +159,8 @@ Highest ID used: R127
 ```
 
 An item written in another lane is committed only on that lane's branch, so the next free ID is one
-more than the highest among that line, the roadmap, parked, and declined files, the open worktree
-directory names (`r78-...`), and the items in live claims.
+more than the highest among that line, the roadmap, parked, and declined files, the branch and
+worktree directory names (`claude/r78-...`, `r78-...`), and the items in live claims.
 
 - **Raise the line in the commit that writes a new item**, to that item's ID. A sub-item does not
   change it.
@@ -172,11 +177,13 @@ directory names (`r78-...`), and the items in live claims.
 on the item you are resuming is *yours*, not a collision, and re-picking on it is the bug
 `claim-a-lane`'s resume path exists to prevent.
 
-Then write the claim, per `claim-a-lane` §3—where the repo has a ledger at all.
+Then write the claim, per `claim-a-lane` §3—where the work is in a worktree and the repo has a
+ledger at all.
 
 ## 4. Give the session a descriptive title
 
-As soon as the claim lands and any tiebreaker re-pick settles, **title the session the way
+As soon as the pick is settled, with its claim and any tiebreaker re-pick where the work is in a
+worktree, **title the session the way
 `session-skills`' session rules specify**. Those rules load with the first prompt and state the one way
 this session sets its title.
 
@@ -224,7 +231,7 @@ names from it rather than from memory, since model names age faster than the rul
 ## 6. Build it, then land it
 
 **Before the first edit, call `mcp__parallel-session-skills__read_ledger` once more**, where the
-repo has a ledger. A claim written after yours is seen only then, and `claim-a-lane` §3 has the rule
+work has a claim. A claim written after yours is seen only then, and `claim-a-lane` §3 has the rule
 for a clash.
 
 Work **test-first per THIS repo's conventions**—a failing test first, then match the repo's
@@ -248,7 +255,7 @@ at its end. Two things it defers back to this skill:
 - **Keep an item's notes in one directory, and clear it out when the item lands.** Probe scripts,
   run output, plan revisions, and review rounds for an item go in a directory named for its ID in
   the repo's local-only notes directory, such as `notes.local/R12/`, written in the primary
-  checkout as described in `work-in-worktree` §3. When the item lands, move each finding a later
+  checkout as described in `work-on-a-branch` §5. When the item lands, move each finding a later
   session needs into the design doc or the done-record, move a harness a later item will run again
   into the repo beside what it checks, and delete the directory. Keep the notes of a parked item,
   and any directory named in the text of an open or parked item.
@@ -262,7 +269,7 @@ at its end. Two things it defers back to this skill:
   In `pr` mode (`land-and-wrap` §1) the item stays in the roadmap until its PR merges, so a declined
   PR leaves it open. On a tracked roadmap the deletion commit goes in the PR. On a local-only
   roadmap, append the done-record now under `PR-READY`, or `FILED` once the PR is open, and pin the
-  item to its branch; the session that removes the worktree after the merge deletes the item.
+  item to its branch; the session that prunes the branch after the merge deletes the item.
 
 - **Record what was found in passing.** A defect or a gap noticed while building this item, and
   outside it, becomes a new item with the next free ID (§3) at its priority position, never a fix
@@ -278,12 +285,12 @@ you picked is not necessarily the one below it now, and an untracked roadmap has
 restore from. A mention of the item elsewhere in the roadmap, such as a gate on another item, is
 edited separately.
 
-**The claim is released at session end even when the item isn't finished.** The unfinished item's
-resume record is its branch and worktree, plus its pin in `$ROADMAP`; leave all of it standing and
-state the branch in the wrap-up. The next session's entry point is `/next-roadmap-item <Rn>`, or
-`/execute-roadmap` for an unattended run—§2's resume path adopts that item's existing worktree from
-the ID alone, launched from the primary checkout, so the handoff includes no worktree path and no
-account of what was already built.
+**A claim is released at session end even when the item isn't finished.** The unfinished item's
+resume record is its branch, plus its worktree where it has one and its pin in `$ROADMAP`; leave
+all of it standing and state the branch in the wrap-up. The next session's entry point is `/next-roadmap-item <Rn>`, or
+`/execute-roadmap` for an unattended run—§2's resume path picks up that item's existing branch from
+the ID alone, launched from the primary checkout, so the handoff includes no branch, no worktree
+path, and no account of what was already built.
 
 ## 7. Bootstrapping a repo with no roadmap
 

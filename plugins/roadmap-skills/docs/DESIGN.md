@@ -10,9 +10,9 @@ later, the oldest version supported. No shell or interpreter is involved, and gi
 
 In a repo that has a roadmap, the module adds a short rule to the first prompt, and again once the model no longer reads it: a task the user states directly ("upgrade X") gets a roadmap item, is entered
 through `next-roadmap-item`, and is landed through `land-and-wrap`. On a local-only roadmap the item is
-written first. On a tracked one the ID is taken first and the item is written in the lane's worktree
+written first. On a tracked one the ID is taken first and the item is written on the item's branch
 once it is open. How the next free ID is found is in the rule too. Without the rule such a session
-never loads a skill from this plugin, and it writes no item, opens no worktree, and decides the
+never loads a skill from this plugin, and it writes no item, opens no branch, and decides the
 landing from whatever standing instruction it finds. In a repo with no roadmap nothing is added.
 
 Two tools are registered. `mcp__roadmap-skills__find_roadmap` is called from `next-roadmap-item` §1

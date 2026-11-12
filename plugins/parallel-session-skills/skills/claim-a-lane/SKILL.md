@@ -10,8 +10,9 @@ description: >-
   the same thing, and the rule that a claim leases a session rather than the
   work. Trigger after getting into a worktree and before writing any code, when
   another session may be working the same repo, and on "claim a lane" or "am I
-  colliding with another session". NOT for locating or opening the worktree
-  itself (that's work-in-worktree, in session-skills), NOT for choosing what to
+  colliding with another session". NOT for opening the worktree itself
+  (that's work-in-worktree), NOT for the fetch or the resume check (that's
+  work-on-a-branch, in session-skills), NOT for choosing what to
   work on (that's the repo's backlog), and NOT for finishing and landing it
   (that's land-and-wrap).
 ---
@@ -25,11 +26,15 @@ Claim a lane whose file-touch set is disjoint from every other session's **befor
 On a judgment call about the lane itself—what to claim, whose worktree to touch—follow these steps
 over the repo's contributor docs, which govern the code and not the coordination between sessions.
 
-**This skill fills `work-in-worktree` §0's lease seam**, and requires it. `work-in-worktree`, in
-`session-skills`, locates `$MAIN` and `$WT`, adopts the worktree the work is already in flight on,
-opens a fresh one otherwise, and prunes stale worktrees and merged branches in its §4. **If it is
-not among the available skills, stop and tell the user to install `session-skills`**—nothing here
-fails loudly without it, and no manifest enforces the dependency.
+**This skill fills `work-on-a-branch` §0's lease seam**, and requires it. `work-on-a-branch`, in
+`session-skills`, locates `$MAIN`, resumes the branch the work is already in flight on, and prunes
+merged branches in its §4. **If it is not among the available skills, stop and tell the user to
+install `session-skills`**—nothing here fails loudly without it, and no manifest enforces the
+dependency.
+
+**A lane is a worktree.** `work-in-worktree`, in this plugin, opens it, and `$WT` is its path. A
+session working on a branch in the primary checkout is in no lane and writes no claim: the tools
+refuse the primary checkout.
 
 **The ledger is read and written through three tools**, registered by this plugin's hooks module:
 `mcp__parallel-session-skills__read_ledger`, `write_claim`, and `release_claim`. Each one finds the
@@ -42,7 +47,7 @@ them the release at session end. Do not write claim files by hand in their place
 
 ```bash
 git worktree list                            # who's around (worktrees ≈ sessions)
-git log --oneline -15 "$DEFAULT"             # what just landed; $DEFAULT is work-in-worktree §1's
+git log --oneline -15 "$DEFAULT"             # what just landed; $DEFAULT is work-on-a-branch §1's
 ```
 
 Then call `read_ledger`. Its result has the ledger's resolved path, then one line per live claim, or
@@ -51,11 +56,11 @@ Then call `read_ledger`. Its result has the ledger's resolved path, then one lin
 The ledger is a **live lease board, not a log**: entries are
 `{"item","branch","started","session","touches"}`, deleted by their own session at *its* finish—which
 is not the work's finish. **Empty is normal, and it does
-not mean the repo is idle**; the tells that do settle that are in `work-in-worktree` §2.
+not mean the repo is idle**; the tells that do settle that are in `work-on-a-branch` §2.
 
 ## 2. Reap dead claims
 
-The worktree prune and the merged-branch reap are `work-in-worktree` §4's—they have nothing to do
+The worktree prune and the merged-branch reap are `work-on-a-branch` §4's—they have nothing to do
 with siblings, and a session working alone needs them too.
 
 **Never `git worktree remove` a sibling's worktree**, not even a merged-and-clean one. A live
@@ -116,7 +121,7 @@ left by an earlier session is replaced with one stamped with this session's id.
 Your claim is released at **session** end, finished or not: a claim is a lease on the session, not
 on the work's progress. `land-and-wrap` §4 runs this step.
 
-Call `release_claim` with `worktree` set to `$WT`, the path `work-in-worktree` set, **written out
+Call `release_claim` with `worktree` set to `$WT`, the lane's worktree path, **written out
 literally**. Re-deriving it from the session's own directory returns the primary checkout in a
 session launched from the repo root. That path is refused, and a branch with no claim is an error,
 so a release that removed nothing is never reported as done. The result lists the claims that

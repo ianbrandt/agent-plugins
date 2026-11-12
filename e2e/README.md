@@ -10,10 +10,11 @@ before a push that changes how those plugins claim, open, or land work, not on e
 e2e/run.sh first /tmp/e2e-1
 ```
 
-- `first` starts in the repo root with `/roadmap-skills:next-roadmap-item R1`.
+- `first` starts in the repo root with `/roadmap-skills:next-roadmap-item R1`. The primary checkout
+  is clean and on `main`, so the item is built on a branch there, with no worktree and no claim.
 - `resume` starts inside a worktree for R2 that already has half of the item committed, with
   `/roadmap-skills:next-roadmap-item R2`. The session has to adopt that worktree rather than open a
-  second one.
+  second one or a branch in the primary checkout.
 
 [`setup.sh`](setup.sh) builds the scratch repo: a bare `origin.git`, a two-item local-only roadmap,
 and `session-skills.landing merge`, so the item is fast-forwarded into `main`. The clone is on
@@ -27,8 +28,9 @@ A test passes when:
 - every plugin is listed as `<name>@inline` in the init event, and none as `@ianbrandt`;
 - the item is built and fast-forwarded into `main`, and `origin.git` is unchanged;
 - the item is gone from the roadmap and has a done-record in the changelog;
-- the claim is released and the worktree removed, with no error from a plugin tool and no Bash
-  command run in place of one.
+- the primary checkout is on `main` with the item's branch deleted, no claim is left, and in
+  `resume` the worktree is removed, with no error from a plugin tool and no Bash command run in
+  place of one. In `first`, the branch is opened with `git switch -c`, which no tool replaces.
 
 Run each kind several times before trusting a pass, one at a time, since a session given the same
 prompt does not always make the same calls.

@@ -7,6 +7,20 @@ and running several lanes from one conductor session.
 
 ## Skills
 
+### `work-in-worktree`
+
+Open a git worktree for a unit of work, and remove it once the work has landed. `session-skills`
+puts work on a branch in the primary checkout by default, and one checkout has room for one unit of
+work at a time. A worktree is opened in three cases: you ask for one, a conductor runs the work as
+a lane, or the primary checkout is already on another unit's branch or has changed or untracked
+files.
+
+The `open_worktree` tool opens `.claude/worktrees/<id>-<name>` on a new branch, or on the branch
+that work is already in flight on. It pulls Git LFS files, copies the primary checkout's
+`permissions.ask` rules, and links the repo's local-only notes directory into the worktree.
+`remove_worktree` removes the worktree the session's work was in, after its untracked files are
+checked for anything worth keeping.
+
 ### `claim-a-lane`
 
 Write a claim to the ledger before touching code. The paths the session expects to edit
@@ -37,13 +51,13 @@ Candidates come from a backlog plugin, and each finished unit is recorded there.
 
 ## What it needs
 
-`session-skills`, which provides the worktree these skills claim a lane in: `work-in-worktree`
-locates the primary checkout, adopts the worktree work is already in flight on, and opens a fresh
-one otherwise, and `land-and-wrap` gets the work back out. This plugin fills the lease seam defined
-in `work-in-worktree` §0. The dependency runs one way: `session-skills` works alone and does not
-refer to any plugin that fills its seams, but this plugin does not work without `session-skills`.
-Nothing in the manifest format enforces that, so the check is in `claim-a-lane`, where the session
-is told to stop and report when `work-in-worktree` is absent.
+`session-skills`: `work-on-a-branch` fetches, locates the primary checkout, picks the ref a new
+branch starts from, and resumes the branch work is already in flight on, and `land-and-wrap` gets
+the work back out. This plugin fills the lease seam defined in `work-on-a-branch` §0. The
+dependency runs one way: `session-skills` works alone and does not refer to any plugin that fills
+its seams, but this plugin does not work without `session-skills`. Nothing in the manifest format
+enforces that, so the check is in `work-in-worktree` and `claim-a-lane`, where the session is told
+to stop and report when `work-on-a-branch` is absent.
 
 A backlog plugin is optional on top of both. It supplies what is workable and where something is
 already in flight. Disjointness is still checked in the ledger, because an issue tracker has no
@@ -51,7 +65,8 @@ record of which paths a task edits.
 
 ## How it is wired
 
-The ledger is read and written only through three tools that the plugin registers as
-`mcp__parallel-session-skills__<tool>`, and every claim stamped with a session's id is deleted when
-that session ends. Nothing is added to a session's context at its start. Claude Code 2.1.308 and git
-2.36 or later are required. [DESIGN.md](docs/DESIGN.md) covers each tool and the release at session end.
+The plugin registers five tools as `mcp__parallel-session-skills__<tool>`: two that open and remove
+a worktree, and three that are the only way the ledger is read and written. Every claim stamped
+with a session's id is deleted when that session ends. Nothing is added to a session's context at
+its start. Claude Code 2.1.308 and git 2.36 or later are required. [DESIGN.md](docs/DESIGN.md)
+covers each tool and the release at session end.

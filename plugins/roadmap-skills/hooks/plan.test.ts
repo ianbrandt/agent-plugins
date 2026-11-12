@@ -58,8 +58,8 @@ test('the rule has an item written as its ID with a few words of its heading', a
 })
 
 // A local-only roadmap is one file in the primary checkout, so an item written
-// there is visible to every session at once. A tracked one is edited in a
-// lane's worktree, which is not open until next-roadmap-item has run.
+// there is visible to every session at once. A tracked one is edited on the
+// item's branch, which is not open until next-roadmap-item has run.
 test('the item is written before next-roadmap-item on a local-only roadmap, and after it on a tracked one', async ($: any, on: any) => {
   const w = world(on, { root: '/repo', files: ['/repo/ROADMAP.local.md'] })
   const local = (await start($))[0]
@@ -70,8 +70,8 @@ test('the item is written before next-roadmap-item on a local-only roadmap, and 
   w.now = { root: '/repo', tracked: ['ROADMAP.md'] }
   const tracked = (await start($))[0].replace(/\s+/g, ' ')
   expect(tracked.indexOf('Run `next-roadmap-item <Rn>`')).toBeGreaterThan(0)
-  expect(tracked.indexOf('Run `next-roadmap-item <Rn>`')).toBeLessThan(tracked.indexOf("write the new item in the worktree's copy of `ROADMAP.md`"))
-  expect(tracked).toContain('one more than the highest among that line, the roadmap, parked, and declined files, the open worktree directory names (`r78-...`), and the items in live claims')
+  expect(tracked.indexOf('Run `next-roadmap-item <Rn>`')).toBeLessThan(tracked.indexOf("write the new item in `ROADMAP.md` on the item's branch"))
+  expect(tracked).toContain('one more than the highest among that line, the roadmap, parked, and declined files, the branch and worktree directory names (`claude/r78-...`, `r78-...`), and the items in live claims')
   expect(tracked).not.toContain('edited in the primary checkout')
 })
 
@@ -83,7 +83,7 @@ test('on a tracked roadmap the highest ID used is a line in the header, first se
   expect(tracked).toContain('one line in the roadmap\'s header, `Highest ID used: R127`')
   expect(tracked).toContain("Where the roadmap has no such line, also read, this one time, the headings of the items that were deleted: `git -C \"/repo\" log -p --format= <default branch> -- docs/roadmap.md | grep -E '^-#+ R[0-9]+'`")
   const raise = tracked.indexOf('raise the `Highest ID used` line to the new ID, adding the line to the header where there is none')
-  expect(raise).toBeGreaterThan(tracked.indexOf("write the new item in the worktree's copy of `docs/roadmap.md`"))
+  expect(raise).toBeGreaterThan(tracked.indexOf("write the new item in `docs/roadmap.md` on the item's branch"))
   expect(tracked.indexOf('Commit the edit there')).toBeGreaterThan(raise)
   expect(tracked).toContain('The line only goes up, and a merge conflict on it is settled by taking the higher number')
   w.now = { root: '/repo', files: ['/repo/ROADMAP.local.md'] }
