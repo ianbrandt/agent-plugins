@@ -106,7 +106,7 @@
       },
       "version": "0.14.5",
       "description": "Claude and Codex challenge each other's analysis, requirements, designs, code reviews, and answers to a question until they agree.",
-      "keywords": ["code-review", "codex", "planning", "second-opinion"]
+      "keywords": ["code-review", "planning", "codex", "second-opinion", "consensus"]
     }
   ]
 }
