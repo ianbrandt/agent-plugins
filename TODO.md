@@ -63,53 +63,45 @@ Do this after the item above passes. On the Windows machine:
 
 Clear this item in a commit with the results in its message.
 
-## Check whether Codex's read-only sandbox works on Windows
+## Analyze the Codex read-only sandbox results
 
-Confer runs Codex with `--approve-for-me` on Windows, because Codex 0.167 refused every command in
-its `read-only` sandbox there. Codex 0.167 also lists a `windows_sandbox_service` feature as under
-development. These steps check whether `read-only` now runs a command that reads a file and refuses
-one that writes. On the Windows machine, in PowerShell 7:
+Codex 0.167.1 on Windows still refuses every command in its `read-only` sandbox, reads included,
+so `--approve-for-me` is still needed in Confer. The `windows_sandbox_service` feature flag is
+listed as under development and changes nothing yet.
 
-1. Update Codex the way it was installed, then record the version and every sandbox feature:
+### What matched
 
-   ```powershell
-   codex --version
-   codex features list | Select-String -Pattern 'sandbox'
-   ```
+- `codex --version`: `codex-cli 0.167.1`.
+- Sandbox features from `codex features list`:
 
-2. Set up a scratch folder:
+  ```text
+  elevated_windows_sandbox                 removed            false
+  experimental_windows_sandbox             removed            false
+  use_linux_sandbox_bwrap                  removed            false
+  windows_sandbox_service                  under development  false
+  ```
 
-   ```powershell
-   $d = Join-Path $env:TEMP codexsandboxprobe; Remove-Item -Recurse -Force $d -ErrorAction Ignore
-   New-Item -ItemType Directory $d | Out-Null; Set-Location $d
-   git init -q; Set-Content probe.txt 'PROBE-READ-OK'
-   ```
+- Run 1, `codex exec -s read-only` with no other setting. Both commands were rejected by the
+  sandbox before execution, and `Test-Path written.txt` printed `False`. The error from each call
+  was of the form:
 
-3. Run Codex in `read-only` with no other setting, then check whether the write happened. The read
-   should print `PROBE-READ-OK`, and `Test-Path` should print `False`:
+  ```text
+  exec_command failed: CreateProcess { message: "Rejected(\"...pwsh.exe -Command 'Get-Content probe.txt' rejected: blocked by policy\")" }
+  ```
 
-   ```powershell
-   codex exec -s read-only -c 'approval_policy="never"' --skip-git-repo-check 'Run Get-Content probe.txt, then run Set-Content written.txt x. Report the exact output or error of each command.'
-   Test-Path written.txt
-   ```
+  and the same with `Set-Content written.txt x` in place of the read.
 
-4. Remove `written.txt` if it exists, then run step 3 again with the feature turned on:
+- Run 2, the same command with `--enable windows_sandbox_service`. Codex printed an
+  under-development warning and then rejected both commands with the same `blocked by policy`
+  error. `Test-Path written.txt` printed `False`.
 
-   ```powershell
-   Remove-Item written.txt -ErrorAction Ignore
-   codex exec -s read-only --enable windows_sandbox_service -c 'approval_policy="never"' --skip-git-repo-check 'Run Get-Content probe.txt, then run Set-Content written.txt x. Report the exact output or error of each command.'
-   Test-Path written.txt
-   ```
+### What differed
 
-5. If step 1 lists another Windows sandbox feature, or `codex exec --help` shows a Windows sandbox
-   option, run step 4 with it in place of `--enable windows_sandbox_service`.
+Nothing between the two runs apart from the warning. The read was blocked just like the write in
+both.
 
-6. Remove the scratch folder:
+### What is still open
 
-   ```powershell
-   Set-Location $env:TEMP; Remove-Item -Recurse -Force (Join-Path $env:TEMP codexsandboxprobe)
-   ```
-
-Replace this item with an "Analyze the Codex read-only sandbox results" item: the versions and
-features from step 1, and for each run, Codex's report of each command, any error text, and the
-`Test-Path` output.
+`codex exec --help` lists no other Windows sandbox option, and `codex features list` shows
+`windows_sandbox_service` as the only one under development. Re-run this probe when Codex marks it
+stable, or when a new sandbox feature appears in that list.
