@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Every check that needs no model call: each plugin's `claude plugin test` suite,
 # the eval regex graders against known texts, `claude plugin validate` on each plugin, Confer's
-# typecheck, and each marketplace.json entry's tag and commit.
+# typecheck, and each marketplace.json entry's tag, commit, description, and keywords.
 # Needs `claude` and `node` on the PATH.
 set -uo pipefail
 cd "$(dirname "$0")"
@@ -66,4 +66,22 @@ while read -r name version ref sha path; do
 done < <(pins .claude-plugin/marketplace.json)
 [ $stale = 0 ] && echo "ok    marketplace pins match their tags"
 
-exit $((failed | stale))
+# Each entry's description and keywords match the plugin.json at its pinned commit.
+drift=0
+if out=$(node -e '
+  const { execFileSync } = require("child_process")
+  let ok = true
+  for (const p of JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).plugins) {
+    let j
+    try { j = JSON.parse(execFileSync("git", ["show", `${p.source.sha}:${p.source.path}/.claude-plugin/plugin.json`], { stdio: ["ignore", "pipe", "ignore"] })) } catch { continue }
+    for (const k of ["description", "keywords"])
+      if (JSON.stringify(j[k]) !== JSON.stringify(p[k])) { console.log(`FAIL  ${p.name}: ${k} does not match plugin.json at ${p.source.ref}`); ok = false }
+  }
+  process.exit(ok ? 0 : 1)' .claude-plugin/marketplace.json); then
+  echo "ok    marketplace descriptions and keywords match plugin.json"
+else
+  printf '%s\n' "$out"
+  drift=1
+fi
+
+exit $((failed | stale | drift))

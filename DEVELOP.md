@@ -30,7 +30,8 @@ git push origin main gradle-skills-v1.12.0
   has to match and one it must not. A regex grader with no texts fails.
 - `claude plugin validate` on each plugin, and Confer's typecheck.
 - For each entry in `.claude-plugin/marketplace.json`, a `<plugin>-v<version>` tag at the pinned
-  commit, and the plugin's directory in that commit.
+  commit, the plugin's directory in that commit, and the same description and keywords as the
+  `plugin.json` there.
 
 The same script runs in GitHub Actions on Linux, macOS, and Windows for each push and pull request,
 under Claude Code 2.1.317 and the latest release ([`test.yml`](.github/workflows/test.yml)). A pass on Windows does not replace a live run there: the
