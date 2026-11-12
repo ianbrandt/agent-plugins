@@ -23,7 +23,8 @@ checked for anything worth keeping.
 
 ### `claim-a-lane`
 
-Write a claim to the ledger before touching code. The paths the session expects to edit
+Write a claim to the ledger before touching code, from a worktree or from a branch in the primary
+checkout. The paths the session expects to edit
 are listed in the claim, so whether two tasks are disjoint is settled by comparing globs instead of
 guessing from the task names. No issue tracker can supply that fact: two Jira issues that both edit
 a dependency manifest look unrelated in Jira. The skill also covers the dead-claim reap: a claim is

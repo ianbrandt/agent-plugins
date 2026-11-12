@@ -34,8 +34,9 @@ belongs to four skills this one calls rather than copies:
 
 - **`work-on-a-branch`**—picking up or opening the item's branch, in the primary checkout by
   default, and the primary-checkout path rules.
-- **`work-in-worktree`** and **`claim-a-lane`**—the worktree and the shared claim ledger, for an
-  item worked beside another session. Both ship in `parallel-session-skills`.
+- **`claim-a-lane`**—the shared claim ledger and sibling etiquette, where the repo runs one—and
+  **`work-in-worktree`**, the worktree for an item worked beside another session. Both ship in
+  `parallel-session-skills`.
 - **`land-and-wrap`**—how finished work leaves its branch, and what every session does at its end.
 
 **Take sequencing from the roadmap and disjointness from the claim ledger.** A gate ("R3 waits on
@@ -96,19 +97,19 @@ item done, not in flight**: delete it and append its done-record to `$HISTORY` (
 a fork) rather than resuming it.
 
 Run `work-on-a-branch` §4's prune too. Then run **`claim-a-lane`**'s §1 and §2—orient against
-siblings, reap dead claims—and come back here to pick. That read applies wherever the work is: an
-item picked for a branch in the primary checkout still has to be disjoint from every live claim.
-**A claim is written only for work in a worktree** (`claim-a-lane` §3), after the pick, not before.
-A session on a branch in the primary checkout is in no lane and writes none. `claim-a-lane`
+siblings, reap dead claims—and come back here to pick. Writing the claim (its §3) happens after
+the pick, not before, and **wherever the work is**: a session on a branch in the primary checkout
+writes one too, filed under that branch, or a sibling in a worktree has nothing to compare its
+`touches` against. `claim-a-lane`
 ships in `parallel-session-skills`; where it isn't installed the repo has no ledger, so **say so in
 one line** and skip every ledger step below. The pick then rests on the roadmap's gates alone.
 
 ## 3. Pick a disjoint, unclaimed item
 
 Choose an **unclaimed** item that is **workable**—its gates met—and whose file-touch set is
-**disjoint** from every live claim's `touches` globs (`claim-a-lane` §3). Where the work is in a
-worktree, write the paths you expect to edit into your own claim; `$ROADMAP` itself is the seam
-every item eventually touches, so declare it and keep the edit minimal, localized, and last.
+**disjoint** from every live claim's `touches` globs (`claim-a-lane` §3). Write the paths you
+expect to edit into your own claim; `$ROADMAP` itself is the seam every item eventually touches, so
+declare it and keep the edit minimal, localized, and last.
 
 - **Only the active burndown is pickable.** Items are claimable to-dos with stable `Rn` IDs
   (sub-items `Rn.m`); an ID is never reused and an item keeps it for life. Parked, deferred,
@@ -177,13 +178,11 @@ worktree directory names (`claude/r78-...`, `r78-...`), and the items in live cl
 on the item you are resuming is *yours*, not a collision, and re-picking on it is the bug
 `claim-a-lane`'s resume path exists to prevent.
 
-Then write the claim, per `claim-a-lane` §3—where the work is in a worktree and the repo has a
-ledger at all.
+Then write the claim, per `claim-a-lane` §3—where the repo has a ledger at all.
 
 ## 4. Give the session a descriptive title
 
-As soon as the pick is settled, with its claim and any tiebreaker re-pick where the work is in a
-worktree, **title the session the way
+As soon as the claim lands and any tiebreaker re-pick settles, **title the session the way
 `session-skills`' session rules specify**. Those rules load with the first prompt and state the one way
 this session sets its title.
 
@@ -231,7 +230,7 @@ names from it rather than from memory, since model names age faster than the rul
 ## 6. Build it, then land it
 
 **Before the first edit, call `mcp__parallel-session-skills__read_ledger` once more**, where the
-work has a claim. A claim written after yours is seen only then, and `claim-a-lane` §3 has the rule
+repo has a ledger. A claim written after yours is seen only then, and `claim-a-lane` §3 has the rule
 for a clash.
 
 Work **test-first per THIS repo's conventions**—a failing test first, then match the repo's

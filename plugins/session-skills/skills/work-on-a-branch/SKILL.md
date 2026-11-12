@@ -53,13 +53,13 @@ With no backlog plugin at all, these skills still work: the user states the task
 commit is the record. What does **not** come from a backlog is **disjointness**—whether two units of
 work touch the same files. No issue tracker records that; it is the other seam's data.
 
-**The lease seam.** One checkout holds one unit of work at a time. Where several sessions work one
-repo at once, a concurrency plugin gives each of them a worktree and leases it a lane. Such a
+**The lease seam.** A checkout has room for one unit of work at a time. Where several sessions work one
+repo at once, a concurrency plugin gives each one after the first a worktree, and leases every one
+of them a lane, the session on a branch in the primary checkout included. Such a
 plugin has a skill that opens and removes a worktree, called its worktree skill below, and it is
 the only way these skills open one. Use the plugin to check whether this
 lane's files are disjoint from every sibling's and to read the lease evidence a dead session leaves
-behind (§2), and release the lease at session end, finished or not—a lease covers the session, not
-the work. How the plugin stores leases does not matter here. A session working alone, or a repo with
+behind (§2), and release the lease at session end, whether or not the work is finished. How the plugin stores leases does not matter here. A session working alone, or a repo with
 no such plugin, skips every lease step, and these skills still work.
 
 ## 1. Locate the checkout
@@ -288,7 +288,8 @@ as one opened by a concurrency plugin may.
 You are on the right branch with `$MAIN`, `$WT`, `$BRANCH`, and `$DEFAULT` in hand. Two skills take
 it from here, and neither is required to start:
 
-- **the concurrency plugin filling §0's lease seam**—when the work is in a worktree that plugin
-  opened, claim a lane and write its lease with the paths this lane will touch, before writing code.
+- **the concurrency plugin filling §0's lease seam**—where one is installed, claim a lane and
+  write its lease with the paths this work will touch, before writing code, whether the branch is
+  in the primary checkout or in a worktree that plugin opened.
 - **`land-and-wrap`**—when the work is committed and ready to leave the branch, and at the end of
   any session, finished or not.

@@ -11,11 +11,11 @@ const TOOLS = {
     inputSchema: { type: 'object', properties: {} },
   },
   write_claim: {
-    description: "Write this session's claim for the branch checked out in a worktree, replacing any claim for that branch. Returns the whole ledger as it is after the write, to compare touches against, then the instruction to call read_ledger once more before the first edit.",
+    description: "Write this session's claim for the branch the work is on, in a worktree or in the primary checkout, replacing any claim for that branch. Returns the whole ledger as it is after the write, to compare touches against, then the instruction to call read_ledger once more before the first edit.",
     inputSchema: {
       type: 'object',
       properties: {
-        worktree: { type: 'string', description: "Absolute path of the lane's worktree, never the primary checkout." },
+        worktree: { type: 'string', description: "Absolute path of the checkout the work is in: the lane's worktree, or the primary checkout while it is on the work's branch. The primary checkout on its default branch is refused." },
         item: { type: 'string', description: 'What is claimed, as a short phrase.' },
         touches: { type: 'array', items: { type: 'string' }, description: 'Paths and globs this lane expects to edit.' },
       },
@@ -23,10 +23,10 @@ const TOOLS = {
     },
   },
   release_claim: {
-    description: 'Delete the claim for the branch checked out in a worktree. Returns the claims that remain. For a path that is no longer a worktree of the repo, releases the claims of this session that have no worktree instead. An error when there is no claim.',
+    description: "Delete this session's claim for the branch checked out in a worktree or in the primary checkout. Returns the claims that remain. For a path that is no longer a worktree of the repo, and for the primary checkout back on its default branch, releases the claims of this session that have no worktree instead. An error when there is no claim, or when the claim is another session's.",
     inputSchema: {
       type: 'object',
-      properties: { worktree: { type: 'string', description: "Absolute path of the lane's worktree, never the primary checkout." } },
+      properties: { worktree: { type: 'string', description: "Absolute path of the checkout the claim was written for, written out literally: the lane's worktree, or the primary checkout." } },
       required: ['worktree'],
     },
   },
@@ -81,10 +81,18 @@ async function worktrees($: any, main: string): Promise<{ path: string; branch: 
 // letter case or in the separator are the same path.
 const fold = (p: string) => (/^[A-Za-z]:[\\/]/.test(p) ? p.replace(/\\/g, '/').toLowerCase() : p)
 
-// The branch a lane's claim is filed under, found by the worktree's path in
-// git's list: a branch name alone would match a clone of another repo. The
-// primary checkout is refused: a path re-derived from a session's own directory
-// is often that one, and a release keyed off it would delete nothing.
+// The branch origin/HEAD points at.
+// shortcut: `main` where there is no origin/HEAD, so a repo with no remote and another default branch name is not refused on it; read init.defaultBranch if that comes up.
+async function defaultBranch($: any, main: string): Promise<string> {
+  const ran = await $.process.run(['git', '-C', main, 'symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD'], { cwd: main })
+  return (ran.exitCode === 0 && ran.stdout.trim().replace(/^origin\//, '')) || 'main'
+}
+
+// The branch a claim is filed under, found by the checkout's path in git's
+// list: a branch name alone would match a clone of another repo. The primary
+// checkout is taken only on a branch other than the default: a path re-derived
+// from a session's own directory is often the primary checkout, and a claim
+// under the default branch would be for no unit of work.
 async function lane($: any, main: string, worktree: string): Promise<string> {
   // git ends the path it prints with one newline, and anything before that is
   // part of the path.
@@ -93,7 +101,9 @@ async function lane($: any, main: string, worktree: string): Promise<string> {
   const at = all.findIndex(w => fold(w.path) === fold(top))
   if (at < 0) throw new Error(`${worktree} is not a worktree of this repo`)
   const { branch } = all[at]
-  if (at === 0) throw new Error(`${worktree} is the primary checkout${branch ? `, on ${branch}` : ''}: pass the lane's own worktree`)
+  if (at === 0 && (!branch || branch === (await defaultBranch($, main)))) {
+    throw new Error(`${worktree} is the primary checkout, on ${branch ? `its default branch ${branch}` : 'a detached HEAD'}: pass the lane's own worktree, or switch to the work's branch first`)
+  }
   if (!branch) throw new Error(`${worktree} is on a detached HEAD: put it on a branch first`)
   return branch
 }
@@ -105,7 +115,7 @@ async function readLedger($: any, main: string): Promise<string> {
   const all = await entries($, main)
   await git($, main, 'worktree', 'prune')
   const listed = await worktrees($, main)
-  const detached = listed.slice(1).some(w => !w.branch)
+  const detached = listed.some(w => !w.branch)
   const branches = listed.flatMap(w => (w.branch ? [w.branch] : []))
   const now = await $.clock.now()
   const gone: Entry[] = []
@@ -154,17 +164,27 @@ async function releaseClaim($: any, main: string, e: any): Promise<string> {
   // lane still in flight.
   const slash = (p: string) => fold(p.replace(/\\/g, '/').replace(/\/$/, ''))
   const path = slash((await $.fs.stat(String(e.worktree), { resolve: true }).catch(() => undefined))?.realPath ?? String(e.worktree))
-  if (!listed.some((w, i) => path === slash(w.path) || (i > 0 && path.startsWith(`${slash(w.path)}/`)))) {
-    const gone = `${e.worktree} is not a worktree of this repo`
-    if (listed.slice(1).some(w => !w.branch)) throw new Error(`${gone} and a worktree is detached, so the claim for it cannot be told from that worktree's. Release it once no worktree is detached.\n${render(main, await entries($, main))}`)
+  // After a landing the primary checkout is back on its default branch, and the
+  // work's branch is in no worktree, as a removed worktree's is.
+  const landed = path === slash(listed[0].path) && listed[0].branch === (await defaultBranch($, main))
+  if (landed || !listed.some((w, i) => path === slash(w.path) || (i > 0 && path.startsWith(`${slash(w.path)}/`)))) {
+    const gone = landed ? `${e.worktree} is the primary checkout, on its default branch ${listed[0].branch}` : `${e.worktree} is not a worktree of this repo`
+    if (listed.some(w => !w.branch)) throw new Error(`${gone} and a worktree is detached, so the claim for it cannot be told from that worktree's. Release it once no worktree is detached.\n${render(main, await entries($, main))}`)
     const standing = listed.map(w => w.branch)
     const mine = ownedBy(await entries($, main), await $.session.id()).filter(m => !standing.includes(parse(m.text)!.branch))
-    if (!mine.length) throw new Error(`no claim of this session, and ${gone}\n${render(main, await entries($, main))}`)
+    if (!mine.length) throw new Error(`no claim of this session is for a branch in no worktree, and ${gone}\n${render(main, await entries($, main))}`)
     for (const m of mine) await remove($, main, m.name)
     return `released: ${mine.map(m => m.name).join(', ')} (${gone}, so the claims of this session with no worktree were released)\n${render(main, await entries($, main))}`
   }
   const name = fileOf(await lane($, main, String(e.worktree)))
-  if (!(await $.fs.exists(`${main}/${DIR}/${name}`))) throw new Error(`no claim ${name}\n${render(main, await entries($, main))}`)
+  const all = await entries($, main)
+  const found = all.find(x => x.name === name)
+  if (!found) throw new Error(`no claim ${name}\n${render(main, all)}`)
+  // The primary checkout's path is the one a worktree session passes by
+  // mistake, and the branch there is another session's.
+  if (parse(found.text)?.session !== (await $.session.id())) {
+    throw new Error(`${name} is not this session's claim, so it was not released: pass the checkout this session's work is in, or call write_claim first where this session resumed that work\n${render(main, all)}`)
+  }
   await remove($, main, name)
   return `released: ${name}\n${render(main, await entries($, main))}`
 }

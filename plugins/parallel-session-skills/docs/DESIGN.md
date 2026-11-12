@@ -14,9 +14,14 @@ The three ledger tools need git 2.36 or later, since the worktree list is read w
 
 Three tools are registered for the ledger, and in `claim-a-lane` it is read and written only through them.
 With `mcp__parallel-session-skills__read_ledger`, dead claims are deleted and the live ones
-returned. With `write_claim`, a claim is filed under the branch checked out in a worktree and
-stamped with the session's id, and `release_claim` deletes it. The primary checkout is found from
-any worktree, and it is refused as a lane. A claim file is deleted with `git clean` on its literal
+returned. With `write_claim`, a claim is filed under the branch checked out in a worktree, or in
+the primary checkout while it is on a branch other than the default, and stamped with the session's
+id. `release_claim` deletes it, and refuses a claim stamped by another session: a worktree session
+that passes the primary checkout's path by mistake has given the branch of the session working
+there. The primary checkout is found from any worktree. On its default branch it is refused by
+`write_claim`, and `release_claim` then deletes the claims of the session that have no worktree,
+which is where a claim is after a landing from the primary checkout. The default branch is read
+from `origin/HEAD`, and is `main` where there is none. A claim file is deleted with `git clean` on its literal
 path, because a hooks module has no call that deletes a file and git is on every machine these
 skills run on.
 

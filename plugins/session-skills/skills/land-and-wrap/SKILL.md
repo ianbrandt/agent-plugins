@@ -239,9 +239,9 @@ a session that did releases it whether or not the work finished. A lease covers 
 work, and one held past its session blocks its lane for every unattended run until something expires
 it.
 
-**The release step is in the plugin that maintains the ledger**—run it now. Identify the lane by the
-`$WT` its worktree was opened at, **written out literally, never re-derived with `git rev-parse
---show-toplevel`**: a session launched from the repo root works the lane through absolute paths and
+**The release step is in the plugin that maintains the ledger**—run it now. Identify the lane by
+`$WT`, the checkout the work is in (§2), **written out literally, never re-derived with `git rev-parse
+--show-toplevel`**: a session launched from the repo root works a worktree's lane through absolute paths and
 leaves its cwd in the primary checkout, so `--show-toplevel` returns `$MAIN`, and a release keyed off
 the wrong tree removes nothing and leaks the real lease. Confirm the lease is gone before moving
 on.

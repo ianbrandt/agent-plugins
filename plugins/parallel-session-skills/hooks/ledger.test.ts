@@ -41,7 +41,9 @@ test('an empty session id matches no claim', () => {
 })
 
 // A primary checkout at /repo on main, worktrees by path and branch, and the
-// ledger's files. `git clean` deletes from `files`, as git does on disk. The
+// ledger's files. With a `/repo` entry in `worktrees`, the primary checkout is on
+// that branch, and `def` is the branch origin/HEAD points at, or null where
+// there is no origin/HEAD. `git clean` deletes from `files`, as git does on disk. The
 // session's directory is a worktree that was removed, so git starts only when
 // it is run in /repo. A worktree in `stale` had its directory deleted without
 // `git worktree remove`, so git lists it until a prune. A directory in `other`
@@ -50,7 +52,7 @@ test('an empty session id matches no claim', () => {
 function world(on: any, worktrees: Record<string, string>, files: Record<string, string>, session = 'MINE', other: Record<string, string> = {}) {
   const posix = (p: string) => p.replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
   const dir = '/repo/.claude/claims/'
-  const w = { files, worktrees, now: 1_000_000, root: '/repo' as string | null, torn: null as { name: string; text: string } | null, writing: null as string | null, stale: {} as Record<string, string>, sessionId: session }
+  const w = { files, worktrees, now: 1_000_000, root: '/repo' as string | null, torn: null as { name: string; text: string } | null, writing: null as string | null, stale: {} as Record<string, string>, sessionId: session, def: 'main' as string | null }
   on('session.repo', () => ({ value: w.root ? { root: w.root, remote: null, internal: false } : null }))
   on('session.id', () => ({ value: w.sessionId }))
   on('clock.now', () => ({ value: w.now }))
@@ -84,6 +86,7 @@ function world(on: any, worktrees: Record<string, string>, files: Record<string,
       if (posix(cwd) in all) return out(posix(cwd) + '\n')
       return posix(cwd) in other ? out((posix(cwd).startsWith('/repo/') ? '/repo' : posix(cwd)) + '\n') : out('', 128)
     }
+    if (argv[0] === 'symbolic-ref') return w.def ? out(`origin/${w.def}\n`) : out('', 1)
     if (argv.join(' ') === 'worktree prune') w.stale = {}
     // As git does with -z: every line ends in NUL, and so does each worktree's block.
     if (argv.join(' ') === 'worktree list --porcelain -z') {
@@ -227,6 +230,58 @@ test('with the primary checkout detached, the first linked worktree can claim an
   expect(Object.keys(w.files)).toEqual(['claude-a.json'])
   expect((await call($, 'release_claim', { worktree: '/wt/a' })).result).toContain('released: claude-a.json')
   expect(w.files).toEqual({})
+})
+
+// A unit of work is on a branch in the primary checkout unless a worktree was opened for it.
+test('the primary checkout on a branch other than the default can claim and release', async ($: any, on: any) => {
+  const w = world(on, { '/repo': 'claude/r1', '/wt/a': 'claude/a' }, { 'claude-a.json': claim('claude/a') })
+  expect((await call($, 'write_claim', { worktree: '/repo', item: 'x', touches: ['src/**'] })).isError).toBeUndefined()
+  expect(JSON.parse(w.files['claude-r1.json'])).toEqual({ item: 'x', branch: 'claude/r1', started: '1970-01-01T00:16:40Z', session: 'MINE', touches: ['src/**'] })
+  expect((await call($, 'read_ledger')).result).not.toContain('reaped')
+  expect((await call($, 'release_claim', { worktree: '/repo' })).result).toBe(`released: claude-r1.json\nledger: /repo/.claude/claims\n${claim('claude/a').trim()}`)
+})
+
+test('the default branch is read from origin/HEAD, and is main where there is none', async ($: any, on: any) => {
+  const w = world(on, { '/repo': 'trunk' }, {})
+  w.def = 'trunk'
+  const refused = await call($, 'write_claim', { worktree: '/repo', item: 'x', touches: [] })
+  expect(refused.text).toContain('is the primary checkout, on its default branch trunk')
+  w.worktrees = { '/repo': 'main' }
+  expect((await call($, 'write_claim', { worktree: '/repo', item: 'x', touches: [] })).isError).toBeUndefined()
+  expect(Object.keys(w.files)).toEqual(['main.json'])
+  w.def = null
+  expect((await call($, 'write_claim', { worktree: '/repo', item: 'x', touches: [] })).text).toContain('on its default branch main')
+})
+
+// A rebase in the primary checkout leaves it detached, with its branch in no worktree's entry.
+test('read_ledger reaps no claim while the primary checkout is detached', async ($: any, on: any) => {
+  const w = world(on, { '/repo': 'HEAD' }, { 'claude-r1.json': claim('claude/r1', 'MINE') })
+  expect((await call($, 'read_ledger')).result).toContain('a worktree is detached')
+  expect(Object.keys(w.files)).toEqual(['claude-r1.json'])
+})
+
+// A worktree session that passes the primary checkout's path by mistake has given another session's lane.
+test("release_claim leaves a claim that is another session's", async ($: any, on: any) => {
+  const files = { 'claude-r1.json': claim('claude/r1', 'SIBLING'), 'claude-a.json': claim('claude/a', 'SIBLING'), 'claude-t.json': '{ "item": "a", "bran' }
+  const w = world(on, { '/repo': 'claude/r1', '/wt/a': 'claude/a', '/wt/t': 'claude/t' }, { ...files })
+  for (const [worktree, name] of [['/repo', 'claude-r1.json'], ['/wt/a', 'claude-a.json'], ['/wt/t', 'claude-t.json']]) {
+    const ran = await call($, 'release_claim', { worktree })
+    expect(ran.isError).toBe(true)
+    expect(ran.text).toContain(`${name} is not this session's claim`)
+  }
+  expect(w.files).toEqual(files)
+})
+
+// After a landing the primary checkout is on the default branch again, and the work's branch is in no worktree.
+test("the primary checkout back on its default branch releases this session's claims with no worktree", async ($: any, on: any) => {
+  const w = world(on, { '/wt/a': 'claude/a' }, { 'claude-r1.json': claim('claude/r1', 'MINE'), 'claude-a.json': claim('claude/a', 'MINE'), 'claude-b.json': claim('claude/b') })
+  const ran = await call($, 'release_claim', { worktree: '/repo' })
+  expect(ran.result).toContain('released: claude-r1.json (/repo is the primary checkout, on its default branch main,')
+  expect(Object.keys(w.files)).toEqual(['claude-a.json', 'claude-b.json'])
+  const again = await call($, 'release_claim', { worktree: '/repo' })
+  expect(again.isError).toBe(true)
+  expect(again.text).toContain('no claim of this session')
+  expect(Object.keys(w.files)).toEqual(['claude-a.json', 'claude-b.json'])
 })
 
 test("release_claim deletes the lane's claim and no other", async ($: any, on: any) => {
