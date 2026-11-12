@@ -8,7 +8,7 @@ correction became a rule.
 
 ## What loads every session
 
-The hooks module adds [`hooks/rules.md`](hooks/rules.md) to the first prompt of every session, and
+The hooks module adds [`hooks/rules.md`](../hooks/rules.md) to the first prompt of every session, and
 again to a prompt or a tool result once the model no longer reads it: after `/clear`, a compaction,
 or a plugin update that changed the text. It adds them to the start of every Agent subagent's task,
 and to a Workflow agent's first tool result, since a subagent's report is what a later summary is
@@ -30,13 +30,13 @@ than register. Form rules—bold, redundancy, length, and the reader-facing voic
 agent-facing files, so those files are formatted for whatever a model reads best.
 
 The reply lint runs on both ends of a turn, from the plugin's hooks module
-([`hooks/gate.ts`](hooks/gate.ts)). On `turn.complete` the final reply is linted and what is found is saved.
+([`hooks/gate.ts`](../hooks/gate.ts)). On `turn.complete` the final reply is linted and what is found is saved.
 On `prompt.submit` the next turn opens with those hits and a one-line reminder, and the saved
 note is cleared. After a `Write` or an `Edit`, the session is asked to re-read the file just written
 when it is prose, or is a source file with comments and test names in it (`.md`, `.markdown`,
 `.txt`, `.kt`, `.kts`, `.java`, `.groovy`, in any letter case). The lint itself is `lint()` in
-[`hooks/lint.ts`](hooks/lint.ts), a pure function over text, tested in
-[`hooks/lint.test.ts`](hooks/lint.test.ts). The module also registers it as a tool,
+[`hooks/lint.ts`](../hooks/lint.ts), a pure function over text, tested in
+[`hooks/lint.test.ts`](../hooks/lint.test.ts). The module also registers it as a tool,
 `mcp__writing-conventions__lint`, which the session calls on each chat draft before the reply ends
 ([Chat drafts](#chat-drafts)).
 
@@ -73,7 +73,7 @@ construction the lint cannot match is still a violation.
 
 ## Spaced em dashes in a reply
 
-[`hooks/dash.ts`](hooks/dash.ts) closes up a spaced em dash as the reply streams, through a
+[`hooks/dash.ts`](../hooks/dash.ts) closes up a spaced em dash as the reply streams, through a
 `turn.step` hook in the plugin's hooks module, so `word — word` is shown and stored as `word—word`.
 The fix has to be made in the stream: a hook on the stored reply alone leaves the screen
 showing the spaced form while the reply arrives.
@@ -93,13 +93,13 @@ a dash, a run of backticks, and a line that may open a fence. When a chunk of an
 what is held is written first, and any more text for a block already begun is passed through as
 written. In a 900-word reply no such chunk arrived inside a text block.
 
-[`hooks/dash.test.ts`](hooks/dash.test.ts) checks each case whole and cut into random pieces, under
-`claude plugin test`. [`hooks/register.ts`](hooks/register.ts) registers this hook and the gate's,
+[`hooks/dash.test.ts`](../hooks/dash.test.ts) checks each case whole and cut into random pieces, under
+`claude plugin test`. [`hooks/register.ts`](../hooks/register.ts) registers this hook and the gate's,
 because `hooks.json` may list only one module.
 
 ## What runs the hooks
 
-Everything runs in the plugin's hooks module, [`hooks/register.ts`](hooks/register.ts), so a
+Everything runs in the plugin's hooks module, [`hooks/register.ts`](../hooks/register.ts), so a
 Windows session runs the same code as any other and no shell is involved.
 
 The oldest version supported is 2.1.308. Below 2.1.286 the gate and the reply lint are off, and the
@@ -116,7 +116,7 @@ they were listed. A lint over chat is never run on those, so a
 `gh release` subcommand, and any other command that can publish (see "Other shell commands"),
 through the `Bash` tool and through the `PowerShell` tool both. Covering only `Bash` leaves every
 commit ungated on a Windows session where the PowerShell tool is the shell.
-[`hooks/gate.ts`](hooks/gate.ts) sends the command to a model, which pulls out the commit message or
+[`hooks/gate.ts`](../hooks/gate.ts) sends the command to a model, which pulls out the commit message or
 the title and body and checks that text against the four prohibitions: inanimate agency, mechanics
 (spaced em dashes and the Oxford comma), the banned words, and rule 4's epigrams, paired contrasts,
 and matched clauses. The model also judges structure in a commit message, an issue, a pull request,
@@ -148,7 +148,7 @@ change), or `VIOLATION` with one line per offending sentence: the quoted words, 
 rewrite.
 
 An issue to a repo with an issue template follows the template, headings included. Before the model
-is sent the text, [`hooks/template.ts`](hooks/template.ts) removes each heading that is a field
+is sent the text, [`hooks/template.ts`](../hooks/template.ts) removes each heading that is a field
 label of one of the repo's issue forms or a heading of its Markdown templates, so item 5 flags only
 the other headings. The templates are read from `.github/ISSUE_TEMPLATE` with one `gh api graphql`
 call per repo, kept for the session. After a failed call the repo has no templates for the rest of
@@ -165,7 +165,7 @@ call is made for text with no heading. With the headings left in, a
 feature request to anthropics/claude-code was refused 3 times out of 3 on Sonnet 5.5, and with them
 removed it passed 3 times out of 3.
 
-`findings()` in [`hooks/text.ts`](hooks/text.ts) looks for each quote in the command, with runs of
+`findings()` in [`hooks/text.ts`](../hooks/text.ts) looks for each quote in the command, with runs of
 whitespace collapsed. A finding with its quote in the command comes back as the tool's error, and
 the session fixes the text and runs the command again. A finding whose rewrite is the quote itself
 is dropped, and so is every finding in a reply with a later `PASS` line, where the model took its
@@ -174,8 +174,8 @@ command goes through on a reply in any other form, as it does on a failed call, 
 model reads can quote an untrusted source.
 
 The check is one `$.model.complete` call, with
-[`hooks/gate-prompt.md`](hooks/gate-prompt.md) as the system prompt and the hook input as the
-message. [`hooks/rules.md`](hooks/rules.md) is appended to that prompt, so a word added to the rules
+[`hooks/gate-prompt.md`](../hooks/gate-prompt.md) as the system prompt and the hook input as the
+message. [`hooks/rules.md`](../hooks/rules.md) is appended to that prompt, so a word added to the rules
 is checked at the gate with no second edit. Which model answers comes from `WRITING_CONVENTIONS_GATE_MODEL`, or from the `sonnet` alias
 when that is unset; set it in the `env` block of a settings file to any id the session's endpoint
 serves. In 0.12.0 and 0.13.0 the check ran as a nested `claude -p --bare`, which answered "Not
@@ -290,7 +290,7 @@ The cost is one call per `git commit` and per `gh pr`, `gh issue`, or `gh releas
 ones included. One hook covers all four command families, because the command text is
 matched in the module rather than through a hook `if` pattern. `git -C <path> commit` is gated that
 way too, and no `Bash(git commit *)` rule matches that form, which is the one a worktree session uses.
-[`hooks/gate.test.ts`](hooks/gate.test.ts) checks the plumbing under `claude plugin test`, against a
+[`hooks/gate.test.ts`](../hooks/gate.test.ts) checks the plumbing under `claude plugin test`, against a
 stand-in for the model: which commands are sent to the model, which replies block a command, and the
 fail-open path.
 
@@ -299,16 +299,16 @@ fail-open path.
 Any other command is reviewed when the classifier model answers that it can publish. That
 way `hg commit`, `svn commit`, `jj describe`, `glab mr create`, and a CLI nobody here has heard of
 are read like `git commit`, with no command name written in the plugin.
-`keys()` in [`hooks/keys.ts`](hooks/keys.ts) splits the command into
+`keys()` in [`hooks/keys.ts`](../hooks/keys.ts) splits the command into
 keys: each simple command's first word, up to two subcommand candidates after it, and the words after
 each key in case it is a task runner. A substitution inside double quotes counts as a command, but
 single-quoted text and heredoc bodies do not. It is tested in
-[`hooks/keys.test.ts`](hooks/keys.test.ts).
+[`hooks/keys.test.ts`](../hooks/keys.test.ts).
 
 Each key has one of five classes: `NEVER`, `CAN_PUBLISH`, `DESCEND` when the answer depends on the
 subcommand (`git`, `hg`), `PROJECT` when the words after it are the project's task names (`make`,
 `npm run`, `./gradlew`), or `RUNS_CODE` for an interpreter or `curl`. Keys with no class cost one
-classifier call for the whole command, with [`hooks/classify-command.md`](hooks/classify-command.md)
+classifier call for the whole command, with [`hooks/classify-command.md`](../hooks/classify-command.md)
 as the prompt. A key missing from the reply is doubt: it reads as `CAN_PUBLISH` and is not kept. A
 command with keys that are all `NEVER` makes no call.
 
@@ -380,7 +380,7 @@ four went through.
 A team that publishes through an MCP server, such as Jira and Bitbucket with no `gh` installed, gets
 the same read. The `tool.call` hook that reads a shell command reads a call to any `mcp__` tool. No
 server or tool name is written in it, but for two local tools of this marketplace (below). The first call to a tool costs one classifier call, with
-[`hooks/classify-prompt.md`](hooks/classify-prompt.md) as the system prompt: can this tool hand text
+[`hooks/classify-prompt.md`](../hooks/classify-prompt.md) as the system prompt: can this tool hand text
 to a human-facing destination? The answer is `CAN_PUBLISH` or `NEVER`, doubt is `CAN_PUBLISH`, and
 a reply in any other form is treated as doubt and not kept. On 30 hand-labeled tools with sample
 inputs (Jira, Confluence, Bitbucket, GitHub, GitLab, Slack, mail, and read-only search and browser
@@ -424,7 +424,7 @@ there is only the re-read request.
 The review model has no tools, so the gate reads, and only the text the tool just wrote. For a
 `Write` the text under review is `content`. For an `Edit` it is the whole paragraphs, bounded by
 blank lines, that contain `new_string` in the edited file (`excerpt()` in
-[`hooks/text.ts`](hooks/text.ts)): replacing "includes" with "says" in "The report includes the
+[`hooks/text.ts`](../hooks/text.ts)): replacing "includes" with "says" in "The report includes the
 version." makes a violation that the one word does not show. The size of the excerpt follows the
 edit and not the file, so a release note added to a large changelog is read. The review model is
 sent that text and the file path, not the tool call.
@@ -491,7 +491,7 @@ ordinary replies used the tag. The miss gave review feedback as the body of the 
 a block. A draft the session does not tag is checked by the reply lint alone.
 
 The lint drops every closed fenced block before matching, so the `draft` fences are unwrapped
-first (`drafts()` in [`hooks/text.ts`](hooks/text.ts), the same scanner the draft check uses), and
+first (`drafts()` in [`hooks/text.ts`](../hooks/text.ts), the same scanner the draft check uses), and
 the whole reply is still linted in one pass. A code fence inside a draft is still a fence and is
 still dropped, which is why a draft that includes one goes in a longer fence.
 
