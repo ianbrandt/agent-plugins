@@ -21,7 +21,7 @@ Clear this item in a commit with the results in its message, including any error
 
 Do this after the item above passes. On the Windows machine:
 
-1. Install Confer from the `ianbrandt` marketplace. `claude plugin list` should show Confer 0.12.5:
+1. Install Confer from the `ianbrandt` marketplace. `claude plugin list` should show Confer 0.14.5:
 
    ```shell
    claude plugin marketplace update ianbrandt
