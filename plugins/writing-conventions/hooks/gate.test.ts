@@ -84,7 +84,7 @@ function world(on: any, w: World = {}) {
       : [seen.reader, w.verdict]
     list.push(e.prompt)
     seen.efforts.push([list === seen.reader ? 'review' : 'classifier', e.effort])
-    return { value: w.down || reply === undefined ? { isAnswered: false, reason: 'api-error', status: 529, usage: {} } : { isAnswered: true, text: reply, usage: {} } }
+    return { value: w.down || reply === undefined ? { isAnswered: false, reason: 'api-error', status: 529, error: 'overloaded', usage: {} } : { isAnswered: true, text: reply, usage: {} } }
   })
   on('tool.call', (_$: any, e: any) => {
     seen.ran++
@@ -173,13 +173,14 @@ test('a commit is not stopped when the model call fails, and the user is told on
   expect((await bash($, SAYS)).result).toEqual({ stdout: 'ran' })
   expect(seen.reader).toHaveLength(2)
   expect(seen.toasts).toHaveLength(1)
-  expect(seen.toasts[0]).toContain('model review is off')
+  expect(seen.toasts[0]).toContain('A model review did not run: API error overloaded, HTTP 529.')
+  expect(seen.toasts[0]).not.toContain('writing-conventions:')
 })
 
 test('a check that cannot read the session lets the command through, and the user is told', async ($: any, on: any) => {
   const seen = world(on, { verdict: FINDING, noSession: true })
   expect((await bash($, SAYS)).result).toEqual({ stdout: 'ran' })
-  expect(seen.toasts.join()).toContain('model review is off')
+  expect(seen.toasts.join()).toContain('A model review did not run: no implementation for session.id.')
 })
 
 test('a CLI older than the oldest one the module was checked on makes no call, and the user is told', async ($: any, on: any) => {
@@ -561,7 +562,7 @@ test('a subagent\'s reply and a reply with no review model are shown as written'
   expect(seen.reader).toHaveLength(0)
   w.down = true
   expect(kinds(await reply($, DRAFT))).toBe('text stop')
-  expect(seen.toasts.join()).toContain('model review is off')
+  expect(seen.toasts.join()).toContain('A model review did not run')
 })
 
 test('where the lint tool could not be listed, a draft is shown as written', async ($: any, on: any) => {

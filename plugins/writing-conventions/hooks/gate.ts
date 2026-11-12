@@ -39,7 +39,7 @@ async function isChecked($: any): Promise<boolean> {
   const ok = atLeast((await $.session.version()).base)
   if (!ok && !warned) {
     warned = true
-    $.ui.toast(`writing-conventions: the gate and the reply lint are off. They need Claude Code ${CHECKED.join('.')} or later.`, { timeoutMs: 15000 })
+    $.ui.toast(`The gate and the reply lint are off. They need Claude Code ${CHECKED.join('.')} or later.`, { timeoutMs: 15000 })
   }
   return ok
 }
@@ -66,8 +66,17 @@ function alone(cmd: string, mode: Mode): boolean {
   return ISSUE.test(cmd) && unquoted(text).match(/gh issue /g)?.length === 1 && keys(text, mode).every(l => /^(0\tPROSE|1\t(?!READ$).*|\d+\tcat)$/.test(l))
 }
 
-// A model call that failed, or a reply that could not be used.
+// A model call that failed, or a reply that could not be used. The message is
+// the reason, as the user is shown it.
 class Off extends Error {}
+
+function why(reply: any): string {
+  if (reply.reason === 'api-error') return `API error ${reply.error}${reply.status ? `, HTTP ${reply.status}` : ''}`
+  if (reply.reason === 'aborted') return `the call was cut off, or had no reply within ${TIMEOUT / 1000} seconds`
+  return 'the reply had no text'
+}
+
+const TIMEOUT = 60000
 
 async function ask($: any, system: string[], prompt: string): Promise<string> {
   const parts: string[] = []
@@ -79,20 +88,23 @@ async function ask($: any, system: string[], prompt: string): Promise<string> {
     // An unset effort resolves to high today. It is set here so that the level depends neither on
     // the session's effort nor on a default that could change (docs/DESIGN.md).
     effort: 'high',
-    timeoutMs: 60000,
+    timeoutMs: TIMEOUT,
   })
-  if (!reply.isAnswered) throw new Off()
+  if (!reply.isAnswered) throw new Off(why(reply))
   return reply.text
 }
 
 // The user is told the first time in a session that a check could not run,
-// through a toast, which the user is shown and the model is not.
+// through a toast, which the user is shown and the model is not. The host
+// prints the plugin's name before a toast. The reason is in the toast because
+// the debug log is written only in a session started with --debug.
 let told = false
 
-function off($: any): Verdict {
+function off($: any, e: unknown): Verdict {
   if (!told) {
     told = true
-    $.ui.toast('writing-conventions: model review is off, because a check failed. Commit, PR, MCP, file, and draft text is not being read; the reply lint still runs.', { timeoutMs: 15000 })
+    const reason = (e instanceof Error ? e.message : String(e)).slice(0, 200)
+    $.ui.toast(`A model review did not run: ${reason}. That commit, PR, MCP, file, or draft text was not read. Each later check is still tried, but a later failure is not reported. The reply lint still runs.`, { timeoutMs: 15000 })
   }
   return {}
 }
@@ -410,7 +422,7 @@ async function stop($: any, turnId: string, answer: string): Promise<Verdict> {
   if (found === '') return {}
   fixups.from = from
   if (fixups.count >= 2) {
-    $.ui.toast('writing-conventions: the draft in this reply still reads as a violation after two rewrites. Review is unresolved and the reply stands.', { timeoutMs: 15000 })
+    $.ui.toast('The draft in this reply still reads as a violation after two rewrites. Review is unresolved and the reply stands.', { timeoutMs: 15000 })
     return {}
   }
   fixups.count++
@@ -440,8 +452,8 @@ export async function flagged($: any, turnId: string, answer: string): Promise<C
 async function gate($: any, check: () => Promise<Verdict>): Promise<Verdict> {
   try {
     return (await isChecked($)) ? await check() : {}
-  } catch {
-    return off($)
+  } catch (e) {
+    return off($, e)
   }
 }
 

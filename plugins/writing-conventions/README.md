@@ -38,8 +38,8 @@ Claude Code 2.1.308 or later is required.
   are removed before the review.
 
 Each review is one model call, Sonnet by default, and usually takes a few seconds. When no model can
-be called, the command goes through and you are told once per session, in a toast, that review is
-off.
+be called, the command goes through and you are told once per session, in a toast, that a review
+did not run and why. Each later review is still tried.
 
 ## Settings
 

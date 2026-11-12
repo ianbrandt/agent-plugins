@@ -279,10 +279,12 @@ a gateway. Through a LiteLLM proxy in front of the Anthropic API on Claude Code 
 found again: in `e2e/cache-probe.sh`, the second and third reviews each read the whole review
 prompt, 5,655 tokens at the time, from the cache. Bedrock and Vertex were not measured.
 
-Every failure lets the command through, so a commit is not blocked when no model can be called. The
-first time in a session that a check fails, the user is told once that model review is off, in a
-toast, which is shown to the user and not to the model. A reply from a call that was answered is not
-such a failure, whatever its form.
+The command goes through on every failure, so a commit is not blocked when no model can be called.
+The first time in a session that a check fails, the user is told once that a review did not run, in
+a toast, which is shown to the user and not to the model. The reason is in the toast: the API error
+kind and HTTP status, a call that was cut off or went 60 seconds without a reply, a reply with no
+text, or the message of an error thrown in the check. Each later check is still tried. A reply from
+a call that was answered is not such a failure, whatever its form.
 
 The cost is one call per `git commit` and per `gh pr`, `gh issue`, or `gh release` command, read-only
 ones included. One hook covers all four command families, because the command text is
