@@ -24,10 +24,9 @@ checked for anything worth keeping.
 ### `claim-a-lane`
 
 Write a claim to the ledger before touching code, from a worktree or from a branch in the primary
-checkout. The paths the session expects to edit
-are listed in the claim, so whether two tasks are disjoint is settled by comparing globs instead of
-guessing from the task names. No issue tracker can supply that fact: two Jira issues that both edit
-a dependency manifest look unrelated in Jira. The skill also covers the dead-claim reap: a claim is
+checkout. The paths the session expects to edit are listed in the claim, so whether two tasks are
+disjoint is settled by comparing globs instead of guessing from the task names. No issue tracker can supply that fact: two Jira issues that both edit
+a dependency manifest look unrelated in Jira. The skill also covers removing dead claims: a claim is
 dead when `git worktree list` shows no worktree on its branch. Merge state cannot be used for this,
 since a just-claimed session's branch tip equals the default branch. And the etiquette: never `git
 worktree remove` a sibling's directory, because a live session between tasks looks the same as an
@@ -46,7 +45,7 @@ nobody is watching. A Workflow's self-reported `ready` has been wrong on a red t
 conductor runs the build gate itself and treats a report that fails it as a failure. A Workflow that
 dies sends no completion notification, so a watchdog covers the pipeline that went quiet rather than
 finished. After a second real failure the unit is flagged and the run continues without it, and a
-flagged unit stays out of later refills so it isn't re-picked and re-burned every pass.
+flagged unit stays out of later refills so it isn't picked and run again on every pass.
 
 Candidates come from a backlog plugin, and each finished unit is recorded there.
 

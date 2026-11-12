@@ -101,17 +101,17 @@ wrapping. The result is the whole ledger after the write: read it to confirm no 
 line is the instruction to call `read_ledger` once more before the first edit, explained below.
 
 **`touches` is what makes disjointness checkable instead of guessed.** Two lanes collide when any
-path one expects to edit falls inside a glob the other declared—compare before claiming, and treat
+path one expects to edit falls inside a glob in the other's claim—compare before claiming, and treat
 an overlap as a collision even when the two units of work are unrelated. It is a declared intent,
 not a measurement, so it will sometimes be wrong: **when the work spreads past what you declared,
-rewrite the claim** with another `write_claim` before editing the new paths. A lane that can't
-predict its paths declares the broadest glob it might reach rather than a narrow lie.
+rewrite the claim** with another `write_claim` before editing the new paths. When you can't
+predict the lane's paths, declare the broadest glob it might reach rather than a narrow lie.
 
 Two files are collision seams almost everywhere and are worth declaring even for a one-line edit: a
 dependency manifest, and—where the backlog is a file in the repo—the backlog file itself. Keep edits to both minimal, localized, and last.
 
-If another claim is for the **same work**, the **lexicographically smaller branch name keeps it**;
-the other backs off and picks something else. Write-then-check leaves you blind to a claim written
+If another claim is for the **same work**, the **session on the lexicographically smaller branch name
+keeps it**; the other backs off and picks something else. Write-then-check leaves you blind to a claim written
 after your check, so **call `read_ledger` once more right before starting the work**; a clash found
 then resolves by the same rule. On a re-pick, prefer work no live claim sits near.
 

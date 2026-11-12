@@ -18,7 +18,7 @@ description: >-
 
 # Work in a worktree
 
-One checkout holds one unit of work at a time. A second session in the same repo needs a checkout
+Only one unit of work is in a checkout at a time. A second session in the same repo needs a checkout
 of its own, and that is a git worktree: a second working directory on its own branch, sharing the
 repo's history.
 

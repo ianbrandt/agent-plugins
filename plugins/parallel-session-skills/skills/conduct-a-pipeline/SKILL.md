@@ -93,18 +93,18 @@ order (`work-on-a-branch` §0); from that list, remove what is unavailable at th
   open in the backlog until its PR merges, so without the exclusion either one is re-picked and
   re-burned on every refill.
 
-Keep candidates in the backlog's order so fills take the topmost eligible units first. A unit whose
-paths can't be predicted well enough to declare declares the broadest glob it might reach; that
-costs parallelism and never costs correctness.
+Keep candidates in the backlog's order so fills take the topmost eligible units first. For a unit
+whose paths can't be predicted, declare the broadest glob it might reach; that reduces
+parallelism, but collisions are still caught.
 
 **Fill:** while in-flight < cap, claimed < max-items, and a candidate exists: open its worktree +
 branch per `work-in-worktree` §2 and write its claim per `claim-a-lane` §3, **with its
 `touches` globs**—the conductor is the one reader that depends on them being accurate, since it is
 holding several lanes open at once. Where the branch needs a name for its destination
 (`work-on-a-branch` §3: `pr` mode or a fork), give it one then, since nobody is present at landing to
-supply one. **Pass the unit's ID as `open_worktree`'s `id` input.** It names the worktree directory
-`<id>-<color-animal>` and the branch `claude/<id>-<color-animal>`; a branch named for its destination
-is renamed after the worktree opens (`work-in-worktree` §2), while the directory keeps its name.
+supply one. **Pass the unit's ID as `open_worktree`'s `id` input.** The worktree directory is then
+`<id>-<color-animal>` and the branch is `claude/<id>-<color-animal>`; a branch named for its
+destination is renamed after the worktree opens (`work-in-worktree` §2), while the directory keeps its name.
 A backlog that pins a unit by branch or worktree name (`work-on-a-branch` §2's tell 1 or 2) can then
 read the ID straight off the worktree directory for as long as it exists, which matters most in `pr`
 mode, where the worktree outlives the fill that opened it.
@@ -142,8 +142,8 @@ Workflow: the conductor does them inline in the worktree and processes them in t
 Verify stages run as plain agents in the unit's worktree (no isolation—a worktree-isolated agent
 branches from the default branch's HEAD and would test the wrong tree). Tier per stage
 (`tier-model-and-effort`): mechanical work at the mechanical model or `effort: 'low'`, loud-oracle
-stages only; design and adversarial-verify at `'high'`/`'xhigh'`. Set each unit's verify tier from
-its own answer to one question: would the test suite catch this unit going silently wrong? A unit
+stages only; design and adversarial-verify at `'high'`/`'xhigh'`. Set each unit's verify tier by
+asking one question about it: would the test suite catch this unit going silently wrong? A unit
 the suite covers gets a `'high'` verify or none. Never reuse one Workflow template's stage tiers
 across every unit. Where a cross-provider review skill is installed (`tier-model-and-effort` §1),
 a silent-failure unit's Workflow ends before its verify, and the conductor runs that review on the
@@ -184,7 +184,7 @@ Per `land-and-wrap` §2 `merge`, with these unattended deviations:
   doing it before conflicts with the previous landing's backlog edit on every serial landing, and
   unattended conflict resolution silently mangles a sibling's backlog state. Where the backlog
   lives outside the tree—an untracked local-only file, an issue tracker—there is no commit to make;
-  record it once the unit passes the build gate, through the backlog plugin's own mechanics.
+  record it once the unit passes the build gate, through the backlog plugin's mechanics.
 - **Build gate** (step 3), on the rebased tip.
 - Fast-forward the default branch from the main checkout, by `land-and-wrap` §2's `merge` step 3:
   it has the command for a main checkout that a human session has put on another branch. On
@@ -272,7 +272,7 @@ Title the session again where a better title fits. No stop path skips the notifi
 
 ## 4. Ledger etiquette
 
-The conductor is a peer, not an owner: honor foreign claims when picking (a human session may be
-working that unit right now), never `git worktree remove` a worktree it didn't create, and keep its
+The conductor has no more rights to the ledger than any other session: honor foreign claims when
+picking (a human session may be working that unit right now), never `git worktree remove` a worktree it didn't create, and keep its
 own claims accurate—one per in-flight unit, written with `write_claim`, deleted with `release_claim` at completion. Everything
 in `claim-a-lane` about the ledger binds here N-fold.

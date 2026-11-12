@@ -64,7 +64,7 @@ function world(on: any, worktrees: Record<string, string>, files: Record<string,
     const name = posix(e.path).slice(dir.length)
     // A claim being rewritten reads as torn text once.
     if (w.torn?.name === name) { const { text } = w.torn; w.torn = null; return { value: text } }
-    // One whose write is still in progress reads as torn every time, and has that write's time.
+    // A claim with a write still in progress reads as torn every time, and has that write's time.
     if (w.writing === name) return { value: '{ "item": "a", "bran' }
     return { value: w.files[name] }
   })

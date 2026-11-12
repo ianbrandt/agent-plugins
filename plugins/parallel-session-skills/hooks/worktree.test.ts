@@ -166,7 +166,7 @@ test('remove_worktree unregisters a worktree and deletes its directory, and refu
   expect(calls.length).toBe(2)
 })
 
-test('remove_worktree is a no-op for a worktree already unregistered whose directory is gone', async ($: any, on: any) => {
+test('remove_worktree is a no-op for a worktree already unregistered and with its directory gone', async ($: any, on: any) => {
   world(on, line => (line.startsWith('worktree remove') ? { exitCode: 128, stdout: '', stderr: "fatal: '/repo/.claude/worktrees/a-b' is not a working tree\n" } : held(line)))
   expect((await call($, 'remove_worktree', { path: '/repo/.claude/worktrees/a-b' })).result).toBe('already unregistered: /repo/.claude/worktrees/a-b\ndirectory already gone: /repo/.claude/worktrees/a-b')
 })
