@@ -92,31 +92,3 @@ one that writes. On the Windows machine, in PowerShell 7:
 Replace this item with an "Analyze the Codex read-only sandbox results" item: the versions and
 features from step 1, and for each run, Codex's report of each command, any error text, and the
 `Test-Path` output.
-
-## Analyze the interactive push prompt results
-
-Run on Windows against `dbb7d7a`, in PowerShell 7, under `--permission-mode auto`.
-
-What matched:
-
-- Step 3. `git push origin b2` ran under a permission prompt. The warning on screen read
-  `Ask rule PowerShell(git push *) overrides auto mode for this command.`, with the hint
-  `/permissions to let auto mode decide` below it. Answered Yes; `b2` landed on the remote.
-- Step 4. A "Switch this clone to auto-push?" question was raised on the `set_push_policy` call.
-  Answered Switch. Under the result, push mode was shown as
-  `auto-push (git config session-skills.pushMode)`, post mode as `confirm-post (the default)`,
-  and the rules file as `C:/Dev/Temp/pushmodeprobe/clone/.claude/settings.local.json`.
-- Step 5. `git push origin b3` ran with no prompt, and `Allowed by auto mode` was shown under
-  the output.
-- Step 6. The output of `git -C "$d/remote.git" branch --list` was `b2`, `b3`, and `main`.
-
-What differed: one on-screen note outside the three expected prompts, the line
-`session-skills: plugin.json changed — reloaded`. The line is a Claude Code CLI notice, not a
-session-skills message. Across sessions, a loaded plugin's `plugin.json` is compared against
-the version last seen for it, and the line is printed whenever the two differ. The scratch
-session was the first one against this clone's `plugins/session-skills`, so the line appeared
-as expected. In a later session in the same clone, the line is printed again only after a
-change to `plugin.json`, such as one from `git pull`.
-
-What is still open: whether the comparison is keyed by `--plugin-dir` path or by marketplace
-id. A second session in the same scratch dir with no change to `plugin.json` would settle it.
