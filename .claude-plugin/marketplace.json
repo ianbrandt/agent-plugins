@@ -88,10 +88,10 @@
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/orchestration-skills",
-        "ref": "orchestration-skills-v0.6.0",
-        "sha": "b8f5d3498f490e85b1b0dc74ce497d112ea084ae"
+        "ref": "orchestration-skills-v0.7.0",
+        "sha": "6205abfe44b18be7b22144ef95458ad22c4aaaea"
       },
-      "version": "0.6.0",
+      "version": "0.7.0",
       "description": "Rules for handing work to other agents without losing control of it: what is worth delegating, what every brief must include, which agents worktree isolation breaks, which tier each stage runs at, how to tell a finished stage from one that merely stopped talking, and when to stop and ask the user instead of deciding alone.",
       "keywords": ["subagent", "delegation", "worktree", "workflow", "verification", "escalation"]
     },
