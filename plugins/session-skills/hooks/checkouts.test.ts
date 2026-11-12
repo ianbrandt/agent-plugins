@@ -34,14 +34,14 @@ test('a ref is read from the line with its name, and no such line is a ref that 
 // for it. A file reads as empty unless `files` has it. The session's directory
 // is a worktree that was removed, so no program starts unless it is run in
 // /repo.
+// A drive-letter path is resolved against the test's directory on a POSIX host.
+// On Windows the engine gives a handler backslashes, and a drive letter on a path that had none.
+const given = (p: string) => p.replace(/\\/g, '/').replace(/^.*\/(?=[A-Za-z]:\/)/, '')
 type Said = string | number | void | { exitCode: number; stdout: string; stderr: string }
 function world(on: any, git: (argv: string) => Said, other?: (argv: string) => string | void, paths: string[] = [], files: Record<string, string> = {}, root = '/repo') {
   const calls: string[] = []
   on('session.repo', () => ({ value: { root, remote: null, internal: false } }))
   on('session.cwd', () => ({ value: '/repo/.claude/worktrees/removed' }))
-  // A drive-letter path is resolved against the test's directory on a POSIX host.
-  // On Windows the engine gives a handler backslashes, and a drive letter on a path that had none.
-  const given = (p: string) => p.replace(/\\/g, '/').replace(/^.*\/(?=[A-Za-z]:\/)/, '')
   const posix = (p: string) => (root.startsWith('/') ? given(p).replace(/^[A-Za-z]:/, '') : given(p))
   on('fs.exists', (_$: any, e: any) => ({ value: paths.includes(posix(e.path)) }))
   on('fs.read', (_$: any, e: any) => ({ value: files[posix(e.path)] ?? '' }))
@@ -509,12 +509,13 @@ const LOCAL = '/repo/.claude/settings.local.json'
 const WT_LOCAL = '/repo/.claude/worktrees/r1-a/.claude/settings.local.json'
 function clone(on: any, config: Record<string, string>, files: Record<string, string> = {}, upstream = false, ignored = false) {
   const w = { files, asked: [] as string[], answer: 'Switch' as string | null, toasts: [] as string[], gone: '' }
-  on('fs.exists', (_$: any, e: any) => ({ value: e.path in files || (!e.path.endsWith('.json') && e.path !== w.gone) }))
+  const posix = (p: string) => given(p).replace(/^[A-Za-z]:/, '')
+  on('fs.exists', (_$: any, e: any) => ({ value: posix(e.path) in files || (!e.path.endsWith('.json') && posix(e.path) !== w.gone) }))
   on('fs.read', (_$: any, e: any) => {
-    if (!(e.path in files)) throw new Error('ENOENT')
-    return { value: files[e.path] }
+    if (!(posix(e.path) in files)) throw new Error('ENOENT')
+    return { value: files[posix(e.path)] }
   })
-  on('fs.write', (_$: any, e: any) => { files[e.path] = e.text; return { value: undefined } })
+  on('fs.write', (_$: any, e: any) => { files[posix(e.path)] = e.text; return { value: undefined } })
   // $.ui.ask is a call of AskUserQuestion, and rejects where it is dismissed.
   on('tool.call', { tool: 'AskUserQuestion' }, (_$: any, e: any) => {
     const question = e.questions[0].question
