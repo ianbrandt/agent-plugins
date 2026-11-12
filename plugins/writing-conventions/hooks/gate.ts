@@ -597,7 +597,7 @@ export const register: Register = on => {
   on('tool.call', async ($, e, next) => restore($, e, await call($, e, next)))
 
   // The rules go into a subagent's task at spawn: auto mode refuses an Agent
-  // call whose input a tool.call hook changed after review. A Workflow agent
+  // call if a tool.call hook changed its input after review. A Workflow agent
   // gets them with its first tool result, and a resumed run keeps its prompt.
   on('agent.spawn', async ($, e: any, next: any) => {
     if (e.workflow || e.resume) return next(e)

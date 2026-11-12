@@ -196,8 +196,8 @@ than handed over to run.
 
 ## 6. Catch the jargon you coined this session
 
-The banned-word list in `hooks/rules.md` has the known offenders, and the rule is wider than the
-list. The larger risk is vocabulary you invented an hour ago and no longer hear as invented.
+The known offenders are in the banned-word list in `hooks/rules.md`, and the rule is wider than
+the list. The larger risk is vocabulary you invented an hour ago and no longer hear as invented.
 
 Before sending, scan your reply for any noun phrase that is not one of: a name in the codebase, a
 standard term of the craft, or a plain English word. Anything left is a term you minted. Either
@@ -243,7 +243,7 @@ Below that bar, reaching for it means the phrasing needs work, since the word th
 the front of the sentence instead. Heavy bold stays right in an agent-facing file, where it shows a
 model what it must not skip, which is where the form rules stop.
 
-Personification is the third, and the easiest to miss, since every word in the sentence can be
+Personification is another sentence-level tell, and the easiest to miss, since every word in the sentence can be
 plain. Check each subject against its verb: if a person doing that verb would be speaking, wanting,
 perceiving, or possessing, and the subject is a thing, rewrite it. The rule and the repair are in
 `hooks/rules.md`. Run this one on chat replies too, not only on published prose.
@@ -268,7 +268,7 @@ there. Do not paste diffs, and do not log a word you used once and caught yourse
 
 That file is the live list, so the edit is a plugin change, made in the marketplace repo the plugin
 ships from—the copy an installed session runs is a version-keyed cache, and editing it is lost on
-the next update. An installed plugin picks the new word up only after the plugin's next release,
+the next update. Installed sessions get the new word only after the plugin's next release,
 so apply the correction from memory for the rest of the session rather than waiting for it.
 
 ## 8. The prohibitions, in full
@@ -339,13 +339,13 @@ No inanimate agency. An inanimate subject does not take a verb of speech, voliti
 or possession. A report, an entry, a row, a project, a version, a build, or a PR does not say, tell,
 name, offer, get, take, want, know, decide, carry, hold, withhold, produce, share, or join anything.
 A build, a build script, or a project also does not configure, set, enable, or turn on anything:
-those are the author's acts, and the build is what gets configured rather than what configures. Write
+those are the author's acts, and the build is the thing configured. Write
 "what is configured in the build", never "what the build configured". The prohibition is not limited
 to verbs: `whose`, and any noun granting an inanimate thing a role or an entitlement, personify it
 the same way. "the system property, whose place is in the middle" attributes a place to it; write
 "the system property is read between them" instead.
-Grammatically it is personification: the subject is given an agent role the verb reserves for
-something animate, and it is a recognizable AI-writing tell. Rewrite around what happens, and prefer
+Grammatically it is personification: the subject is given an agent role that only something
+animate can fill, and it is a recognizable AI-writing tell. Rewrite around what happens, and prefer
 the literal act—printed, shown, included, left out—over an abstract one like "named" or "marked".
 The personification can also remain in a passive: a build that "is shown" newer versions perceives
 them as surely as one that sees them. Write "newer pre-releases are still reported when the current
@@ -357,7 +357,7 @@ person would say on one read. "a module is held to the version its platform fixe
 repair rebuilds the sentence around the observable effect: "versions outside a platform's
 constraints are no longer reported". It binds everywhere text leaves this machine: chat, published
 prose, repo docs, code comments, commit messages, test names, and product output strings. Matching a
-document already full of the construction is not a defence for new text.
+document already full of the construction is not a defense for new text.
 
 No epigrams, no rhetorical antithesis. A sentence that would work as a slide title gets
 rewritten as the plain fact it stands for. The two forms are the X-is-not-Y aphorism and the paired
@@ -372,7 +372,7 @@ one constructor parameter stays on one line" was flagged as AI-written for the c
 since every word in it is plain. The repair is one sentence with one predicate that covers both
 facts: "Two defaults are changed in `.editorconfig` so that call chains and one-parameter class
 signatures that fit on one line stay there." Splitting at the "and" does not repair it, because two
-sentences of the same build side by side are the same figure. An ordinary compound sentence is not
+sentences of the same construction side by side are the same figure. An ordinary compound sentence is not
 this: a cause and its effect, a change and its result, or two facts about one subject belong
 together, and their clauses rarely match. The lint cannot flag it, since whether two facts are
 related is not visible to a pattern, so scan for it by eye. It is checked at the gate.

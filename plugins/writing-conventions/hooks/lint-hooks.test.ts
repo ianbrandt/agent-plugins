@@ -157,7 +157,7 @@ test('the rules are added to a prompt while the model does not read them, then t
   expect((await submit($))[0]).toMatch(/^Style/)
 })
 
-// Auto mode refuses an Agent call whose input a hook changed after review, so
+// Auto mode refuses an Agent call if a hook changed its input after review, so
 // the rules go into the task at spawn and the call's input is left alone.
 test('the rules are added once at the start of a subagent task, and the re-read request to a Write result', async ($: any, on: any) => {
   world(on)

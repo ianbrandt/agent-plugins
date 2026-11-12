@@ -765,7 +765,7 @@ test('the file is read for an edit written other than as its newString', async (
   expect(ran.context.join('\n')).not.toContain('could not be read')
 })
 
-test('a replace-all edit is reviewed in every paragraph it changed, and an edit whose old string is missing from the result is read from the file', async ($: any, on: any) => {
+test('a replace-all edit is reviewed in every paragraph it changed, and an edit is read from the file when its old string is missing from the result', async ($: any, on: any) => {
   const structuredPatch = [{ oldStart: 1, oldLines: 3, newStart: 1, newLines: 3, lines: ['-One x.', ' ', '-Two x.', '+One says.', ' ', '+Two says.'] }]
   const w: World = { verdict: FINDING, result: { filePath: '/proj/a.md', oldString: 'x.', newString: 'says.', replaceAll: true, originalFile: 'One x.\n\nTwo x.\n', structuredPatch } }
   const seen = world(on, w)
@@ -860,7 +860,7 @@ test('the repo is read from GH_REPO and the last --repo or -R, and a repo off gi
   for (const prompt of seen.reader) expect(prompt).not.toContain('### Problem Statement')
   await bash($, 'gh issue create --repo ghe.example.com/o7/r7 --body "### Problem Statement\nPlain."')
   expect(seen.reader[2]).toContain('### Problem Statement')
-  // gh repo view is never run: each command names its repo.
+  // gh repo view is never run: the repo is given in each command.
   expect(seen.gh).toEqual(['api graphql'])
 })
 

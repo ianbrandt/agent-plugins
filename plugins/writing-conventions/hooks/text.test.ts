@@ -174,7 +174,7 @@ test('a verdict with a later PASS line has no findings', () => {
   expect(findings('LOCAL\n"The report says so" -> x\n PASS\r\n', [SAYS])).toBe('')
 })
 
-test('a finding whose rewrite is the quote itself is dropped', () => {
+test('a finding with the quote itself as its rewrite is dropped', () => {
   expect(findings('VIOLATION\n"The report says so" -> The report  says so\n', [SAYS])).toBe('')
   expect(findings('VIOLATION\n"The report" + "says so" -> The report says so\n', [SAYS])).toBe('')
 })

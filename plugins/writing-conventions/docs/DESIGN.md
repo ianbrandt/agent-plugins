@@ -3,14 +3,13 @@
 How the plugin works and the measurements behind its defaults, for anyone changing it. The
 [README](../README.md) covers installing and using it.
 
-Every rule in `hooks/rules.md` arrived the same way: a specific draft came back wrong, and the
-correction became a rule.
+Each rule in `hooks/rules.md` was written from a correction to a specific draft.
 
 ## What loads every session
 
 The hooks module adds [`hooks/rules.md`](../hooks/rules.md) to the first prompt of every session, and
 again to a prompt or a tool result once the model no longer reads it: after `/clear`, a compaction,
-or a plugin update that changed the text. It adds them to the start of every Agent subagent's task,
+or a plugin update that changed the text. It adds the rules to the start of every Agent subagent's task,
 and to a Workflow agent's first tool result, since a subagent's report is what a later summary is
 built from. The task is changed in an `agent.spawn` hook, and only when it does not already contain
 the rules. Auto mode refuses an Agent call whose input a `tool.call` hook changed after review,
@@ -124,7 +123,7 @@ or a comment: a Markdown heading in a body of about ten sentences or fewer, and 
 at any length. Headings and lists in a longer body are allowed. So are parallel bullets of evidence
 or findings, and the headings and checkboxes of the target's issue or PR template, including a
 template the gate cannot read, such as a YouTrack one. On Sonnet 5.5, when this check was a string
-match, three bodies were refused 3 times out of 3: a PR body of 9 paragraphs under five headings, a
+match, three bodies were refused 3 times out of 3: a PR body of nine paragraphs under five headings, a
 short PR body filled in on a GitHub PR template, and a YouTrack issue on its template. With the
 judgment, both templates passed 5 times out of 5, and no heading in the long body was flagged on 5
 checks. A one-sentence PR body under two headings with a bullet changelog, and a two-sentence issue
@@ -149,8 +148,8 @@ rewrite.
 
 An issue to a repo with an issue template follows the template, headings included. Before the model
 is sent the text, [`hooks/template.ts`](../hooks/template.ts) removes each heading that is a field
-label of one of the repo's issue forms or a heading of its Markdown templates, so item 5 flags only
-the other headings. The templates are read from `.github/ISSUE_TEMPLATE` with one `gh api graphql`
+label of one of the repo's issue forms or a heading of its Markdown templates, so only the other
+headings are flagged under item 5. The templates are read from `.github/ISSUE_TEMPLATE` with one `gh api graphql`
 call per repo, kept for the session. After a failed call the repo has no templates for the rest of
 the session, so offline no later check waits for gh. For a repo with none, the owner's `.github`
 templates are used, as on GitHub. Headings are removed only from a command that starts with
@@ -167,7 +166,7 @@ removed it passed 3 times out of 3.
 
 `findings()` in [`hooks/text.ts`](../hooks/text.ts) looks for each quote in the command, with runs of
 whitespace collapsed. A finding with its quote in the command comes back as the tool's error, and
-the session fixes the text and runs the command again. A finding whose rewrite is the quote itself
+the session fixes the text and runs the command again. A finding with the quote itself as its rewrite
 is dropped, and so is every finding in a reply with a later `PASS` line, where the model took its
 findings back. Of the 200 checks above after the tense sentence, 4 replies were one of the two. The
 command goes through on a reply in any other form, as it does on a failed call, because the text the
@@ -378,7 +377,7 @@ four went through.
 ### MCP calls
 
 A team that publishes through an MCP server, such as Jira and Bitbucket with no `gh` installed, gets
-the same read. The `tool.call` hook that reads a shell command reads a call to any `mcp__` tool. No
+the same review. The `tool.call` hook that reads a shell command reads a call to any `mcp__` tool. No
 server or tool name is written in it, but for two local tools of this marketplace (below). The first call to a tool costs one classifier call, with
 [`hooks/classify-prompt.md`](../hooks/classify-prompt.md) as the system prompt: can this tool hand text
 to a human-facing destination? The answer is `CAN_PUBLISH` or `NEVER`, doubt is `CAN_PUBLISH`, and
@@ -408,7 +407,7 @@ each tool 10 times out of 10, and a call with three planted violations was block
 `delete_item` of `roadmap-skills` came back `NEVER` 13 times out of 13.
 
 A tool that a plugin registers is answered by that plugin's `tool.call` handler. When that plugin
-is loaded before this one, its handler answers first and the gate is never called: in 9 live runs
+is loaded before this one, its handler answers first and the gate is never called: in nine live runs
 with `--plugin-dir` in that order, no call was classified or read. The 33 runs above had this
 plugin first.
 
@@ -421,7 +420,8 @@ and the session fixes the file in place. The advisory re-read request on `Write|
 for the same files, so a session in which the review model cannot run keeps it. For a source file
 there is only the re-read request.
 
-The review model has no tools, so the gate reads, and only the text the tool just wrote. For a
+The review model has no tools, so the gate does the reading, and it reads only the text the tool
+just wrote. For a
 `Write` the text under review is `content`. For an `Edit` it is the whole paragraphs, bounded by
 blank lines, that contain `new_string` in the edited file (`excerpt()` in
 [`hooks/text.ts`](../hooks/text.ts)): replacing "includes" with "says" in "The report includes the
@@ -487,8 +487,8 @@ Tagging keeps this check cheap, since an untagged draft has no reliable form: wi
 drafts came back in plain fences, blockquotes, and between `---` rules, and a plain fence of 8 words
 or more also showed up in 4 of 12 ordinary replies. On Sonnet 5.5, with the draft mentioned only as
 a by-product of a coding task, 9 of 10 replies that included a draft tagged it, and none of 12
-ordinary replies used the tag. The miss gave review feedback as the body of the reply rather than as
-a block. A draft the session does not tag is checked by the reply lint alone.
+ordinary replies used the tag. In the one reply without the tag, the review feedback was in the body
+of the reply rather than in a block. A draft the session does not tag is checked by the reply lint alone.
 
 The lint drops every closed fenced block before matching, so the `draft` fences are unwrapped
 first (`drafts()` in [`hooks/text.ts`](../hooks/text.ts), the same scanner the draft check uses), and

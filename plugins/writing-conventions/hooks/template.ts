@@ -32,8 +32,8 @@ export function labels(files: { name: string; text: string }[]): string[] {
   return out.filter(l => l !== '')
 }
 
-// unheaded(text, allowed): the text with each heading whose text is in
-// `allowed` removed, along with its line end.
+// unheaded(text, allowed): the text with each heading removed, along with its
+// line end, where the heading's text is in `allowed`.
 export function unheaded(text: string, allowed: Set<string>): string {
   return allowed.size === 0 ? text : text.replace(HEADING, (line, quote, label) => (allowed.has(label) ? quote : line))
 }
@@ -46,8 +46,8 @@ export function linked(text: string): string[] {
   return [...new Set(found)].slice(0, 3)
 }
 
-// The command with the body of each heredoc whose delimiter is quoted taken
-// out. No command in such a body runs, and a quote in it closes nothing.
+// The command with each heredoc body taken out where the delimiter is
+// quoted. No command in such a body runs, and a quote in it closes nothing.
 export function literal(cmd: string): string {
   return cmd.replace(/(<<-?[ \t]*(["'])([^"'\s]+)\2[^\n]*\n)[\s\S]*?^([ \t]*\3)$/gm, '$1$4')
 }
