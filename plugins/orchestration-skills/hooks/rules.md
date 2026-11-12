@@ -30,8 +30,8 @@ self-contained units—never a one-liner. Keep emergent or fuzzy work in the mai
   tier has tried and left open, and at Medium for a delegated build stage that would otherwise run
   on the everyday tier at High. Never write a model name from memory—the current table is in that
   skill.
-- **State each stage's tier in the message that launches it.** An up-front plan is a forecast and
-  nothing later checks it. One session announced `Workflow—design@high, implement@medium, docs@low,
+- **State each stage's tier in the message that launches it.** Nothing later checks the tiers in an
+  up-front plan. One session announced `Workflow—design@high, implement@medium, docs@low,
   adversarial-verify@high` and then ran no Workflow, built the item inline, and set no model on
   either agent it launched. Pass the stage's level as `effort` on `Agent` (Claude Code 2.1.292
   and later, any subagent but a fork) or on a Workflow `agent()`: `low` for a mechanical stage,
@@ -45,22 +45,22 @@ self-contained units—never a one-liner. Keep emergent or fuzzy work in the mai
   testing the wrong branch. Check which commit an isolated agent branched from.
 - A **non-isolated** agent runs in your session worktree: right for verifiers and live probes, wrong
   for parallel writers, which see each other's half-done state and chase phantom corruption.
-- **A verifier that earns its cost is a writer**—it mutates the code under test to prove a
-  check distinguishes what it claims. Two verifiers fanned out into one worktree produce false
+- **A thorough verifier also writes**—it mutates the code under test to prove a check catches what
+  it is meant to catch. Two verifiers fanned out into one worktree produce false
   results, not just wasted tokens. Run verify agents serially, or give each its own scratch copy.
 
 ## Trusting what comes back
 
-- **A stage that ends on a holding message ("pausing until the build finishes") is failed work, not
-  finished work.** Say so in every brief, and still inspect the tree yourself: two stages in one run
-  ended that way against a brief that included that prohibition verbatim, and both shipped a silent
-  defect that only a live probe caught.
+- **A stage that ends on a holding message ("pausing until the build finishes") is failed work.**
+  Say so in every brief, and still inspect the tree yourself: two stages in one run ended that way
+  against a brief that included that prohibition verbatim, and both shipped a silent defect that
+  only a live probe caught.
 - **Verify the fix stage.** Fix stages run after the reviewers, so their diffs are unreviewed.
   Confirm the fix reached its target and watch a regression test go red then green.
 - **Arbitrate a disagreement by spot-check, not by rank.** The delegate read deeper on its narrow
   slice and is usually right: in one pass the orchestrator was wrong on all four disagreements.
-  That deference covers what it found, never what it reports as impossible—probe a blocker yourself
-  before repeating it. One agent's "403 behind Cloudflare" reached the user as a dead end, and the
+  Defer to it on what it found, never on what it reports as impossible—probe a blocker yourself
+  before repeating it. One agent's "403 behind Cloudflare" reached the user as a dead end, but the
   page loaded in a browser on the first try.
 - **Noticing that an agent stopped is your job.** A background agent that hangs or dies sends no
   notification, and completed agents keep their chips, so three chips once looked like three live

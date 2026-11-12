@@ -80,14 +80,14 @@ grew by one dimension per round over five rounds.
 
 ## 5. Every confirmed finding becomes a regression test
 
-A finding that ends as a note in a report protects nothing. Turn each confirmed one into a test that
-fails on the old logic and passes on the new. Write it yourself and watch it go red then green—a
+A finding left as a note in a report does not stop the bug from coming back. Turn each confirmed
+one into a test that fails on the old logic and passes on the new. Write it yourself and watch it go red then green—a
 test written by the stage that produced the fix proves nothing about the fix.
 
 ## 6. Running the verifier
 
 The verifier writes: scratch probes, and mutations to the code under test to prove a check actually
-distinguishes the branch it names. That makes it a writer, with all the isolation consequences that
-follow. Run verify agents serially or give each its own scratch copy, and keep them out of
+distinguishes the branch it is meant to select. That makes it a writer, with all the isolation
+consequences that follow. Run verify agents serially or give each its own scratch copy, and keep them out of
 worktree isolation, which would branch them off the wrong commit. The full rules are in the sibling
 skill `delegate-to-subagents`.

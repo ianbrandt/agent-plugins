@@ -79,8 +79,8 @@ took 221 seconds.
 
 The anecdotes in these skills are from real runs, with the project names removed. The numbers are
 kept because they are the evidence for each rule. An over-scoped census agent burning ~800k tokens
-over 4 retries against ~150k for its bounded siblings is why the fan-out cap is 10 files. An
-orchestrator being wrong on all 4 of its disagreements with a delegate is why disagreements get
+over four retries against ~150k for its bounded siblings is why the fan-out cap is 10 files. An
+orchestrator being wrong on all four of its disagreements with a delegate is why disagreements get
 settled by spot-check instead of by rank. Two stages in one run ended on holding messages, the
 second against a brief that included the prohibition verbatim, which is why the tree is still
 inspected after the rule is written into the brief.

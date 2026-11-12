@@ -85,7 +85,7 @@ and was killed twenty minutes in having reported nothing. Its result—457 tests
 recovered by reading the worktree's build reports directly. Only the on-disk copy made that
 possible; nothing else recorded what the agent had found.
 
-**Name the findings file in the brief, and keep it off four names.** Claude Code refuses a
+**Put the findings file's name in the brief, and keep it off four names.** Claude Code refuses a
 subagent's Write to a file named `findings.md`, `report.md`, `summary.md`, or `analysis.md`, in
 any case, with "Subagents should return findings as text, not write report files". The agent then
 returns the text only, and nothing is on disk if it later goes silent. Only the file name is
@@ -115,8 +115,8 @@ branch—**not** from your feature-branch worktree. It cannot see uncommitted or
 
 **A verifier doing its job is a writer.** An adversarial verifier worth its cost writes scratch
 probes and mutates the code under test, to prove a check actually distinguishes the branch it
-names. Two verifiers fanned out with `parallel()` into one worktree means one agent is mutating the
-logic the other is measuring: a false-result generator. In one run, two verifiers each reported the
+is meant to select. Two verifiers fanned out with `parallel()` into one worktree means one agent
+is mutating the logic the other is measuring: a false-result generator. In one run, two verifiers each reported the
 other's probe files as findings while the rule under test was being mutated mid-measurement. Run
 verify agents serially, or give each its own scratch copy. Do **not** reach for
 `isolation: 'worktree'` as the fix—that puts them on the wrong branch instead.
@@ -130,15 +130,15 @@ fixtures for free.
 
 The failure looks like a holding message—"Pausing here until the build finishes"—with no status, no
 files listed, and no red-then-green. It reads as merely truncated, so the diff sitting on the branch
-gets treated as reviewed. It is not reviewed. Nobody read it.
+gets treated as reviewed. Nobody has read it.
 
 State in every brief that a stage ending without a structured report is treated as failed. Saying so
 is **not sufficient**: in one run two stages ended on holding messages, the second against a brief
 that included that prohibition verbatim, and both unreported diffs shipped a silent defect. One
 built a detached configuration that emptied the facts a report depended on while every test stayed
 green; the other swapped two constructor arguments, flipping report rows from outdated to
-up-to-date. Both were one-liners a reader would have waved through—which is the point. The check is
-a **probe**, not a read.
+up-to-date. Both were one-liners a reader would have waved through, so check with
+a **probe**, not by reading the diff.
 
 **Noticing that a stage stopped is your job, not the user's.** A background agent that hangs or dies
 sends no notification, so nothing arrives to tell you. Check liveness before reporting on a run, and
@@ -157,8 +157,7 @@ Fix stages run after the reviewers, so their diffs are the one part of the pipel
 - For a soundness-critical unit, write the missing regression test **yourself** and watch it go red
   then green. A test the fix stage wrote and reported as passing proves nothing about the fix.
 
-Reviewers earn their cost with live probes too. A reviewer that only reads diffs is an expensive
-second opinion on text.
+Reviewers should run live probes too, not only read the diff.
 
 ## 8. Arbitrate disagreement by spot-check, not by rank
 
@@ -169,7 +168,7 @@ The delegate read deeper on its narrow slice and is usually right. In one roadma
 orchestrator was wrong on **all four** disagreements; a seven-claim spot-check against the source
 settled it in a few minutes.
 
-**That deference covers what a delegate found, never what it reports as impossible.** "I could not
+**That deference does not extend to what a delegate reports as impossible.** "I could not
 reach it" describes one agent's attempt with the tools it believed it had. It is not a finding about
 the world, and passing it along as one hands the user a dead end that is not there. A corpus agent
 reported `mvnrepository.com/popular` as 403 behind Cloudflare "to both curl and WebFetch"; that

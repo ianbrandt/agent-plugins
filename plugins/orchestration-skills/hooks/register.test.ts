@@ -24,7 +24,7 @@ test('the rules are added to a prompt once the model no longer reads them', asyn
   expect((await $.prompt.submit({ text: 'after an update' })).context).toEqual([RULES])
 })
 
-// Auto mode refuses an Agent call whose input a hook changed after review, so
+// Auto mode refuses an Agent call if a hook changed its input after review, so
 // the rule goes into the task at spawn and the call's input is left alone.
 test('a subagent task opens with the escalation rule once, and the Agent call is left as reviewed', async ($: any, on: any) => {
   const w = world(on)

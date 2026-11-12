@@ -16,8 +16,8 @@ description: >-
 
 # Ask when needed—stop only for the calls the user can't undo
 
-Most of this skill is permission to keep going. A small number of decisions are worth an
-interruption; everything else, decide yourself and move on.
+A small number of decisions are worth an interruption; everything else, decide yourself and
+move on.
 
 ## 1. Stop when the decision is hard to reverse
 
@@ -30,8 +30,8 @@ work will copy.
 - **Text publishing under the user's name**: an issue, PR, comment, review, or release note.
 - **A push to a public repository**: the commits, their messages, and the branch name all become
   public and permanent. A later force-push does not unpublish what was already fetched, forked, or
-  indexed. Merging into a local branch is cheap and reversible; the push is the step that
-  publishes, so hold it and present the unpushed range instead. A private repo is exempt, since a
+  indexed. Merging into a local branch can be undone cheaply, but the push publishes, so
+  hold it and present the unpushed range instead. A private repo is exempt, since a
   push there can still be undone.
 - A **precedent**: a call later work will build on and copy, so changing it later means
   changing everything downstream too.

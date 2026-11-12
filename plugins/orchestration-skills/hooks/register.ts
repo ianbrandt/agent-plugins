@@ -32,7 +32,7 @@ export const register: Register = on => {
   })
 
   // The rule goes into the task at spawn: auto mode refuses an Agent call
-  // whose input a tool.call hook changed after review. A Workflow agent gets it
+  // if a tool.call hook changed its input after review. A Workflow agent gets it
   // with its first tool result below, and a resumed run keeps its prompt.
   on('agent.spawn', async ($, e: any, next: any) =>
     next(e.workflow || e.resume || e.prompt.includes(SUBAGENT_RULE) ? e : { ...e, prompt: `${SUBAGENT_RULE}\n\n${e.prompt}` }))

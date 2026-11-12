@@ -15,8 +15,8 @@ description: >-
 
 Model and effort are independent. Set model by the stage's **capability class** and effort by its
 **deliberation need**. Fix a capability shortfall with a bigger model, not more thinking, and give
-careful multi-step bookkeeping more effort, not a bigger model. Setting both high everywhere is how
-a run costs four times what it needed to.
+careful multi-step bookkeeping more effort, not a bigger model. Setting both high everywhere can make
+a run cost four times what it needed to.
 
 ## 1. The model tiers
 
@@ -166,7 +166,7 @@ and a plan review would have run at that effort had the runner call not passed `
 
 **Announce each stage's tier in the message that launches it.** An up-front plan is worth
 writing—the user sees what a run will cost before it starts—but nothing later checks it, and a
-plan written before the stages are known describes stages that never happen. So plan only what you
+plan written before the stages are known includes stages that never happen. So plan only what you
 actually intend to delegate, restate the tier as you launch each stage, and say plainly when a
 planned stage turns out not to run. In one session the plan `Workflow—design@high, implement@medium,
 docs@low, adversarial-verify@high` was announced within a minute of the claim, before any source had
