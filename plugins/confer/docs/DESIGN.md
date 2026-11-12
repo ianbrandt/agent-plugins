@@ -56,8 +56,9 @@ uses native events only. Under some managed settings, a user plugin's `classic.*
 
 ## Codex constraints
 
-- On Windows, Codex 0.167 refuses every command in its `read-only` sandbox. Codex runs there with
-  `--approve-for-me`, under which writes are possible: a file was created through `apply_patch` in
+- On Windows, Codex 0.167 refuses every command in its `read-only` sandbox, reads included. This
+  was checked again on 0.167.1, with and without the `windows_sandbox_service` feature, which is
+  under development there. Codex runs there with `--approve-for-me`, under which writes are possible: a file was created through `apply_patch` in
   a probe. `codex exec resume` has no `--approve-for-me` on 0.167, so a Codex session is never
   resumed. A PR, a branch of another remote or one that tracks a pull request, and a commit that no
   branch of `origin` or of the clone contains are reviewed there only after the user agrees in a
