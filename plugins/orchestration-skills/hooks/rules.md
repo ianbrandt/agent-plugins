@@ -26,8 +26,10 @@ self-contained units—never a one-liner. Keep emergent or fuzzy work in the mai
   tokens over 4 retries against ~150k for its bounded siblings.
 - **Pick the tier per stage.** Set model by the stage's capability class and effort by its
   deliberation need. Design and verify run on the everyday tier, with more effort where they need
-  it; the apex tier is for questions that tier has tried and left open. Never write a model name
-  from memory—the current table is in the `tier-model-and-effort` skill.
+  it. Within the limits in the `tier-model-and-effort` skill, the apex tier is for questions that
+  tier has tried and left open, and at Medium for a delegated build stage that would otherwise run
+  on the everyday tier at High. Never write a model name from memory—the current table is in that
+  skill.
 - **State each stage's tier in the message that launches it.** An up-front plan is a forecast and
   nothing later checks it. One session announced `Workflow—design@high, implement@medium, docs@low,
   adversarial-verify@high` and then ran no Workflow, built the item inline, and set no model on

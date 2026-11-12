@@ -20,21 +20,46 @@ a run costs four times what it needed to.
 
 ## 1. The model tiers
 
-**Table current as of 2026-11-09.** Model names age fast; re-tune this table when releases land,
-and treat every other skill's tier language ("the apex tier", "a task hero") as pointing here rather
-than at a name. No other part of this plugin includes a model name.
+**Table current as of 2026-11-12.** Model names age fast; re-tune this table when releases land,
+and read every other skill's tier language ("the apex tier", "a task hero") as a reference to this
+table, not to a model name. No other part of this plugin includes a model name.
 
 | Tier | Model | Use it for | Cost note |
 |---|---|---|---|
-| Apex | Fable 5.2 | A narrow set: architecture or strategy with no precedent to follow, a tie-break when an everyday verify and the build disagree on something that fails silently, and a stage the everyday tier has already tried at Extra and left open. Run it at High. | Twice the everyday tier's price per token. On FrontierCode 2.0 at High it scored what the everyday tier scored at Max, for half the cost per task. On Pro and standard Team seats, Fable usage is capped at half the weekly limit. Aim it; never default to it. |
-| Everyday | Opus 5.5 | The orchestrator and the workhorse: the main loop, design, adversarial verification, and judge stages. Raise its effort to Extra before reaching for the apex tier. | The baseline. |
+| Apex | Fable 5.2 | A narrow set: architecture or strategy with no precedent to follow, a tie-break when an everyday verify and the build disagree on something that fails silently, and a stage the everyday tier has already tried at Extra and left open. Run it at High. One more case runs at Medium: a delegated build stage (below). | Twice the everyday tier's price per token. On FrontierCode 2.0 at High it scored what the everyday tier scored at Max, for half the cost per task. On Pro and standard Team seats, Fable usage is capped at half the weekly limit. Aim it. Outside the build-stage case below, never default to it. |
+| Everyday | Opus 5.5 | The orchestrator and the workhorse: the main loop, design, adversarial verification, and judge stages. Raise its effort to Extra before sending a stalled stage to the apex tier. | The baseline. |
 | Task hero | Sonnet 5.5 | Any unit that is well-specified and objectively verifiable, inside a Workflow or not. Test-driven work is the ideal case. | Cheap enough to fan out. |
 | Mechanical | Haiku 5.5 | Stages with a loud oracle: tests, compiles, a verifiable count, bulk reads, fixture sweeps, doc updates. | Cheapest. Only where failure is loud. |
 
-**A stage is not apex work because of its kind.** Design and verify stages run on the everyday
-tier. In one unattended pipeline run, every unit's verify went to the apex tier from one reused
-Workflow template, whether or not a failure in that unit could go unnoticed. Stages at that tier
-accounted for about a fifth of the session's tokens and, at its rate, about half of its cost.
+**A stage is not apex work because of its kind**, with one exception, the build stage in the next
+paragraph. Design and verify stages run on the everyday tier. In one unattended pipeline run, every
+unit's verify went to the apex tier from one reused Workflow template, whether or not a failure in
+that unit could go unnoticed. Stages at that tier accounted for about a fifth of the session's
+tokens and, at its rate, about half of its cost.
+
+**A delegated build stage that would run on the everyday tier at High runs on the apex tier at
+Medium.** That is a build stage too loosely specified for a task hero. On FrontierCode 2.0, in the
+chart labels of the 2026-11-09 launch post, the apex tier at Medium scored 37.6% for $2.48 a task
+and the everyday tier at High scored 34.5% for $2.42. On the other four cost charts with both
+models it scored 2.7 to 7.2 points higher, for between 28% less and 4% more per task. Three limits:
+
+- **Not in place of the everyday tier at Extra**, which scored 43.4% for $5.18. Design, adversarial
+  verification, and judge stages stay there. So does the main loop, which has not been tried on the
+  apex tier at Medium.
+- **Not for an open-ended investigation.** In the system card for the model behind Fable 5.2, it
+  quit without running an experiment in 63% of open-ended research sessions at Medium.
+- **Not once the Fable weekly limit is nearly used.** Where the host reports plan usage, as the
+  desktop app's `get_usage` tool does, read the Fable weekly percentage before each apex build
+  stage, and at 80% or more keep build stages on the everyday tier at High. On any host, do the
+  same after a Fable launch is refused for usage or the user says the limit is close. Where the
+  host reports no usage, or reports it as unavailable, those two are the only signals. What is left
+  of the limit is for the narrow set in the table.
+
+**Ask for proof of the work in every apex-tier brief.** In the same system card, the model left
+doable, requested work undone in 6 to 13% of replayed coding sessions at Medium to Extra, against 4%
+for Fable 5.1. At Low it ran tests less often, and users reported inferences stated as facts. So at
+any effort, require each requested part listed as done or not done in the result. For a stage that
+changes code, require test or build output there too.
 
 **"Mechanical" means failure is loud.** A stage that could fail silently is not mechanical, however
 rote it looks. Give it a task-hero model and a real check.
@@ -84,6 +109,7 @@ Rough fit:
   recalibrated that model's levels as of 2026-10-04, and Medium is its documented starting point
   for agentic coding. At Low it sometimes reports a change as done without running a check that
   exercises it, so in a task-hero brief at Low, require test or build output in the result.
+  A build stage on the apex tier runs at Medium (§1).
 - **Extra**—design, adversarial verification, judge stages, and careful multi-step bookkeeping.
 - **Max**—no stage. A stage where an Extra pass has already stalled goes to a second provider where
   one is installed (§1), then to the apex tier at High. On FrontierCode 2.0 (2026-11-09), the apex
@@ -135,8 +161,8 @@ been read. That session then ran no Workflow at all, built the item inline in th
 both delegated agents out with no model override, and never launched the apex judgment pass it
 promised an hour later.
 
-The apex tier can be spawned unattended for the narrow set in the table. Its cost is the reason to
-**aim** it, not the reason to avoid it.
+The apex tier can be spawned unattended for the narrow set in the table and for the build-stage
+case in §1. Its cost is no reason to avoid it for that work.
 
 ## 4. Ultracode: what it is and what it is not
 
