@@ -52,9 +52,7 @@ all.
    (`clean build buildHealth`).
 
 2. **Push**—the only opt-in, default off. Push only after every round and the final verification pass,
-   and only if the maintainer opted in. Check `origin`'s visibility with
-   `gh repo view --json visibility`: on a public repo, hold the push for the maintainer's review even
-   when they opted in.
+   and only if the maintainer opted in.
 
 **Commits are automatic.** Iterate through every update without stopping for approval, committing each
 verified round as its own atomic commit (step 4) in the repo's commit-message convention (derive it
@@ -222,7 +220,7 @@ Then re-run `dependencyUpdates` as in step 2 and confirm the report shows 0 outd
 entries listed in step 7 as held back or not upgraded.
 
 - If either check fails, **stop and report; do not push.**
-- If both pass, push was enabled in step 1, and `origin` is not public, `git push`. Otherwise stop
+- If both pass and push was enabled in step 1, `git push`. Otherwise stop
   here, with every verified upgrade committed for the maintainer.
 
 ### 7. Reporting
@@ -231,7 +229,7 @@ entries listed in step 7 as held back or not upgraded.
 - Verification results, per-round and final
 - Majors held back at their latest minor, with the failure that blocked each
 - Entries not upgraded: unresolved, skipped, and those declared nowhere in the build
-- What was committed and whether the branch was pushed; if push was off or held for a public repo,
+- What was committed and whether the branch was pushed; if push was off,
   note the commits are left for the maintainer
 - *Tip*s from the Versions Plugin's migration notes (step 3)
 - If a round or the final verification failed, exactly where the run stopped and what was and was not
