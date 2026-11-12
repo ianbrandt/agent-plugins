@@ -110,8 +110,13 @@ What matched:
   the output.
 - Step 6. The output of `git -C "$d/remote.git" branch --list` was `b2`, `b3`, and `main`.
 
-What differed: nothing. The only on-screen note outside the three expected prompts was a
-`session-skills: plugin.json changed — reloaded` line from the hook reload, which is not about
-this check.
+What differed: one on-screen note outside the three expected prompts, the line
+`session-skills: plugin.json changed — reloaded`. The line is a Claude Code CLI notice, not a
+session-skills message. Across sessions, a loaded plugin's `plugin.json` is compared against
+the version last seen for it, and the line is printed whenever the two differ. The scratch
+session was the first one against this clone's `plugins/session-skills`, so the line appeared
+as expected. In a later session in the same clone, the line is printed again only after a
+change to `plugin.json`, such as one from `git pull`.
 
-What is still open: nothing from this item.
+What is still open: whether the comparison is keyed by `--plugin-dir` path or by marketplace
+id. A second session in the same scratch dir with no change to `plugin.json` would settle it.
