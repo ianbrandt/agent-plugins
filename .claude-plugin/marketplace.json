@@ -62,10 +62,10 @@
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/writing-conventions",
-        "ref": "writing-conventions-v0.55.1",
-        "sha": "54689fe243b0eabd39c5fa7981ed4c21ded4df90"
+        "ref": "writing-conventions-v0.55.2",
+        "sha": "30c62d6e350099415b1bce72b6a63548cdd59b62"
       },
-      "version": "0.55.1",
+      "version": "0.55.2",
       "description": "Always-on rules for plain prose without AI tells—in chat, in repo docs, and in anything published under your name—with a lint that reports each miss in the next turn.",
       "keywords": ["register", "summary", "prose", "style", "lint"]
     },
