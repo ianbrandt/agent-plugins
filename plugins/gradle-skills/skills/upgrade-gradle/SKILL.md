@@ -14,7 +14,7 @@ Run the step-4 validation build from the main thread, as one background command 
 in Claude Code) with its output redirected to a log file in a temp or scratch directory outside the
 repo. Do not delegate it to a sub-agent: a sub-agent is not re-invoked when a background command it
 started exits, and a foreground call is capped at 10 minutes, so a sub-agent either returns before
-the build has a verdict, which kills the build, or cannot run a longer build at all.
+the build finishes, which kills the build, or cannot run a longer build at all.
 
 ## Workflow
 
@@ -62,16 +62,16 @@ into `gradle-wrapper.properties`; the second, on the new Gradle, regenerates `gr
 `gradlew`, and `gradlew.bat`. Editing `distributionUrl` by hand and running `./gradlew help` leaves
 the old wrapper jar in place.
 
-If the properties file pins `distributionSha256Sum`, the new distribution's checksum is required:
-`https://services.gradle.org/distributions/gradle-<version>-<bin|all>.zip.sha256`, matching the
-distribution type in the current `distributionUrl`.
+If `distributionSha256Sum` is set in the properties file, the new distribution's checksum is
+required: `https://services.gradle.org/distributions/gradle-<version>-<bin|all>.zip.sha256`, matching
+the distribution type in the current `distributionUrl`.
 
 **Path A—task exists** (it is the source of truth; `./gradlew wrapper` rewrites the properties file
 from it):
 
-1. Update `gradleVersion` in the task block, and `distributionSha256Sum` if the task sets it. If the
-   properties file pins a checksum the task does not set, pass `--gradle-distribution-sha256-sum
-   <sum>` on both runs
+1. Update `gradleVersion` in the task block, and `distributionSha256Sum` if it is set there. If a
+   checksum is set in the properties file but not in the task, pass
+   `--gradle-distribution-sha256-sum <sum>` on both runs
 2. Run that build's `./gradlew wrapper` twice
 
 **Path B—no task:** run this twice in that build, with the same options both times:
@@ -82,8 +82,8 @@ from it):
 ```
 
 Pass `--distribution-type all` when the current `distributionUrl` ends in `-all.zip`, and the checksum
-option when the properties file pins one. A bare second `./gradlew wrapper` resets the distribution
-type to `bin` and keeps the old checksum, so the next build fails verification.
+option when one is set in the properties file. A bare second `./gradlew wrapper` resets the
+distribution type to `bin` and keeps the old checksum, so the next build fails verification.
 
 ### 4. Validation
 
@@ -118,12 +118,12 @@ validation must re-exercise the build. Validation build only.
   `gradlew.bat` are often unchanged.
 - Validation results, the tasks run, and any deprecation summary line
 - Anything from the upgrade guide that affects this build
-- A commit message in the style of recent `git log`. Commit only when the user asks, or as the
-  repo's docs describe; otherwise leave the changes for the maintainer.
+- A commit message in the style of recent `git log`. Commit only when the user asks, or as
+  described in the repo's docs; otherwise leave the changes for the maintainer.
 
 ## Constraints
 
 - **Scope:** Only the Gradle version. No dependency updates, build-logic changes, or unrelated
   refactors.
-- **Git:** No `git commit`, `git push`, or branch creation unless the user asks, or as the repo's
-  docs describe.
+- **Git:** No `git commit`, `git push`, or branch creation unless the user asks, or as described
+  in the repo's docs.

@@ -8,9 +8,9 @@ Claude Code 2.1.308 is the oldest version supported. This plugin has no hooks an
 
 ### `upgrade-dependencies`
 
-Guides Claude through checking, upgrading, and verifying Gradle dependencies one at a time, including **settings plugins** (those applied in the `plugins { }` block of `settings.gradle(.kts)`). Claude iterates through every available update automatically, committing each verified upgrade as its own atomic commit (one per dependency), and optionally pushes once all upgrades pass.
+Guides Claude through checking, upgrading, and verifying Gradle dependencies one at a time, including settings plugins (those applied in the `plugins { }` block of `settings.gradle(.kts)`). Claude iterates through every available update automatically, committing each verified upgrade as its own atomic commit (one per dependency), and optionally pushes once all upgrades pass.
 
-Updates come from the [Gradle Versions Plugin](https://github.com/ben-manes/gradle-versions-plugin)'s `dependencyUpdates` JSON report, run once per build, so **composite builds** (`includeBuild`) and `buildSrc` are covered. Where a build does not apply the plugin, Claude injects it with a temporary init script, leaving the build unmodified.
+Updates come from the [Gradle Versions Plugin](https://github.com/ben-manes/gradle-versions-plugin)'s `dependencyUpdates` JSON report, run once per build, so composite builds (`includeBuild`) and `buildSrc` are covered. Where a build does not apply the plugin, Claude injects it with a temporary init script, leaving the build unmodified.
 
 **Requires:** Gradle 8.4 or later. Optionally enriched by the [dependency-analysis-gradle-plugin](https://github.com/autonomousapps/dependency-analysis-gradle-plugin) (for the `buildHealth` verification task).
 

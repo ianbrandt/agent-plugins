@@ -34,7 +34,7 @@ Run every **verification** build (steps 5 and 6) from the main thread, as one ba
 (`run_in_background` in Claude Code) with its output redirected to a log file in a temp or scratch
 directory outside the repo. Do not delegate it to a sub-agent: a sub-agent is not re-invoked when a
 background command it started exits, and a foreground call is capped at 10 minutes, so a sub-agent
-either returns before the build has a verdict, which kills the build, or cannot run a longer build at
+either returns before the build finishes, which kills the build, or cannot run a longer build at
 all.
 
 ## Workflow
@@ -216,8 +216,8 @@ way as step 5. May use the heavier step-1 set; a from-scratch check is often wor
 `--rerun-tasks` even when the per-round builds ran without it. Skip this run when the last round
 already ran the final task set on the same tree.
 
-Then re-run `dependencyUpdates` as in step 2 and confirm the report shows 0 outdated, apart from the
-entries listed in step 7 as held back or not upgraded.
+Then re-run `dependencyUpdates` as in step 2 and confirm that 0 are reported outdated, apart from
+the entries listed in step 7 as held back or not upgraded.
 
 - If either check fails, **stop and report; do not push.**
 - If both pass and push was enabled in step 1, `git push`. Otherwise stop
