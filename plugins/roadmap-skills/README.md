@@ -13,16 +13,16 @@ collide.
 
 The plan of record lives in one of two places, and this skill finds it:
 
-- **tracked** at the repo root, in a repo you own. The landing commit that
+- Tracked at the repo root, in a repo you own. The landing commit that
   deletes the item is the done-record, so there is no changelog.
-- **local-only**, for an upstream OSS project you contribute to via a fork. The
+- Local-only, for an upstream OSS project you contribute to via a fork. The
   roadmap and its companions are untracked, so the done-record is written to
   `ROADMAP-CHANGELOG.local.md` instead of git history.
 
 Naming follows that split: tracked repos have `ROADMAP.md` plus
 `ROADMAP-PARKED.md` and `ROADMAP-DECLINED.md` as needed; a local-only plan uses
-the same names with a `.local.md` suffix, which is both the never-commit signal
-and what keeps a shadow roadmap from colliding with an upstream project's real
+the same names with a `.local.md` suffix, which marks the files as never committed
+and keeps a shadow roadmap from colliding with an upstream project's real
 `ROADMAP.md`. (`docs/roadmap.md` is honored as a legacy location.)
 
 An item's probe scripts and run output go in a directory named for its ID, such
@@ -38,7 +38,7 @@ when the roadmap is local-only.
 
 An optional lane hint (`/next-roadmap-item R1`) biases the pick without
 overriding the no-collision rules. Point the hint at an item that's already in
-flight and partially built and the skill **resumes** it, continuing that item's
+flight and partially built and the skill resumes it, continuing that item's
 existing branch instead of opening a new one off the default branch. It finds
 the branch from the pin in the roadmap or from the branch's name, not from the
 claim ledger—a session releases its claim at wrap whether
@@ -62,7 +62,7 @@ work depends on the backlog being a markdown file.
 ## What it pairs with
 
 The branch and landing are handled in `session-skills`, and a worktree and the
-claim ledger in `parallel-session-skills`. This plugin is a **backlog plugin** for both: it
+claim ledger in `parallel-session-skills`. This plugin is a backlog plugin for both: it
 supplies what is workable, where an item is already in flight, and how a landed
 item gets recorded, from a markdown file rather than an issue tracker. The
 dependency runs one way: these skills call into those, never the reverse, so a

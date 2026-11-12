@@ -63,8 +63,8 @@ the edit is committed. Only a local-only roadmap is edited in the primary checko
 
 **Naming, at the repo root.** Tracked: `ROADMAP.md`, plus `ROADMAP-PARKED.md` and
 `ROADMAP-DECLINED.md` as needed. Local-only: the same names suffixed `.local.md`—the never-commit
-signal, and it keeps a shadow roadmap from colliding with an upstream project's real `ROADMAP.md`—
-plus `ROADMAP-CHANGELOG.local.md`. Parked and declined files are created on first need, never as
+signal, and it keeps a shadow roadmap from colliding with an upstream project's real `ROADMAP.md`—plus
+`ROADMAP-CHANGELOG.local.md`. Parked and declined files are created on first need, never as
 empty stubs. Migrate a legacy `docs/roadmap.md` to the root in a grooming commit when the ledger is
 empty.
 
@@ -183,7 +183,7 @@ Then write the claim, per `claim-a-lane` §3—where the repo has a ledger at al
 ## 4. Give the session a descriptive title
 
 As soon as the claim lands and any tiebreaker re-pick settles, **title the session the way
-`session-skills`' session rules specify**. Those rules load with the first prompt and state the one way
+`session-skills`' session rules specify**. Those rules load with the first prompt and include the one way
 this session sets its title.
 
 The title is always the claimed item's `Rn` ID, a colon, then a short noun phrase for the
@@ -247,7 +247,7 @@ cases listed in §5—fan-out, a loop until some condition holds, several units 
 deterministically—rather than as the default vehicle for a single item.
 
 Then hand off to **`land-and-wrap`** for how the work leaves its branch and what the session does
-at its end. Two things it defers back to this skill:
+at its end. Two things are left to this skill:
 
 - **Bring the docs.** Finishing an item includes every piece of documentation it touches—the
   subsystem's design doc plus any user-facing surface.

@@ -140,7 +140,7 @@ test('a path in a worktree outside the primary checkout is taken', async ($: any
 })
 
 // git prints a path as it is, so a newline in it is a newline in the list.
-test('a path in a worktree whose path has a newline in it is taken', async ($: any, on: any) => {
+test('a path in a worktree at a path with a newline in it is taken', async ($: any, on: any) => {
   const w = world(on, { '/work/wt/r5\nx/ROADMAP.md': ROADMAP }, ['/work/wt/r5\nx'])
   expect((await $.tool.call({ tool: TOOL, path: '/work/wt/r5\nx/ROADMAP.md', id: 'R102' })).result).toContain('removed:')
   expect(w.files['/work/wt/r5\nx/ROADMAP.md']).toBe(deleteItem(ROADMAP, 'R102').text)
