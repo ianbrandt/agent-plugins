@@ -91,5 +91,5 @@ fixture spec are read in both runs.
 
 Neither plugin needs the other. `writing-conventions` loads the prohibitions in every session (no
 personified subjects, no spaced em dashes, a banned-word list), and they apply to chat replies too.
-This plugin is run on demand to draft in your voice. Installed together, the general rules
+This plugin is run on demand to draft in your voice. With both installed, the general rules
 that come out of your edits are added to the file that is loaded in every session.

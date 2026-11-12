@@ -13,7 +13,7 @@ description: >-
 # Share a ghostwriting spec—anonymized export
 
 The export is a **seed**: house style another writer bootstraps from, not a copy of the user's
-voice. The user reviews it before it leaves their machine: **you build the export, and only the user
+voice. The user reviews the export you build before it leaves their machine, and **only the user
 shares it.**
 
 ## 0. Locate the spec
@@ -52,7 +52,7 @@ A rule that can't be stated without its private referent doesn't ship.
 ## 3. Write it, then hand over the path
 Write the export to `$VOICE/voice-spec-seed.md`, overwriting any earlier run, and give the user
 that path. Nothing else: a spec-sized document pasted into chat is unreadable and unusable, so
-this deliberately overrides the general rule that text awaiting approval goes in the reply.
+the general rule that text awaiting approval goes in the reply deliberately does not apply here.
 
 - The seed file sits beside the spec and is a build output. If `$VOICE` is versioned, say so once
   and suggest ignoring `voice-spec-seed.md`.

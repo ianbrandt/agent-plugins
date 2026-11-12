@@ -14,7 +14,7 @@ description: >-
 # Ghostwrite—draft in the user's voice
 
 Only the method is in this skill: the voice is read from the user's data (§0). The user signs the
-text, so the user reads it first: **you draft, and only the user posts.**
+text, so the user reads your draft first and **posts it themselves.**
 
 ## 0. Locate the voice data—and detect the mode
 **A `## Voice data, loaded by the plugin` section follows this skill's text.** The plugin's hooks
@@ -29,18 +29,18 @@ then `$GHOSTWRITING_DIR`, then `~/.claude/ghostwriting`. `MODE=bootstrap` there 
 
 Either path may be a symlink into a private repo. On Windows `~` is the user profile directory, and
 a linked voice directory is a junction (`mklink /J`), or is set with `voice_dir` or
-`GHOSTWRITING_DIR` instead. The voice data never lives in this skill, in a
+`GHOSTWRITING_DIR` instead. The voice data is never stored in this skill, in a
 project repo, or in memory. No spec ⇒ **bootstrap** (§5).
 
-**Always-on rules live elsewhere, split by when they load.** Prohibitions that must hold in chat
-replies too—typography, formatting tells, banned vocabulary—live in an always-on rules file that
+**Always-on rules are kept elsewhere, split by when they load.** Prohibitions that must hold in chat
+replies too—typography, formatting tells, banned vocabulary—are kept in an always-on rules file that
 loads every session: the `writing-conventions` plugin's `hooks/rules.md` when that plugin is
 installed, or the user's global `CLAUDE.md` (`~/.claude/CLAUDE.md`) when they keep them there
 instead. Check which of those loaded in this session, and follow a pointer rather than assuming a
 file; `voice-spec.md` is the positive spec, read on demand. Both are maintained here (§4, §5). With
 no always-on file at all, the prohibitions go in the spec too.
 
-**The spec has no copy of what the always-on file covers.** This skill adds to that file, so a
+**The spec has no copy of a rule in the always-on file.** You add rules to that file from here, so a
 rule general enough to bind every surface is routed there and deleted from the spec, not kept in
 both. What stays in the spec is the user's register and their per-genre form. The two copies of
 a duplicated rule get edited apart, and the weaker one is the one read at drafting time.
@@ -48,8 +48,8 @@ a duplicated rule get edited apart, and the weaker one is the one read at drafti
 ## 1. Read the spec before drafting
 Read `voice-spec.md` end to end, delta log included, and read two or three corpus samples matching
 the genre—as models to imitate, not background. Read each file whole, the rules file below
-included: no `head`, no line limit. A cut-off read drops the end of the file, which is where the
-delta log and the latest rules are.
+included: no `head`, no line limit. In a cut-off read the end of the file is lost, which is where
+the delta log and the latest rules are.
 Re-read the spec per session, even with a summary of it in context. No corpus, or no sample for the
 genre ⇒ draft on the spec alone and record the gap in §4.
 
@@ -58,15 +58,15 @@ start: by drafting time that copy sits far back in the context, where it is weak
 most rule breaks happen deep in long sessions. Reading it again immediately before drafting puts
 the prohibitions where they bind.
 
-This also governs **reviewing** a draft—carried over from an earlier session, written by another
+This also applies to **reviewing** a draft—carried over from an earlier session, written by another
 agent, or by you hours ago. Before calling a draft ready, do the same reads.
 
 ## 2. Draft to the spec
 Write to the spec's entry for the genre—its form and size. No entry ⇒ use the nearest neighbor
 and record the gap in §4. **Most drafts should come in under the cap**: exceed one only
-when the content forces it, never for thoroughness. A fact the user gave always forces it: never
-drop a given fact to fit a cap. Keep the fact, and use the hand-over line (§3) to say which part
-runs over. Everything else about the draft comes from the spec, not your defaults.
+when the content does not fit under it, never for thoroughness. A fact the user gave always
+qualifies: never drop a given fact to fit a cap. Keep the fact, and use the hand-over line (§3) to
+say which part runs over. Everything else about the draft comes from the spec, not your defaults.
 
 **Check the end of the body against the form, not only the opening.** When the genre's entry is
 opening prose and then exhibits, as an issue entry usually is, every line after the first exhibit is
@@ -74,8 +74,8 @@ an exhibit too. A fact left over at the end, such as the version where the probl
 a one-fact bullet or in the opening sentences, never in a closing sentence of prose.
 
 **Imitate, then check.** Draft by matching the corpus samples and the spec's **Contrast pairs**,
-sentence rhythm included, and only then check the rule list for what imitation missed. Text written
-to match the user's sentences lands the register more reliably than text written from prohibitions;
+sentence rhythm included, and only then check the rule list for what imitation missed. The register
+comes out closer when you write to match the user's sentences than when you write from prohibitions;
 a draft written from the rule list alone drifts back to the default register.
 
 ## 3. Self-review, lint, rewrite, then hand it over
@@ -90,7 +90,7 @@ exactly as you hand it over: a draft with no clean result is reviewed again afte
 finding then costs a fix-up turn. With no such tool in the session, use the hand-over line to say
 the lint did not run.
 
-**A short draft with no lint hits skips the rewrite below and goes straight to the hand-over.**
+**For a short draft with no lint hits, skip the rewrite below and go straight to the hand-over.**
 Short means up to about five sentences of prose, which covers most PR bodies, comments, and commit
 messages; fenced exhibits do not count. On drafts that size the rewrite has returned the text word
 for word, or swapped one inanimate-agency break for another, at over a minute and tens of thousands
@@ -105,13 +105,13 @@ prohibitions when there is none), the spec's **Contrast pairs** section verbatim
 for the genre verbatim, the corpus samples §1 read for the genre, the genre's cap, and this brief:
 
 > Rewrite the draft so it breaks none of the rules and reads like the samples, imitating the
-> right-hand side of each contrast pair. You may restructure it to the genre entry's form: what the
-> opening sentence says, and the order of prose and exhibits. Where a sample and the genre entry
-> disagree, follow the entry; the samples are older than some of its rules. For every sentence,
+> right-hand side of each contrast pair. You may restructure it to the genre entry's form: the
+> content of the opening sentence, and the order of prose and exhibits. Where a sample and the genre
+> entry differ, follow the entry; the samples are older than some of its rules. For every sentence,
 > find the subject and check its verb against the inanimate-agency rule; replace a noun that stands
-> in for a thing as a metaphor with the thing's literal name; fix dashes and banned words. Keep every
-> fact, number, name, link, code span, and fenced block as given, and add nothing. Stay inside the
-> cap, unless that means dropping a fact; then keep the fact. Return only the rewritten text.
+> in for a thing as a metaphor with the thing's literal name; fix dashes and banned words. Keep
+> every fact, number, name, link, code span, and fenced block as given, and add nothing. Stay inside
+> the cap, unless that means dropping a fact; then keep the fact. Return only the rewritten text.
 
 Pick a mid-tier model over the smallest: writing text without the tells is harder than spotting them
 in given text. Then check the rewrite before you adopt it:
@@ -132,9 +132,9 @@ reason in the hand-over line below, next to the drafts; saying so mid-turn is no
 
 Then hand it over: the body exactly as asked, and nothing else. At most one line may follow it, and
 only to say that a check did not run or that you rejected the rewrite and why, to ask a question
-that must be settled before posting, or to say which part runs over a cap (§2). That line follows
-the spec's prohibitions too. No rewrite notes, no draft history, no delta-log entries: those wait
-for §4. Then wait for an explicit go. A question about scope or wording is part of the review, and
+that must be settled before posting, or to say which part runs over a cap (§2). The spec's
+prohibitions apply to that line too. No rewrite notes, no draft history, no delta-log entries: those
+go in §4. Then wait for an explicit go. A question about scope or wording is part of the review, and
 is not the go.
 
 ## 4. Log the delta
@@ -156,14 +156,14 @@ hand-over. Diff their version against yours, add the rule breaks you fixed yours
 Route each new rule by the §0 split: must hold in every response ⇒ the always-on file from §0;
 genre form or size ⇒ `voice-spec.md`. When that always-on file ships from a plugin, the edit is a
 plugin change: make it in the repo the plugin is published from, not the installed cache.
-Installed sessions keep serving the old list until the plugin's next release, so tell the user the
-edit waits on one. A delta-log entry for a change to a standing rule is promoted into the spec's body,
-so that every standing rule is read there.
+Installed sessions keep the old list until the plugin's next release, so tell the user the edit
+takes effect after one. A delta-log entry for a change to a standing rule is promoted into the spec's
+body, so that every standing rule is read there.
 
 A failure that **recurs** is promoted a second time: into the spec's **Contrast pairs** section, as
-the drafted sentence and the user's rewrite, verbatim. The pairs are what §2 imitates. The tendency
-that produced the draft reads the rule-breaking form as natural, so an example of the idiomatic
-alternative prevents the next instance better than the generalized rule alone.
+the drafted sentence and the user's rewrite, verbatim. The pairs are what you imitate in §2. The
+tendency that produced the draft reads the rule-breaking form as natural, so an example of the
+idiomatic alternative prevents the next instance better than the generalized rule alone.
 
 Log only what recurs or would recur, and don't paste diffs.
 
