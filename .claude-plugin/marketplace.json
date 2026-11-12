@@ -36,10 +36,10 @@
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/session-skills",
-        "ref": "session-skills-v0.31.0",
-        "sha": "276719713f928ffe6912e34d4b1d736663fef328"
+        "ref": "session-skills-v0.32.0",
+        "sha": "4c2705c97557bba960fe308cef3b270fbda981a3"
       },
-      "version": "0.31.0",
+      "version": "0.32.0",
       "description": "Puts a unit of work on its own branch and gets it back off again: pick up the branch work is already in flight on or open a new one, and land the work by what the repo is rather than by a declared mode.",
       "keywords": ["branch", "session", "landing", "wrap-up", "resume"]
     },
