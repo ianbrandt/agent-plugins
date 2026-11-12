@@ -1,6 +1,6 @@
-// The rules behind the worktree and landing tools, apart from git: where a new
-// branch starts, a worktree's name, the permission rules that put a push or a
-// post to the user, and the pushes a shell command makes.
+// The rules behind the checkout and landing tools, apart from git: where a new
+// branch starts, the permission rules that put a push or a post to the user,
+// and the pushes a shell command makes.
 
 
 // Where a new branch starts. `origin/<default>` after a fetch, except that a
@@ -26,8 +26,6 @@ export function refLine(stdout: string, ref: string): { symref: string } | null 
   const line = stdout.split(/\r?\n/).find(l => l.split(' ')[0] === ref)
   return line === undefined ? null : { symref: line.slice(ref.length + 1) }
 }
-
-export const worktreeName = (name: string, id = '') => (id ? `${id.toLowerCase()}-${name}` : name)
 
 // A post is a write that publishes text or a release under the user's name: the
 // gh and glab subcommands below, by noun, and a write through `gh api`, which

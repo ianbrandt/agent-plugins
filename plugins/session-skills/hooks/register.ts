@@ -1,9 +1,10 @@
 // The plugin's hooks module: the rules a session starts with, the tools that
 // run the git work of both skills, the permission rules that put a push or a
-// post to the user, and the tool a worktree session calls to edit a file that
-// is only in the primary checkout.
+// post to the user, and the tool a session in a worktree calls to edit a file
+// that is only in the primary checkout. A worktree is opened and removed by
+// parallel-session-skills.
 import type { Register } from 'claude-code'
-import { askRules, outward, pickBase, POST_RULES, PUSH_RULES, refLine, worktreeName } from './checkouts'
+import { askRules, outward, pickBase, POST_RULES, PUSH_RULES, refLine } from './checkouts'
 import { splice } from './splice'
 
 const NONE = { type: 'object', properties: {} } as const
@@ -12,31 +13,9 @@ const TOOLS = {
     description: "Fetch, then report the repo's primary checkout, its default branch, the ref a new branch should start from, and every worktree with its branch and the number of commits it has that the base lacks. Read-only apart from the fetch.",
     inputSchema: NONE,
   },
-  open_worktree: {
-    description: "Fetch, then open a new worktree and branch for a unit of work under the primary checkout's .claude/worktrees, starting from the current base, pull its Git LFS files, and link the repo's local notes directory into it. A name already taken gets a numeric suffix. Returns the worktree path and branch.",
-    inputSchema: {
-      type: 'object',
-      properties: {
-        name: { type: 'string', description: 'A short descriptive slug for the work, lowercase words joined by hyphens, such as parser-cache. Never a generic activity word such as roadmap-lap.' },
-        id: { type: 'string', description: "The work's backlog ID, such as R78 or ABC-123, prefixed to the name. Omit where the work has none." },
-        notes: { type: 'string', description: "The repo's local-only notes directory at its root. Defaults to notes.local." },
-      },
-      required: ['name'],
-    },
-  },
   prune_branches: {
     description: "Prune stale worktree registrations, delete claude/ and worktree- branches merged into the default branch, and delete any branch with a deleted upstream and content already on the remote default branch. Never removes a worktree. Returns one line per branch deleted, kept, or still checked out.",
     inputSchema: NONE,
-  },
-  remove_worktree: {
-    description: "Remove a worktree opened by `open_worktree`: run `git worktree remove` from the primary checkout, then delete the worktree directory where it is still on disk, as it is on Windows. Idempotent: a retry on a path already unregistered is a no-op. The notes junction inside the worktree is a link, so the notes in the primary checkout are untouched. Returns one line per step.",
-    inputSchema: {
-      type: 'object',
-      properties: {
-        path: { type: 'string', description: "Absolute path of the worktree to remove. Must be inside the primary checkout's `.claude/worktrees`." },
-      },
-      required: ['path'],
-    },
   },
   landing_facts: {
     description: "Report the facts used to choose how work leaves its branch in this clone: whether it is a fork, the push mode (confirm-push or auto-push), the post mode (confirm-post or auto-post), and the landing mode (merge or pr), each with where it was read. Read from per-clone git config first, then gh for the landing mode where installed. Read-only.",
@@ -193,54 +172,6 @@ async function findCheckouts($: any): Promise<string> {
   ].join('\n')
 }
 
-// A junction on Windows, which needs no privilege, and a symbolic link
-// elsewhere. $.fs has no link call.
-// ponytail: Windows is read off a drive-letter path, there being no platform call.
-async function link($: any, target: string, at: string): Promise<Ran> {
-  if (/^[A-Za-z]:[\\/]/.test(target) && /[&|<>^%()"]/.test(target + at)) {
-    return { exitCode: 1, stdout: '', stderr: 'a character in the path is an operator in cmd' }
-  }
-  return /^[A-Za-z]:[\\/]/.test(target)
-    ? run($, ['cmd', '/c', 'mklink', '/J', at.replace(/\//g, '\\'), target.replace(/\//g, '\\')])
-    : run($, ['ln', '-s', target, at])
-}
-
-async function openWorktree($: any, e: any): Promise<string> {
-  const slug = String(e.name ?? '')
-  const id = String(e.id ?? '')
-  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)) throw new Error(`name ${JSON.stringify(slug)} is not lowercase words joined by hyphens`)
-  if (id && !/^[A-Za-z0-9]+([.-][A-Za-z0-9]+)*$/.test(id)) throw new Error(`id ${JSON.stringify(id)} is not a backlog ID such as R78 or ABC-123`)
-  const notes = String(e.notes ?? 'notes.local')
-  if (!/^[A-Za-z0-9._-]+$/.test(notes) || /^\.\.?$/.test(notes)) throw new Error(`notes ${JSON.stringify(notes)} is not the name of a directory at the repo root`)
-  const { main, def, base, baseRef, warnings } = await locate($)
-  const root = `${main}/.claude/worktrees`
-  const wanted = worktreeName(slug, id)
-  let name = wanted
-  for (let n = 2; (await $.fs.exists(`${root}/${name}`)) || (await ok(git($, main, 'show-ref', '--verify', '--quiet', `refs/heads/claude/${name}`))); n++) name = `${wanted}-${n}`
-  const path = `${root}/${name}`
-  await must($, main, 'worktree', 'add', '--no-track', path, '-b', `claude/${name}`, baseRef)
-  // Claude Code runs git with GIT_LFS_SKIP_SMUDGE=1, so the checkout leaves LFS
-  // files as pointers. `git lfs pull` writes them without the smudge filter.
-  // ponytail: only the root .gitattributes is read, so an LFS pattern set only in a nested one is missed.
-  const attributes = `${path}/.gitattributes`
-  if ((await $.fs.exists(attributes)) && /\bfilter=lfs\b/.test(await $.fs.read(attributes).catch(() => ''))) {
-    const pulled = await git($, path, 'lfs', 'pull')
-    if (pulled.exitCode !== 0) warnings.push(`LFS files were left as pointers, so run \`git lfs pull\` in the worktree: ${firstLine(pulled.stderr) || `exit ${pulled.exitCode}`}`)
-  }
-  // A session started in the worktree reads its own settings file on Windows.
-  await writeRules($, main, [path]).catch(err => warnings.push(`the push and post rules were not written to the worktree: ${(err as Error).message}`))
-  const lines = [`worktree: ${path}`, `branch: claude/${name}`, `opened from: ${base}`, `primary checkout: ${main}`, `default branch: ${def}`]
-  if (await $.fs.exists(`${main}/${notes}`)) {
-    // `ln -s` into a directory that is there links inside it, and reports success.
-    const linked = (await $.fs.exists(`${path}/${notes}`))
-      ? { exitCode: 1, stdout: '', stderr: 'it is already there' }
-      : await link($, `${main}/${notes}`, `${path}/${notes}`)
-    if (linked.exitCode === 0) lines.push(`notes: ${path}/${notes} links to ${main}/${notes}`)
-    else warnings.push(`${notes} was not linked into the worktree, so write notes to ${main}/${notes}: ${linked.stderr.trim() || `exit ${linked.exitCode}`}`)
-  }
-  return [...lines, ...warnings.map(w => `warning: ${w}`)].join('\n')
-}
-
 // The tree left by merging `ref` into `base`, or nothing where the merge
 // conflicts: exit 1, with the tree the conflict left. Any other failure throws
 // with git's message. A git before 2.41 rejects --attr-source. 2.41.0 and
@@ -305,42 +236,6 @@ async function onBase($: any, main: string, empty: string, tree: string, base: s
     if ((await mergedTree($, main, empty, base, ref, `${c}^`)) !== tree) return false
   }
   return true
-}
-
-// `git worktree remove` on Windows exits 0 and unregisters the worktree, but
-// leaves its directory on disk with the notes junction inside. The directory
-// is deleted here after a 0 or a 128-with-"not a working tree" exit; both
-// `rd /s /q` on Windows and `rm -rf` elsewhere were measured not to follow the
-// junction. A cmd operator in the path is rejected, matching `link`.
-async function removeWorktree($: any, e: any): Promise<string> {
-  const raw = String(e.path ?? '').trim()
-  if (!raw) throw new Error('path is empty')
-  const main = await primary($)
-  const posixMain = main.replace(/\\/g, '/').replace(/\/$/, '')
-  const path = raw.replace(/\\/g, '/').replace(/\/$/, '')
-  const win = /^[A-Za-z]:[\\/]/.test(main)
-  const fold = (p: string) => (win ? p.toLowerCase() : p)
-  const root = `${fold(posixMain)}/.claude/worktrees/`
-  if (!fold(path).startsWith(root) || path.split('/').includes('..')) {
-    throw new Error(`${raw} is not inside ${posixMain}/.claude/worktrees`)
-  }
-  const lines: string[] = []
-  const removed = await git($, main, 'worktree', 'remove', path)
-  if (removed.exitCode === 0) lines.push(`unregistered: ${path}`)
-  else if (removed.exitCode === 128 && /not a working tree/i.test(removed.stderr)) lines.push(`already unregistered: ${path}`)
-  else throw new Error(`git worktree remove: ${firstLine(removed.stderr) || `exit ${removed.exitCode}`}`)
-  if (await $.fs.exists(path)) {
-    if (win && /[&|<>^%()"]/.test(path)) throw new Error(`cannot delete ${path}: a character in the path is an operator in cmd`)
-    const argv = win ? ['cmd', '/c', 'rd', '/s', '/q', path.replace(/\//g, '\\')] : ['rm', '-rf', path]
-    const del = await run($, argv)
-    if (del.exitCode !== 0 && (await $.fs.exists(path))) {
-      throw new Error(`deleting ${path}: ${firstLine(del.stderr) || `exit ${del.exitCode}`}`)
-    }
-    lines.push(`deleted: ${path}`)
-  } else {
-    lines.push(`directory already gone: ${path}`)
-  }
-  return lines.join('\n')
 }
 
 async function pruneBranches($: any): Promise<string> {
@@ -658,9 +553,7 @@ export const register: Register = on => {
   })
 
   on('tool.call', { tool: 'mcp__session-skills__find_checkouts' }, async $ => answer('find_checkouts', () => findCheckouts($)))
-  on('tool.call', { tool: 'mcp__session-skills__open_worktree' }, async ($, e: any) => answer('open_worktree', () => openWorktree($, e)))
   on('tool.call', { tool: 'mcp__session-skills__prune_branches' }, async $ => answer('prune_branches', () => pruneBranches($)))
-  on('tool.call', { tool: 'mcp__session-skills__remove_worktree' }, async ($, e: any) => answer('remove_worktree', () => removeWorktree($, e)))
   on('tool.call', { tool: 'mcp__session-skills__landing_facts' }, async $ => answer('landing_facts', () => landingFacts($)))
   on('tool.call', { tool: 'mcp__session-skills__set_push_policy' }, async ($, e: any) => answer('set_push_policy', () => setPushPolicy($, e)))
 

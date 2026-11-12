@@ -1,8 +1,9 @@
 // The plugin's hooks module: the tools a session calls to read the claim
-// ledger, write its claim, and release it, and the release at session end for a
-// session that never wrapped.
+// ledger, write its claim, and release it, the release at session end for a
+// session that never wrapped, and the two worktree tools of worktree.ts.
 import type { Register } from 'claude-code'
 import { type Entry, dead, fileOf, ownedBy, parse } from './ledger'
+import { WORKTREE_TOOLS, worktreeTools } from './worktree'
 
 const TOOLS = {
   read_ledger: {
@@ -179,8 +180,9 @@ async function answer($: any, name: string, run: (main: string) => Promise<strin
 }
 
 export const register: Register = on => {
+  worktreeTools(on)
   on('session.start', async ($, e, next) => {
-    for (const [name, tool] of Object.entries(TOOLS)) await $.tool.register({ name, ...tool, isDeferred: false })
+    for (const [name, tool] of Object.entries({ ...TOOLS, ...WORKTREE_TOOLS })) await $.tool.register({ name, ...tool, isDeferred: false })
     return next(e)
   })
 

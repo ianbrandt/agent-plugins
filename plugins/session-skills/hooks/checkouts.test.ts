@@ -4,7 +4,7 @@
 // branch, an unmerged branch deleted by the prune, and a clone in a confirm
 // mode with no rule in its settings file.
 import { expect, test } from 'claude-code/testing'
-import { askRules, outward, pickBase, POST_RULES, PUSH_RULES, refLine, worktreeName } from './checkouts'
+import { askRules, outward, pickBase, POST_RULES, PUSH_RULES, refLine } from './checkouts'
 
 test('a new branch starts from origin, except where the local default branch has everything origin has', () => {
   expect(pickBase('main', false, true, false, false)).toEqual({ base: 'main' })
@@ -26,11 +26,6 @@ test('a ref is read from the line with its name, and no such line is a ref that 
   expect(refLine(`${head} \r\n`, head)).toEqual({ symref: '' })
   expect(refLine('refs/heads/main/topic \n', 'refs/heads/main')).toBeNull()
   expect(refLine('refs/heads/main \nrefs/heads/main/topic \n', 'refs/heads/main')).toEqual({ symref: '' })
-})
-
-test('a worktree is named for its backlog ID, lowercased, then its slug', () => {
-  expect(worktreeName('parser-cache', 'R78')).toBe('r78-parser-cache')
-  expect(worktreeName('parser-cache')).toBe('parser-cache')
 })
 
 // A primary checkout at /repo. `git` answers a command, given without its
@@ -133,10 +128,10 @@ test('find_checkouts fetches origin by name, and fetches nothing where there is 
 
 // git exits 2 for a remote it does not have. Any other failure is no answer,
 // and Claude Code reports a git that crashed as exit 1 with no output.
-test('the tools report a lookup of origin that failed, and fetch, open, and prune nothing', async ($: any, on: any) => {
+test('the tools report a lookup of origin that failed, and fetch and prune nothing', async ($: any, on: any) => {
   let said: Said = { exitCode: 128, stdout: '', stderr: 'fatal: bad config line 1 in file .git/config\n' }
-  const calls = world(on, line => (line === 'remote get-url origin' ? said : reap(line)), l => (l.startsWith('ln -s') ? '' : undefined))
-  for (const [name, input] of [['find_checkouts', {}], ['open_worktree', { name: 'a-b' }], ['prune_branches', {}], ['landing_facts', {}]] as const) {
+  const calls = world(on, line => (line === 'remote get-url origin' ? said : reap(line)))
+  for (const [name, input] of [['find_checkouts', {}], ['prune_branches', {}], ['landing_facts', {}]] as const) {
     const ran = await call($, name, input)
     expect(ran.isError).toBe(true)
     expect(ran.text).toBe(`${name}: check failed: fatal: bad config line 1 in file .git/config`)
@@ -161,9 +156,8 @@ test('find_checkouts reads the default branch after the fetch, and from the remo
 
 // An origin/HEAD set on purpose to another branch is the user's.
 test('the tools leave alone an origin/HEAD that names a branch origin has', async ($: any, on: any) => {
-  const calls = world(on, held, line => (line.startsWith('ln -s') ? '' : undefined))
+  const calls = world(on, held)
   await call($, 'find_checkouts')
-  await call($, 'open_worktree', { name: 'a-b' })
   await call($, 'prune_branches')
   expect(calls.filter(c => c.includes('set-head') || c.includes('followRemoteHEAD'))).toEqual([])
 })
@@ -183,10 +177,10 @@ test('a branch with only branches under its name is not there, and main is the g
 // Claude Code reports a git that crashed as exit 1 with no output.
 const changes = (calls: string[]) => calls.filter(c => c.startsWith('worktree add') || c.startsWith('worktree prune') || c.startsWith('branch -') || c.includes('set-head'))
 for (const [what, failing] of [['origin/HEAD', READ + HEAD], ['the local default branch', `${READ}refs/heads/main`]]) {
-  test(`the tools report a read of ${what} that failed, and open, set, and prune nothing`, async ($: any, on: any) => {
+  test(`the tools report a read of ${what} that failed, and set and prune nothing`, async ($: any, on: any) => {
     let said: Said = { exitCode: 128, stdout: '', stderr: 'fatal: unexpected line in .git/packed-refs: garbage\nmore\n' }
-    const calls = world(on, line => (line === failing ? said : reap(line)), l => (l.startsWith('ln -s') ? '' : undefined))
-    for (const [name, input] of [['find_checkouts', {}], ['open_worktree', { name: 'a-b' }], ['prune_branches', {}]] as const) {
+    const calls = world(on, line => (line === failing ? said : reap(line)))
+    for (const [name, input] of [['find_checkouts', {}], ['prune_branches', {}]] as const) {
       const ran = await call($, name, input)
       expect(ran.isError).toBe(true)
       expect(ran.text).toBe(`${name}: check failed: fatal: unexpected line in .git/packed-refs: garbage`)
@@ -199,9 +193,9 @@ for (const [what, failing] of [['origin/HEAD', READ + HEAD], ['the local default
 
 // The fetch failed, so `git remote set-head` was not run, and origin/HEAD is
 // still the commit that `git update-ref` wrote.
-test('the tools report an origin/HEAD that is still not a symbolic ref, and open and prune nothing on a guess', async ($: any, on: any) => {
+test('the tools report an origin/HEAD that is still not a symbolic ref, and prune nothing on a guess', async ($: any, on: any) => {
   const calls = world(on, line => (line.includes('fetch') ? 1 : line === READ + HEAD ? shown(line, '') : reap(line)))
-  for (const [name, input] of [['find_checkouts', {}], ['open_worktree', { name: 'a-b' }], ['prune_branches', {}]] as const) {
+  for (const [name, input] of [['find_checkouts', {}], ['prune_branches', {}]] as const) {
     const ran = await call($, name, input)
     expect(ran.isError).toBe(true)
     expect(ran.text).toContain(`${name}: refs/remotes/origin/HEAD is not a symbolic ref, so the default branch is not known`)
@@ -227,87 +221,6 @@ test('the default branch is the one a dangling origin/HEAD points at, and nothin
   said = { exitCode: 128, stdout: '', stderr: 'fatal: bad config line 1 in file .git/config\n' }
   expect((await call($, 'prune_branches')).text).toBe('prune_branches: check failed: fatal: bad config line 1 in file .git/config')
   expect(calls.filter(c => c.startsWith('branch -') || c.includes('set-head'))).toEqual([])
-})
-
-test('open_worktree opens from a local default branch that is ahead, and links the notes directory', async ($: any, on: any) => {
-  const calls = world(on, held, line => (line.startsWith('ln -s') ? '' : undefined), ['/repo/notes.local'])
-  const text = (await call($, 'open_worktree', { name: 'parser-cache', id: 'R78' })).result
-  expect(calls.indexOf(FETCH)).toBeLessThan(calls.indexOf('worktree add --no-track /repo/.claude/worktrees/r78-parser-cache -b claude/r78-parser-cache refs/heads/main'))
-  expect(calls).toContain('ln -s /repo/notes.local /repo/.claude/worktrees/r78-parser-cache/notes.local')
-  expect(text).toContain('worktree: /repo/.claude/worktrees/r78-parser-cache\nbranch: claude/r78-parser-cache\nopened from: main\n')
-})
-
-test('open_worktree takes a Jira-style ID with a hyphen', async ($: any, on: any) => {
-  const calls = world(on, held, undefined, [])
-  expect((await call($, 'open_worktree', { name: 'parser-cache', id: 'ABC-123' })).result).toContain('branch: claude/abc-123-parser-cache\n')
-  expect(calls).toContain('worktree add --no-track /repo/.claude/worktrees/abc-123-parser-cache -b claude/abc-123-parser-cache refs/heads/main')
-  for (const id of ['-ABC', 'ABC-', 'ABC--1', '..']) expect((await call($, 'open_worktree', { name: 'a-b', id })).isError).toBe(true)
-})
-
-test('open_worktree suffixes a name that a directory or a branch already has', async ($: any, on: any) => {
-  const calls = world(on, line => (line === 'show-ref --verify --quiet refs/heads/claude/a-b-2' ? undefined : held(line)), undefined, ['/repo/.claude/worktrees/a-b'])
-  expect((await call($, 'open_worktree', { name: 'a-b' })).result).toContain('branch: claude/a-b-3\n')
-  expect(calls).toContain('worktree add --no-track /repo/.claude/worktrees/a-b-3 -b claude/a-b-3 refs/heads/main')
-})
-
-test('open_worktree refuses a name that is not lowercase words joined by hyphens, and reports a notes directory it could not link', async ($: any, on: any) => {
-  const calls = world(on, held, undefined, ['/repo/notes.local'])
-  for (const input of [{ name: 'Roadmap Lap' }, { name: '../x' }, { name: 'a-b', id: 'R1/..' }, { name: 'a-b', notes: '../etc' }]) {
-    expect((await call($, 'open_worktree', input)).isError).toBe(true)
-  }
-  expect(calls.filter(c => c.startsWith('worktree add'))).toEqual([])
-  expect((await call($, 'open_worktree', { name: 'a-b' })).result).toContain('warning: notes.local was not linked')
-})
-
-test('open_worktree does not link the notes directory over one that is already in the worktree', async ($: any, on: any) => {
-  const calls = world(on, held, line => (line.startsWith('ln -s') ? '' : undefined), ['/repo/notes.local', '/repo/.claude/worktrees/a-b/notes.local'])
-  const text = (await call($, 'open_worktree', { name: 'a-b' })).result
-  expect(text).toContain('warning: notes.local was not linked into the worktree, so write notes to /repo/notes.local: it is already there')
-  expect(calls.filter(c => c.startsWith('ln'))).toEqual([])
-})
-
-test('open_worktree takes a notes name of letters, digits, dots, underscores, and hyphens only', async ($: any, on: any) => {
-  const calls = world(on, held, line => (line.startsWith('ln -s') ? '' : undefined), ['/repo/notes.local', '/repo/notes_2-x'])
-  for (const notes of ['notes&calc', '%X%', 'a b', '.', '..', '', 'a"b']) {
-    const ran = await call($, 'open_worktree', { name: 'a-b', notes })
-    expect(ran.isError).toBe(true)
-    expect(ran.text).toContain('is not the name of a directory at the repo root')
-  }
-  expect(calls.filter(c => c.startsWith('worktree add'))).toEqual([])
-  expect((await call($, 'open_worktree', { name: 'a-b', notes: 'notes_2-x' })).result).toContain('notes: /repo/.claude/worktrees/a-b/notes_2-x links to')
-})
-
-test('open_worktree links a Windows notes directory with a junction', async ($: any, on: any) => {
-  const cmd = (line: string) => (line.startsWith('cmd') ? '' : undefined)
-  const plain = world(on, held, cmd, ['C:/repo/notes.local'], {}, 'C:/repo')
-  expect((await call($, 'open_worktree', { name: 'a-b' })).result).toContain('notes: C:/repo/.claude/worktrees/a-b/notes.local links to')
-  expect(plain.filter(c => c.startsWith('cmd'))).toEqual(['cmd /c mklink /J C:\\repo\\.claude\\worktrees\\a-b\\notes.local C:\\repo\\notes.local'])
-})
-
-// Claude Code runs git with GIT_LFS_SKIP_SMUDGE=1, so `git worktree add` leaves LFS files as pointers.
-test('open_worktree pulls LFS files where the repo has them, and reports a pull that failed', async ($: any, on: any) => {
-  const lfs = { '/repo/.claude/worktrees/a-b/.gitattributes': '*.jar filter=lfs diff=lfs merge=lfs -text\n' }
-  let pull: Said = undefined
-  const calls = world(on, line => (line === 'lfs pull' ? pull : held(line)), undefined, Object.keys(lfs), lfs)
-  expect((await call($, 'open_worktree', { name: 'a-b' })).result).not.toContain('warning')
-  expect(calls.indexOf('lfs pull')).toBeGreaterThan(calls.findIndex(c => c.startsWith('worktree add')))
-  pull = { exitCode: 1, stdout: '', stderr: "git: 'lfs' is not a git command.\n" }
-  expect((await call($, 'open_worktree', { name: 'a-b' })).result).toContain("warning: LFS files were left as pointers, so run `git lfs pull` in the worktree: git: 'lfs' is not a git command.")
-})
-
-test('open_worktree pulls nothing where the repo has no LFS files', async ($: any, on: any) => {
-  const files = { '/repo/.claude/worktrees/a-b/.gitattributes': '* text=auto\n' }
-  const calls = world(on, held, undefined, Object.keys(files), files)
-  expect((await call($, 'open_worktree', { name: 'a-b' })).result).toContain('worktree: /repo/.claude/worktrees/a-b\n')
-  expect(calls.filter(c => c.startsWith('lfs'))).toEqual([])
-})
-
-// In an argument, cmd reads these as operators or expands them.
-test('open_worktree runs no cmd for a Windows path with a character that cmd reads as an operator', async ($: any, on: any) => {
-  const calls = world(on, held, line => (line.startsWith('cmd') ? '' : undefined), ['C:/my%X%repo/notes.local'], {}, 'C:/my%X%repo')
-  const text = (await call($, 'open_worktree', { name: 'a-b' })).result
-  expect(text).toContain('warning: notes.local was not linked into the worktree, so write notes to C:/my%X%repo/notes.local: ')
-  expect(calls.filter(c => c.startsWith('cmd'))).toEqual([])
 })
 
 // Every gone branch but feat-declined has the base's tree when merged.
@@ -713,13 +626,6 @@ test('set_push_policy changes nothing when the user keeps the mode, when nobody 
   expect((await call($, 'set_push_policy', {})).isError).toBe(true)
   expect(config).toEqual({})
   expect(w.files).toEqual({})
-})
-
-test('open_worktree writes the rules to the new worktree', async ($: any, on: any) => {
-  const files: Record<string, string> = {}
-  world(on, line => (line === 'remote get-url upstream' ? 2 : held(line)), undefined, [], files)
-  await call($, 'open_worktree', { name: 'parser-cache' })
-  expect(asks(files['/repo/.claude/worktrees/parser-cache/.claude/settings.local.json'])).toEqual([...PUSH_RULES, ...POST_RULES])
 })
 
 // The reader behind the request for a next step.
