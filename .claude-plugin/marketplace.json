@@ -23,10 +23,10 @@
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/roadmap-skills",
-        "ref": "roadmap-skills-v0.22.2",
-        "sha": "ef003e46e6531f2ccb8ccbfded09bc9a1a9f1d41"
+        "ref": "roadmap-skills-v0.23.0",
+        "sha": "276719713f928ffe6912e34d4b1d736663fef328"
       },
-      "version": "0.22.2",
+      "version": "0.23.0",
       "description": "Skills for driving a repo's roadmap: claim the next item and build it, for repos you own or upstream OSS projects you contribute to via a fork.",
       "keywords": ["roadmap", "backlog", "worktree", "oss", "contribution"]
     },
@@ -36,12 +36,12 @@
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/session-skills",
-        "ref": "session-skills-v0.30.0",
-        "sha": "ef003e46e6531f2ccb8ccbfded09bc9a1a9f1d41"
+        "ref": "session-skills-v0.31.0",
+        "sha": "276719713f928ffe6912e34d4b1d736663fef328"
       },
-      "version": "0.30.0",
-      "description": "Puts a session in its own git worktree and gets it back out again: adopt the worktree work is already in flight on or open a fresh one, and land the work by what the repo is rather than by a declared mode.",
-      "keywords": ["worktree", "session", "landing", "wrap-up", "resume"]
+      "version": "0.31.0",
+      "description": "Puts a unit of work on its own branch and gets it back off again: pick up the branch work is already in flight on or open a new one, and land the work by what the repo is rather than by a declared mode.",
+      "keywords": ["branch", "session", "landing", "wrap-up", "resume"]
     },
     {
       "name": "parallel-session-skills",
@@ -49,11 +49,11 @@
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/parallel-session-skills",
-        "ref": "parallel-session-skills-v0.4.0",
-        "sha": "ef003e46e6531f2ccb8ccbfded09bc9a1a9f1d41"
+        "ref": "parallel-session-skills-v0.5.0",
+        "sha": "276719713f928ffe6912e34d4b1d736663fef328"
       },
-      "version": "0.4.0",
-      "description": "Keeps several sessions working one repo at once off each other's files: claim a lane in a shared ledger before writing code, reap dead claims without killing a live sibling, and conduct 2-5 lanes at once when a run has nobody watching it.",
+      "version": "0.5.0",
+      "description": "Keeps several sessions working one repo at once off each other's files: open a git worktree for each, claim a lane in a shared ledger before writing code, reap dead claims without killing a live sibling, and conduct 2-5 lanes at once when a run has nobody watching it.",
       "keywords": ["claim-ledger", "parallel", "worktree", "pipeline", "unattended"]
     },
     {
