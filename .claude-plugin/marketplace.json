@@ -10,10 +10,10 @@
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/gradle-skills",
-        "ref": "gradle-skills-v1.11.0",
-        "sha": "09d12c8a4d824a2d51c4494749fe8cf43b1074b2"
+        "ref": "gradle-skills-v1.12.0",
+        "sha": "f74b469a60dc0f1fe37f7783ae1c1679405b6b15"
       },
-      "version": "1.11.0",
+      "version": "1.12.0",
       "description": "Skills for working with Gradle projects.",
       "keywords": ["gradle", "dependencies", "version-catalog", "wrapper"]
     },
