@@ -189,6 +189,7 @@ test('the user is told when the rename is refused', async ($: any, on: any) => {
   await $.tool.call({ tool: TITLE, title: 'Parser core' })
   await end($, 'Done.')
   expect(toasts.join()).toContain('Parser core')
+  expect(toasts.join()).not.toContain('session-skills:')
 })
 
 // The context added to a command's result, with the command's own result

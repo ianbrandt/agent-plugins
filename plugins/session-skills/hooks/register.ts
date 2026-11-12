@@ -501,7 +501,7 @@ export const register: Register = on => {
       })
     }
     // A rule that cannot be written leaves a push unasked in auto mode, so the user is told.
-    await startRules($).catch(err => $.ui.toast(`session-skills: the push and post rules were not written. ${(err as Error).message}`))
+    await startRules($).catch(err => $.ui.toast(`The push and post rules were not written. ${(err as Error).message}`))
     return next(e)
   })
 
@@ -552,7 +552,7 @@ export const register: Register = on => {
     if (e.agentId || !title) return ran
     const args = title
     title = ''
-    await $.command.run({ command: 'rename', args }).catch(() => $.ui.toast(`session-skills: the session title "${args}" could not be set. Use /rename.`))
+    await $.command.run({ command: 'rename', args }).catch(() => $.ui.toast(`The session title "${args}" could not be set. Use /rename.`))
     return ran
   })
 
