@@ -61,6 +61,18 @@ for Fable 5.1. At Low it ran tests less often, and users reported inferences sta
 any effort, require each requested part listed as done or not done in the result. For a stage that
 changes code, require test or build output there too.
 
+**An account that is not served Fable 5.2 has no apex tier.** Where the newest Fable an account is
+served is Fable 5.1, send no stage to it. On the five cost charts in the launch post that include
+Fable 5.1, the everyday tier at Extra scored above its best for less per task: on FrontierCode 2.0,
+43.4% for $5.18 against 32.4% for $8.68. On such an account the narrow set in the table runs on the
+everyday tier at Extra, and a build stage stays on the everyday tier at High. A stage left open at
+Extra goes to a second provider where one is installed, then to the everyday tier at Max, which
+scored 45.5% for $12.82. Which Fable answers is not visible from the `fable` alias, so take that
+from the user or from the model a launched agent reports. Until one of them answers, treat the
+account as served Fable 5.2, ask the first apex agent to state its model in its result, and hold
+every other apex launch until that result is back. If it reports Fable 5.1, rerun that stage on the
+everyday tier: at Extra for the narrow set, at High for a build stage.
+
 **"Mechanical" means failure is loud.** A stage that could fail silently is not mechanical, however
 rote it looks. Give it a task-hero model and a real check.
 
@@ -94,7 +106,7 @@ appears in the session's skill list:
   still counts.
 
 Without one, a silent-failure verify runs on the everyday tier at Extra, and a stalled stage goes to
-the apex tier at High.
+the apex tier at High, or to the everyday tier at Max on an account that is not served Fable 5.2.
 
 ## 2. The effort labels
 
@@ -115,7 +127,8 @@ Rough fit:
   one is installed (§1), then to the apex tier at High. On FrontierCode 2.0 (2026-11-09), the apex
   tier at High matched the everyday tier at Max for half the cost per task, and the apex tier at
   Max scored below the apex tier at Extra for three times the cost. Raise the apex tier to Extra only where a
-  gain is measured.
+  gain is measured. The one exception is an account that is not served Fable 5.2, where the
+  everyday tier at Max is the last step (§1).
 
 **A session running at a high effort should not make every stage pay for it.** Set the expensive
 tier on the stages that need it and let the rest run cheap.
