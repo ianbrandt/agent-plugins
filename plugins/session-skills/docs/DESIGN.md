@@ -92,7 +92,7 @@ runs of each arm on Sonnet 5.5, the first reply stated a next step 4 of 4 times 
 0 of 4 without it. Opus 5.5 stated one 2 of 2 times either way.
 
 A follow-up prompt after the reply used to do this. It showed in the transcript as a message from the
-plugin, it took a fenced block as the only sign of a next step, so it fired after "This session
+plugin, only a fenced block counted as a sign of a next step, so it fired after "This session
 carries on with R104", and it cost a turn.
 
 No hook adds the rules to a subagent, because a subagent doesn't end a session.

@@ -195,9 +195,9 @@ intended part changed.
 The branch stays until the PR merges, since review fixes go on the same branch, and so does its
 worktree where it has one. A backlog record kept in a tracked file rides in the PR and merges with
 it.
-One kept outside the tree records the item as in review until the PR merges, so a declined PR leaves
-it open. Once the PR has merged, the session holding a worktree for it removes that worktree
-with the concurrency plugin's worktree skill, and `work-on-a-branch` §4's prune then
+One kept outside the tree records the item as in review until the PR merges, so the item stays open
+when the PR is declined. Once the PR has merged, the session holding a worktree for it removes that
+worktree with the concurrency plugin's worktree skill, and `work-on-a-branch` §4's prune then
 deletes the branch.
 
 ## 3. Landing in a fork—a pull request against upstream
@@ -231,10 +231,10 @@ for its destination in `work-on-a-branch` §3, before the first push.
 
 **Fetch upstream before designing, not just before filing.** `git fetch upstream` and diff
 `HEAD..upstream/$DEFAULT` at the *start* of a session. A stacked or resumed branch skips the
-"branched from upstream" check by construction, and a held branch keeps aging while it waits. The
-likeliest overlap is the user's earlier contributions, since those touch the code still being
-worked in. If the diff is non-empty, read those commits before writing code: duplicating merged work
-is a wasted branch at best, and a hand-rolled reimplementation of a public API at worst.
+"branched from upstream" check by construction, and a held branch falls further behind while it is
+held. The likeliest overlap is the user's earlier contributions, since those touch the code still
+being worked in. If the diff is non-empty, read those commits before writing code: duplicating
+merged work wastes the branch, or at worst reimplements a public API by hand.
 
 ## 4. Wrap-up actions—every session, finished or not
 
@@ -276,9 +276,9 @@ The rest, in order:
   the repo has a backlog plugin (`work-on-a-branch` §0's backlog seam), its invocation is the
   snippet's entry point: it finds the in-flight work itself, so state the unfinished **branch**
   alongside it and leave the recap out.
-- **Title the session if it has no title yet, or a better one fits now**, the way the session rules
-  specify—they load with the first prompt of every session, so the rule is already in context. Only a title given
-  earlier in this session that still fits is left alone.
+- **Title the session if it has no title yet, or a better one fits now**, as described in the
+  session rules—they are loaded with the first prompt of every session, so the rule is already in
+  context. Only a title given earlier in this session that still fits is left alone.
 
 How the wrap-up reads is covered by the always-on rules of `writing-conventions`, where it is
 installed. Open items and next steps go as a bulleted list of instructions, each with the action,

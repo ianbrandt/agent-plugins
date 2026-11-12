@@ -19,11 +19,11 @@ API names as they are.
 ## Judge whether the session should continue
 
 At the end of a turn that closed a unit of work, weigh continuing against handing off without
-writing the weighing out: a paragraph about session length costs more than the handoff it was
-hedging against. The outcome is always written, as the last text of the turn: the hand-off block,
-or one line stating that this session takes the next step. When nothing can start yet, because
-every item left is gated or claimed, write one line on what the next one waits on, then the block
-for when it can start. The title rule above runs on its own trigger, whatever is decided here.
+writing the weighing out: a paragraph about session length costs more than the handoff itself. The
+outcome is always written, as the last text of the turn: the hand-off block, or one line stating
+that this session takes the next step. When nothing can start yet, because every item left is gated
+or claimed, write one line on what the next one waits on, then the block for when it can start. The
+title rule above runs on its own trigger, whatever is decided here.
 
 **The turn that runs a step the user had to confirm closes the unit too**: the push after a landing,
 the plugin update after the push. Most next steps that went missing were in that turn, after a
@@ -48,7 +48,7 @@ Hand off when:
 Keep going when:
 
 - **A diff is built but unreviewed**, a build unverified, or a hypothesis live and unwritten.
-  Whatever exists nowhere but this transcript is what a fresh session cannot re-derive.
+  A fresh session cannot re-derive what exists only in this transcript.
 - **The work is mid-unit.** Wait for the landing; handing off from the middle of a unit costs more
   than it saves.
 
@@ -76,8 +76,8 @@ user search back for the block.
 
 Where the repo tracks work in a backlog, the entry point is that backlog plugin's invocation.
 It resolves in-flight work by itself, from the primary checkout, so the snippet needs no branch or
-worktree path—and a freehand prompt reconstructing that state is how a resume becomes a second branch on
-work already half-built.
+worktree path—and a session resumed from a freehand prompt that reconstructs that state can open a
+second branch on work already half-built.
 
 ## Push and post only at the user's request
 

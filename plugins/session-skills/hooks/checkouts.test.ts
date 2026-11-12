@@ -179,7 +179,7 @@ test('find_checkouts reads the default branch after the fetch, and from the remo
 })
 
 // An origin/HEAD set on purpose to another branch is the user's.
-test('the tools leave alone an origin/HEAD that names a branch origin has', async ($: any, on: any) => {
+test('the tools leave alone an origin/HEAD that points at a branch origin has', async ($: any, on: any) => {
   const calls = world(on, held)
   await call($, 'find_checkouts')
   await call($, 'prune_branches')
@@ -312,8 +312,8 @@ test('prune_branches reads the default branch after the fetch', async ($: any, o
   expect(deleted(calls)).toEqual([])
 })
 
-// `git update-ref` writes origin/HEAD as a commit, which resolves and names no
-// branch. Read as it is, the default branch would be the guess, main.
+// `git update-ref` writes origin/HEAD as a commit, which resolves but is not the
+// name of a branch. Read as it is, the default branch would be the guess, main.
 test('prune_branches sets an origin/HEAD that is not a symbolic ref from the remote', async ($: any, on: any) => {
   const develop = 'refs/remotes/origin/develop'
   let set = false
@@ -431,7 +431,7 @@ test('prune_branches checks a merge commit with a change of its own, and skips o
   expect(deleted(calls)).not.toContain('branch -D feat-hand')
 })
 
-test('prune_branches keeps a branch whose merge commits cannot be listed, or that has a merge of three parents', async ($: any, on: any) => {
+test('prune_branches keeps a branch with merge commits that cannot be listed, or with a merge of three parents', async ($: any, on: any) => {
   const over: Record<string, string | number> = {}
   const calls = world(on, line => over[line] ?? (line.startsWith(GONE) ? 'feat-x\t[gone]' : line.startsWith('rev-list --no-merges --ancestry-path=FORK') ? 'c1' : reap(line)))
   const list = 'rev-list --merges --ancestry-path=FORK refs/remotes/origin/main..refs/heads/feat-x'
@@ -633,7 +633,7 @@ test('set_push_policy asks before a switch to an auto mode, then takes its rules
   await call($, 'set_push_policy', { push: 'confirm-push' })
   expect(w.asked).toHaveLength(1)
   expect(asks(w.files[WT_LOCAL])).toEqual([...POST_RULES, ...PUSH_RULES])
-  // Nothing is written into a worktree whose directory is gone.
+  // Nothing is written into a worktree with no directory on disk.
   delete w.files[WT_LOCAL]
   w.gone = '/repo/.claude/worktrees/r1-a'
   await call($, 'set_push_policy', { post: 'confirm-post' })

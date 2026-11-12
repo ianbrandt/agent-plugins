@@ -34,7 +34,7 @@ A branch stays checked out in the primary checkout until its work is merged or i
 opened, so a checkout on another branch has work in flight.
 
 For a session that is in a worktree, a repo-root path handed over in context—from a git status
-block, a memory, or a doc link—means the **primary checkout**, so taking it literally lands the
+block, a memory, or a doc link—means the primary checkout, so taking it literally lands the
 edit on the default branch instead of the session's branch. The fix for a file that lives only in
 the primary checkout, such as an untracked backlog, is here too, along with the prune that keeps
 merged branches from accumulating. That includes PR branches the host squashed or rebased on merge,
@@ -70,19 +70,18 @@ The merged branch of landed work is deleted.
 
 ## What it pairs with
 
-Two seams that other plugins fill are defined in `work-on-a-branch` §0. A **concurrency plugin**
+Two seams that other plugins fill are defined in `work-on-a-branch` §0. A concurrency plugin
 adds the half this plugin deliberately leaves out: a worktree for each session that runs beside
 another, and a shared lease that keeps two or three sessions off each other's files, plus whatever
-it builds on top, an unattended conductor for one. A **backlog
-plugin** is where a session finds what is workable, where something is already in flight, and how to
-record it done.
+is built on top of it, such as an unattended conductor. A backlog plugin is where a session finds
+what is workable, where something is already in flight, and how to record it done.
 
 Used with neither, these skills still do the job: the user states the task, and the landing commit
 is the record. The dependency runs one way—a plugin filling a seam references this one, never the
 reverse—so no such plugin is mentioned here. The family map, with which plugins fill which seam, is
 in the marketplace's README.
 
-`writing-conventions` governs how the wrap-up reads once these actions are done.
+How the wrap-up reads once these actions are done is covered by `writing-conventions`.
 
 ## How it is wired
 
@@ -91,15 +90,14 @@ rules in [`hooks/rules.md`](hooks/rules.md) are added to the first prompt, and a
 `/clear` and compaction. The push and post modes are kept in per-clone `git config`, as
 `session-skills.pushMode` and `session-skills.postMode`. For a confirm mode the plugin writes
 `permissions.ask` rules to `.claude/settings.local.json` in the primary checkout and each worktree,
-which also works under managed settings. A push inside a script or an alias matches no rule. In a confirm mode a push
-or a post chained with another command is refused, so that the prompt shows the push alone. A
-In a confirm mode every push and post in a `claude -p` session is refused, since nobody can answer
-the prompt there.
-The result of a `git push` includes a request for the
-next step, so the reply is written with it in view. In the terminal the session title is set with `/rename` when the
-turn ends, and that command shows as one line. Claude Code
-2.1.314 or later is required. [DESIGN.md](docs/DESIGN.md) covers each tool, how the session title is
-set, and why the rules are loaded by a hook.
+which also works under managed settings. A push inside a script or an alias matches no rule. In a
+confirm mode a push or a post chained with another command is refused, so that the prompt shows
+the push alone, and every push and post in a `claude -p` session is refused, since nobody can
+answer the prompt there. The result of a `git push` includes a request for the next step, so the
+reply is written with it in view. In the terminal the session title is set with `/rename` when the
+turn ends, and that command shows as one line. Claude Code 2.1.314 or later is required.
+[DESIGN.md](docs/DESIGN.md) covers each tool, how the session title is set, and why the rules are
+loaded by a hook.
 
 ## Measuring it
 

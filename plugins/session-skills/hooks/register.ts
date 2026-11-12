@@ -99,8 +99,8 @@ const within = ($: any, main: string, a: string, b: string) => ok(git($, main, '
 
 // origin is named, since a bare `git fetch` reads the remote of the current
 // branch's upstream: the parent repo on a fork, or this repo where the branch
-// tracks a local one. An origin/HEAD that names a branch origin has is left as
-// it is, since it may point at another branch on purpose. Any other is set from
+// tracks a local one. An origin/HEAD that points at a branch origin has is left
+// as it is, since it may point there on purpose. Any other is set from
 // the remote: a repo that was pushed rather than cloned has none, the prune of
 // a renamed default branch leaves one that points at nothing, and one written
 // by `git update-ref` is a commit, not the name of a branch. A repo with no
@@ -369,8 +369,9 @@ async function writeRules($: any, main: string, dirs: string[], lift = false): P
 }
 
 // The rules for the directory a session starts in, and for the primary
-// checkout, whose file a worktree session reads on macOS. Rules are only
-// added here: taking one out is the user's decision, made in set_push_policy.
+// checkout, since a worktree session reads that checkout's file on macOS. Rules
+// are only added here: taking one out is the user's decision, made in
+// set_push_policy.
 async function startRules($: any): Promise<void> {
   const repo = await $.session.repo().catch(() => null)
   if (!repo?.root) return
@@ -394,7 +395,7 @@ async function setPushPolicy($: any, e: any): Promise<string> {
     if (answer !== 'Switch') return ['The user kept the modes as they are.', ...modeLines(now)].join('\n')
   }
   for (const [key, mode] of wanted) await must($, main, 'config', `session-skills.${key}`, mode)
-  // A worktree whose directory was deleted is still listed until it is pruned.
+  // A worktree is still listed after its directory is deleted, until it is pruned.
   const dirs: string[] = []
   for (const w of await worktrees($, main)) if (await $.fs.exists(w.path)) dirs.push(w.path)
   const written = await writeRules($, main, dirs, true)

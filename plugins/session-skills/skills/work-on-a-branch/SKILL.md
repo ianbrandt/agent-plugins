@@ -100,7 +100,7 @@ local commits, and say so in the reply. In `pr` mode or on a fork the local defa
 there too when it is, since those commits would be in the pull request.
 
 **A file written for another machine to read**—a handoff list, a shared to-do, a status note—is
-where this bites hardest, because a second machine editing it is the purpose of the file. Fetch
+where this matters most, because a second machine is meant to edit it. Fetch
 before editing one even when the edit is a single line on the default branch.
 
 ## 2. Resume before you branch
@@ -126,7 +126,7 @@ covers a session, not the work: the ordinary handoff—wrap up cleanly, resume n
 work in flight with no lease at all. Tell 1 or 2 is what fires then, and they are the only two tells
 a repo with no concurrency plugin has.
 
-`$BRANCH` is then that branch, and where it is checked out decides `$WT`:
+`$BRANCH` is then that branch, and `$WT` depends on where it is checked out:
 
 - **In a worktree**: `$WT` is that worktree's path from §1's list, and §5 applies there.
 - **In the primary checkout already**: `$WT` is `$MAIN`.
@@ -161,9 +161,9 @@ Take the first of these that applies.
    none is, stop and report the branch and the paths that are there. The checkout is free once the user says
    that no session is using it, or says to go ahead.
 4. **The user asked for the work on the default branch.** Nothing is opened: `$WT` is `$MAIN` and
-   `$BRANCH` is `$DEFAULT`. This takes the user's request in this conversation, and it is refused
-   where work lands as a pull request (`land-and-wrap` §1: a fork, or `pr` mode): say so, and open a
-   branch. Where `$BASE` is `origin/$DEFAULT`, bring the local branch up to it first:
+   `$BRANCH` is `$DEFAULT`. This case needs the user's request in this conversation, and it is
+   refused where work lands as a pull request (`land-and-wrap` §1: a fork, or `pr` mode): say so,
+   and open a branch. Where `$BASE` is `origin/$DEFAULT`, bring the local branch up to it first:
    `git -C "$MAIN" merge --ff-only "origin/$DEFAULT"`.
 5. **Otherwise, open a branch in the primary checkout**, and `$WT` is `$MAIN`:
 
@@ -270,8 +270,8 @@ shows in `git -C "$WT" status` and NOT in `git -C "$MAIN" status`.
 directory, and any shared ledger a plugin keeps there never propagate to a worktree—that is the
 design, one shared copy
 rather than per-worktree forks of it. A worktree-guard hook, where the environment has one, blocks
-file-edit tools against the primary checkout while a worktree session is active; that is right for
-source files and wrong for this family. Don't relocate the file to satisfy the guard. Make the edit
+file-edit tools against the primary checkout while a worktree session is active; that block is meant
+for source files, not for these. Don't relocate the file to satisfy the guard. Make the edit
 with the `mcp__session-skills__edit_primary_file` tool instead, passing the file's absolute path, the
 passage to replace, and its replacement, or an empty passage to append. A passage that has drifted
 or occurs twice is an error and nothing is written. Never write the whole file back from a copy read
