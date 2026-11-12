@@ -131,6 +131,18 @@ test('open_worktree opens from origin where that is the base, and refuses a base
   expect(calls.filter(c => c.startsWith('worktree add') && c.includes('c-d'))).toEqual([])
 })
 
+// Work in flight on a branch that no worktree has, with the primary checkout
+// busy: a new branch from the base would leave the branch's commits out.
+test('open_worktree checks out an existing branch in place of opening a new one, and refuses one that is not there', async ($: any, on: any) => {
+  const calls = world(on, line => (line === 'show-ref --verify --quiet refs/heads/claude/r78-parser-cache' || line === 'show-ref --verify --quiet refs/heads/feature/x' ? undefined : held(line)))
+  const text = (await call($, 'open_worktree', { branch: 'claude/r78-parser-cache' })).result
+  expect(text).toBe('worktree: /repo/.claude/worktrees/r78-parser-cache\nbranch: claude/r78-parser-cache\nprimary checkout: /repo')
+  expect((await call($, 'open_worktree', { branch: 'feature/x' })).result).toContain('worktree: /repo/.claude/worktrees/feature-x\nbranch: feature/x\n')
+  expect(calls.filter(c => c.startsWith('worktree add'))).toEqual(['worktree add /repo/.claude/worktrees/r78-parser-cache claude/r78-parser-cache', 'worktree add /repo/.claude/worktrees/feature-x feature/x'])
+  const ran = await call($, 'open_worktree', { branch: 'claude/gone' })
+  expect(ran.text).toBe('open_worktree: branch "claude/gone" is not a branch here')
+})
+
 // A session started in the worktree reads its own settings file on Windows.
 test("open_worktree copies the primary checkout's ask rules to the worktree, and no other setting", async ($: any, on: any) => {
   const primary = '/repo/.claude/settings.local.json'

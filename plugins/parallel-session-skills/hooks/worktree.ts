@@ -5,16 +5,17 @@ import type { Register } from 'claude-code'
 
 export const WORKTREE_TOOLS = {
   open_worktree: {
-    description: "Open a new worktree and branch for a lane under the primary checkout's .claude/worktrees, starting from the given base, pull its Git LFS files, copy the primary checkout's ask rules to it, and link the repo's local notes directory into it. A name already taken gets a numeric suffix. Returns the worktree path and branch.",
+    description: "Open a new worktree for a lane under the primary checkout's .claude/worktrees, on a new branch that starts from the given base, or on an existing branch that is in no worktree, pull its Git LFS files, copy the primary checkout's ask rules to it, and link the repo's local notes directory into it. A name already taken gets a numeric suffix. Returns the worktree path and branch.",
     inputSchema: {
       type: 'object',
       properties: {
         name: { type: 'string', description: 'A short descriptive slug for the work, lowercase words joined by hyphens, such as parser-cache. Never a generic activity word such as roadmap-lap.' },
         id: { type: 'string', description: "The work's backlog ID, such as R78 or ABC-123, prefixed to the name. Omit where the work has none." },
         base: { type: 'string', description: "The ref the branch starts from: the `base for a new branch` line that session-skills' find_checkouts returned, such as main or origin/main." },
+        branch: { type: 'string', description: 'An existing branch to check out in the worktree, for work already in flight on a branch that no worktree has. Given in place of name, id, and base.' },
         notes: { type: 'string', description: "The repo's local-only notes directory at its root. Defaults to notes.local." },
       },
-      required: ['name', 'base'],
+      required: [],
     },
   },
   remove_worktree: {
@@ -66,8 +67,11 @@ async function link($: any, target: string, at: string): Promise<Ran> {
 async function openWorktree($: any, e: any): Promise<string> {
   const slug = String(e.name ?? '')
   const id = String(e.id ?? '')
-  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)) throw new Error(`name ${JSON.stringify(slug)} is not lowercase words joined by hyphens`)
-  if (id && !/^[A-Za-z0-9]+([.-][A-Za-z0-9]+)*$/.test(id)) throw new Error(`id ${JSON.stringify(id)} is not a backlog ID such as R78 or ABC-123`)
+  // Work already in flight on a branch keeps that branch: a new one from the
+  // base would leave its commits out.
+  const existing = String(e.branch ?? '')
+  if (!existing && !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)) throw new Error(`name ${JSON.stringify(slug)} is not lowercase words joined by hyphens`)
+  if (!existing && id && !/^[A-Za-z0-9]+([.-][A-Za-z0-9]+)*$/.test(id)) throw new Error(`id ${JSON.stringify(id)} is not a backlog ID such as R78 or ABC-123`)
   const notes = String(e.notes ?? 'notes.local')
   if (!/^[A-Za-z0-9._-]+$/.test(notes) || /^\.\.?$/.test(notes)) throw new Error(`notes ${JSON.stringify(notes)} is not the name of a directory at the repo root`)
   const main = await primary($)
@@ -75,15 +79,19 @@ async function openWorktree($: any, e: any): Promise<string> {
   // The base was picked in session-skills, after its fetch.
   const base = String(e.base ?? '')
   const baseRef = base.startsWith('origin/') ? `refs/remotes/${base}` : `refs/heads/${base}`
-  if (!base || !(await ok(git($, main, 'rev-parse', '--verify', '--quiet', `${baseRef}^{commit}`)))) {
+  const taken = (branch: string) => ok(git($, main, 'show-ref', '--verify', '--quiet', `refs/heads/${branch}`))
+  if (existing && !(await taken(existing))) throw new Error(`branch ${JSON.stringify(existing)} is not a branch here`)
+  if (!existing && (!base || !(await ok(git($, main, 'rev-parse', '--verify', '--quiet', `${baseRef}^{commit}`))))) {
     throw new Error(`base ${JSON.stringify(base)} is not a branch here: pass the "base for a new branch" line of session-skills' find_checkouts`)
   }
   const root = `${main}/.claude/worktrees`
-  const wanted = id ? `${id.toLowerCase()}-${slug}` : slug
+  const wanted = existing ? existing.replace(/^claude\//, '').replace(/[^A-Za-z0-9._-]+/g, '-') : id ? `${id.toLowerCase()}-${slug}` : slug
   let name = wanted
-  for (let n = 2; (await $.fs.exists(`${root}/${name}`)) || (await ok(git($, main, 'show-ref', '--verify', '--quiet', `refs/heads/claude/${name}`))); n++) name = `${wanted}-${n}`
+  for (let n = 2; (await $.fs.exists(`${root}/${name}`)) || (!existing && (await taken(`claude/${name}`))); n++) name = `${wanted}-${n}`
   const path = `${root}/${name}`
-  const added = await git($, main, 'worktree', 'add', '--no-track', path, '-b', `claude/${name}`, baseRef)
+  const branch = existing || `claude/${name}`
+  const add = existing ? [path, existing] : ['--no-track', path, '-b', branch, baseRef]
+  const added = await run($, ['git', '-C', main, 'worktree', 'add', ...add])
   if (added.exitCode !== 0) throw new Error(`git worktree add: ${firstLine(added.stderr) || `exit ${added.exitCode}`}`)
   // Claude Code runs git with GIT_LFS_SKIP_SMUDGE=1, so the checkout leaves LFS
   // files as pointers. `git lfs pull` writes them without the smudge filter.
@@ -105,7 +113,7 @@ async function openWorktree($: any, e: any): Promise<string> {
   } catch (err) {
     warnings.push(`the ask rules in ${main}/${settings} were not copied to the worktree: ${(err as Error).message}`)
   }
-  const lines = [`worktree: ${path}`, `branch: claude/${name}`, `opened from: ${base}`, `primary checkout: ${main}`]
+  const lines = [`worktree: ${path}`, `branch: ${branch}`, ...(existing ? [] : [`opened from: ${base}`]), `primary checkout: ${main}`]
   if (await $.fs.exists(`${main}/${notes}`)) {
     // `ln -s` into a directory that is there links inside it, and reports success.
     const linked = (await $.fs.exists(`${path}/${notes}`))
