@@ -26,10 +26,10 @@
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/roadmap-skills",
-        "ref": "roadmap-skills-v0.24.0",
-        "sha": "0f41d27afbc2bcbc0c6e9da5a776f0f3193efc4d"
+        "ref": "roadmap-skills-v0.24.1",
+        "sha": "f53fb4d1cc978fcbffe67644bdc9fb041fd3b6c9"
       },
-      "version": "0.24.0",
+      "version": "0.24.1",
       "description": "Skills for driving a repo's roadmap: claim the next item and build it, for repos you own or upstream OSS projects you contribute to via a fork.",
       "keywords": ["roadmap", "backlog", "worktree", "oss", "contribution"]
     },
@@ -39,10 +39,10 @@
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/session-skills",
-        "ref": "session-skills-v0.35.0",
-        "sha": "c1d2e48abdb90fb796d22c6fdace7ab99efd0caa"
+        "ref": "session-skills-v0.35.1",
+        "sha": "f53fb4d1cc978fcbffe67644bdc9fb041fd3b6c9"
       },
-      "version": "0.35.0",
+      "version": "0.35.1",
       "description": "Puts a unit of work on its own branch and gets it back off again: pick up the branch work is already in flight on or open a new one, and land the work by what the repo is rather than by a declared mode.",
       "keywords": ["branch", "session", "landing", "wrap-up", "resume"]
     },
@@ -91,10 +91,10 @@
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/orchestration-skills",
-        "ref": "orchestration-skills-v0.7.0",
-        "sha": "6205abfe44b18be7b22144ef95458ad22c4aaaea"
+        "ref": "orchestration-skills-v0.8.0",
+        "sha": "f53fb4d1cc978fcbffe67644bdc9fb041fd3b6c9"
       },
-      "version": "0.7.0",
+      "version": "0.8.0",
       "description": "Rules for handing work to other agents without losing control of it: what is worth delegating, what every brief must include, which agents worktree isolation breaks, which tier each stage runs at, how to tell a finished stage from one that merely stopped talking, and when to stop and ask the user instead of deciding alone.",
       "keywords": ["subagent", "delegation", "worktree", "workflow", "verification", "escalation"]
     },
