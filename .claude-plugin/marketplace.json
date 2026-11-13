@@ -3,6 +3,9 @@
   "owner": {
     "name": "Ian Brandt"
   },
+  "renames": {
+    "writing-conventions": "writing-skills"
+  },
   "plugins": [
     {
       "name": "gradle-skills",
@@ -57,15 +60,15 @@
       "keywords": ["claim-ledger", "parallel", "worktree", "pipeline", "unattended"]
     },
     {
-      "name": "writing-conventions",
+      "name": "writing-skills",
       "source": {
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/agent-plugins.git",
-        "path": "plugins/writing-conventions",
-        "ref": "writing-conventions-v0.55.2",
-        "sha": "30c62d6e350099415b1bce72b6a63548cdd59b62"
+        "path": "plugins/writing-skills",
+        "ref": "writing-skills-v0.56.0",
+        "sha": "3a67719dc198421093f39f2b1cd7fcc7c170adcf"
       },
-      "version": "0.55.2",
+      "version": "0.56.0",
       "description": "Always-on rules for plain prose without AI tells—in chat, in repo docs, and in anything published under your name—with a lint that reports each miss in the next turn.",
       "keywords": ["register", "summary", "prose", "style", "lint"]
     },
@@ -75,10 +78,10 @@
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/ghostwriting-skills",
-        "ref": "ghostwriting-skills-v0.13.0",
-        "sha": "04c4238bd7693ee7b38f528015f70bf2c75df269"
+        "ref": "ghostwriting-skills-v0.13.1",
+        "sha": "3a67719dc198421093f39f2b1cd7fcc7c170adcf"
       },
-      "version": "0.13.0",
+      "version": "0.13.1",
       "description": "Drafts text that ships under your name—issues, PRs, comments, commit messages, docs—in your voice, from a spec derived from your writing, and keeps that spec current from your edits.",
       "keywords": ["ghostwriting", "voice", "writing", "style", "pull-request"]
     },
