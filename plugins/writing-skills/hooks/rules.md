@@ -106,9 +106,9 @@ Eleven anti-patterns. Each reads as AI writing; the literal phrasing is always a
     summary outro. Where the target has an issue or PR template, follow it, headings
     included.
 
-A rule broken in a draft is usually broken elsewhere on the branch: sweep commit messages, code
-comments, test names, and docs, not the draft alone. The user's private circumstances (employer,
-clients, unreleased plans) never enter a public artifact.
+A rule broken in a draft is usually broken elsewhere on the branch: run the `sweep` skill on the
+branch, which checks commit messages, code comments, test names, and docs. The user's private
+circumstances (employer, clients, unreleased plans) never enter a public artifact.
 
 A draft for publication—any text the user will paste, post, send, or file somewhere else—goes in
 its own fenced block with the info string `draft`, even mid-task, and in a longer fence when the

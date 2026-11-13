@@ -499,6 +499,15 @@ still dropped, which is why a draft that includes one goes in a longer fence.
 
 A `git push` is not read, because a branch name is chosen long before it.
 
+Text that reaches a push without passing the gate is checked by the [`sweep`](../skills/sweep/SKILL.md)
+skill instead, when it runs: commits made with the plugin off, messages reworded in a rebase, and
+code comments and test names, which the prose-file review skips. The skill sends each commit message
+and each file's added text as one `draft` fence, several to a lint call, because the lint tool
+reviews each fence as a separate draft and reads 50,000 characters per call. It rewords only commits
+on no remote, through `amend!` and `fixup!` commits folded in by `git rebase --autosquash`, which
+runs without `-i` from git 2.44. The whole repo is left out of scope, since a sweep of it would cost
+one review call per chunk and rewrite text already published under the user's name.
+
 Sentence order (rule 6) is not judged. With an ordering item added, the gate found 2 of 6 held-out
 ordering corrections, the same 2 it found without the item, through agency and comma findings. Of
 170 held-out findings, one was an ordering violation. Sentence length is left out by choice,

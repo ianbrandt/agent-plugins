@@ -37,6 +37,11 @@ Claude Code 2.1.308 or later is required.
   target's issue or PR template. A GitHub repo's issue template is read with `gh`, and its headings
   are removed before the review.
 
+- Before a push, the `sweep` skill checks the commit messages and the docs, code comments, and test
+  names the branch adds, which catches text written without the plugin and messages reworded in a
+  rebase. Hits are fixed, and unpushed commits are reworded. `land-and-wrap` in `session-skills`
+  runs it before each landing, and `/writing-skills:sweep` runs it on request.
+
 Each review is one model call, Sonnet by default, and usually takes a few seconds. When no model can
 be called, the command goes through and you are told once per session, in a toast, that a review
 did not run and why. Each later review is still tried.
@@ -56,7 +61,8 @@ line per command or tool. You can edit those files. Where a command or tool has 
 
 ## Limits
 
-- `git push` is not reviewed, and neither is a file written with a shell redirect.
+- `git push` is not reviewed, and neither is a file written with a shell redirect. The `sweep`
+  skill covers a push only when it runs.
 - With `claude -p` and the default text output, a reply with a draft that is corrected is printed,
   then the corrected reply after it. Under `--output-format stream-json` each reply has a `result`
   event of its own, and under `--output-format json` only the last reply is in `result`.
