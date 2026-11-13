@@ -39,10 +39,10 @@
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/session-skills",
-        "ref": "session-skills-v0.34.0",
-        "sha": "0f41d27afbc2bcbc0c6e9da5a776f0f3193efc4d"
+        "ref": "session-skills-v0.35.0",
+        "sha": "c1d2e48abdb90fb796d22c6fdace7ab99efd0caa"
       },
-      "version": "0.34.0",
+      "version": "0.35.0",
       "description": "Puts a unit of work on its own branch and gets it back off again: pick up the branch work is already in flight on or open a new one, and land the work by what the repo is rather than by a declared mode.",
       "keywords": ["branch", "session", "landing", "wrap-up", "resume"]
     },
@@ -65,10 +65,10 @@
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/writing-skills",
-        "ref": "writing-skills-v0.56.0",
-        "sha": "3a67719dc198421093f39f2b1cd7fcc7c170adcf"
+        "ref": "writing-skills-v0.57.0",
+        "sha": "d16b4af9a0393e7638c01404d145c8ae206b89ee"
       },
-      "version": "0.56.0",
+      "version": "0.57.0",
       "description": "Always-on rules for plain prose without AI tells—in chat, in repo docs, and in anything published under your name—with a lint that reports each miss in the next turn.",
       "keywords": ["register", "summary", "prose", "style", "lint"]
     },
