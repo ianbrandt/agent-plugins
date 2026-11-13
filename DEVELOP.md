@@ -36,6 +36,8 @@ be a few patch releases behind the CLI. On the Mac, the bundled version is the d
 - `claude plugin test` in each plugin that has a hooks module.
 - [`graders.test.mjs`](graders.test.mjs): each regex grader in an eval suite, against one text it
   has to match and one it must not. A regex grader with no texts fails.
+- [`tiers.test.mjs`](tiers.test.mjs): the tier names, and each tier's model and effort
+  settings apart from their defaults, are the same in Confer and orchestration-skills.
 - `claude plugin validate` on each plugin, and Confer's typecheck.
 - For each entry in `.claude-plugin/marketplace.json`, a `<plugin>-v<version>` tag at the pinned
   commit, the plugin's directory in that commit, and the same description and keywords as the

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Every check that needs no model call: each plugin's `claude plugin test` suite,
-# the eval regex graders against known texts, `claude plugin validate` on each plugin, Confer's
+# the eval regex graders against known texts, the tier settings shared by Confer and
+# orchestration-skills, `claude plugin validate` on each plugin, Confer's
 # typecheck, and each marketplace.json entry's tag, commit, description, and keywords.
 # Needs `claude` and `node` on the PATH.
 set -uo pipefail
@@ -23,6 +24,14 @@ if out=$(node --test graders.test.mjs 2>&1); then
 else
   printf '%s\n' "$out"
   echo "FAIL  eval regex graders"
+  failed=1
+fi
+
+if out=$(node --test tiers.test.mjs 2>&1); then
+  echo "ok    tier settings shared by Confer and orchestration-skills"
+else
+  printf '%s\n' "$out"
+  echo "FAIL  tier settings shared by Confer and orchestration-skills"
   failed=1
 fi
 
