@@ -2,6 +2,7 @@ import type { AgentSpawnInput, AgentSpawnResult, EngineInterface, TurnUsage } fr
 import { current, description, fail, phaseOf, rawOf, receive, reviewerPrefix } from './attempts'
 import { estimateClaudeCostUsd } from './cost'
 import type { ClaudeUsage } from './cost'
+import { logEnd, logStart } from './progress'
 import { getRun, inMemory, isEnded, save } from './state'
 import type { Attempt, RunState } from './state'
 
@@ -53,11 +54,13 @@ export async function onSpawn($: EngineInterface, e: AgentSpawnInput, next: (e: 
   }
   attempt.status = 'running'
   attempt.toolUseId = e.tool_use_id
+  await logStart($, run, attempt)
   try {
     await save($, run, now)
   } catch (error) {
     const reason = `The reviewer could not start: ${message(error)}`
     fail(attempt, reason)
+    await logEnd($, run, attempt)
     return { deny: reason }
   }
   let result: AgentSpawnResult
@@ -65,11 +68,14 @@ export async function onSpawn($: EngineInterface, e: AgentSpawnInput, next: (e: 
     result = await next({ ...e, prompt: attempt.prompt, model: attempt.model, cwd: run.repoDir, background: false })
   } catch (error) {
     fail(attempt, `The reviewer could not start: ${message(error)}`)
+    await logEnd($, run, attempt)
     await keep($, run)
     throw error
   }
-  if (result.deny !== undefined) fail(attempt, `The reviewer's spawn was denied: ${result.deny}`)
-  else if (result.agentId !== undefined) attempt.agentId = result.agentId
+  if (result.deny !== undefined) {
+    fail(attempt, `The reviewer's spawn was denied: ${result.deny}`)
+    await logEnd($, run, attempt)
+  } else if (result.agentId !== undefined) attempt.agentId = result.agentId
   await keep($, run)
   return result
 }
@@ -83,7 +89,9 @@ export async function onAgentCall<E extends { tool_use_id: string }, R extends A
   } catch (error) {
     const found = reviewerAttempt(a => a.toolUseId === e.tool_use_id)
     if (found !== undefined) {
+      const before = found.attempt.status
       fail(found.attempt, `The Agent call failed: ${message(error)}`)
+      if (before !== found.attempt.status) await logEnd($, found.run, found.attempt)
       await keep($, found.run)
     }
     throw error
@@ -91,6 +99,7 @@ export async function onAgentCall<E extends { tool_use_id: string }, R extends A
   const found = reviewerAttempt(a => a.toolUseId === e.tool_use_id)
   if (found === undefined) return result
   const { run, attempt } = found
+  const before = attempt.status
   const record = result.result as { status?: string; agentId?: string; resolvedModel?: string; usage?: Record<string, number | null>; handbackReport?: { text?: unknown } } | undefined
   if (result.deny !== undefined || result.isError) fail(attempt, `The Agent call failed: ${result.deny ?? result.text}`)
   else if (record?.status === 'completed') {
@@ -108,6 +117,7 @@ export async function onAgentCall<E extends { tool_use_id: string }, R extends A
     }
   }
   attempt.agentId ??= record?.agentId
+  if (before !== attempt.status) await logEnd($, run, attempt)
   await keep($, run)
   return result
 }
@@ -123,7 +133,10 @@ export async function onTurn($: EngineInterface, e: { agentId?: string; answer: 
     price(attempt, model, usage)
   }
   if (attempt.status !== 'running') attempt.raw ??= rawOf(run, e.answer)
-  else if (e.answer.trim() === '') fail(attempt, 'The Claude reviewer ended with no answer.')
-  else receive(run, attempt, e.answer)
+  else {
+    if (e.answer.trim() === '') fail(attempt, 'The Claude reviewer ended with no answer.')
+    else receive(run, attempt, e.answer)
+    await logEnd($, run, attempt)
+  }
   await keep($, run)
 }

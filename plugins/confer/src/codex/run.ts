@@ -17,6 +17,8 @@ export type CodexRunRequest = {
   tree?: string
   // Bounds the Codex process only.
   timeoutMs?: number
+  // Called just before Codex is spawned, after the worktree is set up.
+  onStart?: () => Promise<void>
 }
 
 export type CodexRunResult = {
@@ -311,7 +313,7 @@ async function enabledMcpServers($: EngineInterface, cwd: string): Promise<strin
 
 async function review(
   $: EngineInterface,
-  { prompt, model, effort }: CodexRunRequest,
+  { prompt, model, effort, onStart }: CodexRunRequest,
   timeoutMs: number,
   cwd: string,
   isWindows: boolean,
@@ -345,6 +347,7 @@ async function review(
     '-',
   ]
 
+  await onStart?.()
   const started = await $.clock.now()
   const stream = $.process.spawn({ argv: result.argv, cwd, input: prompt })
   let isTimedOut = false

@@ -3,6 +3,7 @@ import { runCodex } from '../codex/run'
 import type { CodexRunResult } from '../codex/run'
 import { removeWorktree } from '../codex/worktree'
 import { current, fail, failures, newAttempt, receive } from './attempts'
+import { logEnd, logStart } from './progress'
 import { save } from './state'
 import type { Attempt, RunState } from './state'
 
@@ -34,6 +35,7 @@ export async function failEndedAgent($: EngineInterface, run: RunState): Promise
   const agent = (await $.agent.list().catch(() => [])).find(a => a.id === claude.agentId)
   if (agent === undefined || !['completed', 'failed', 'killed'].includes(agent.status)) return
   fail(claude, `The Claude reviewer ended ${agent.status} with no reply.`)
+  await logEnd($, run, claude)
   await save($, run, await $.clock.now())
 }
 
@@ -57,7 +59,7 @@ export async function runCodexAttempts($: EngineInterface, run: RunState, option
     })
     const result: Partial<CodexRunResult> = await $.fs
       .write(`${outDir}/prompt.md`, attempt.prompt)
-      .then(() => runCodex($, { repo: run.repoDir, isCheckout: run.top !== '', outDir, prompt: attempt.prompt, model: attempt.model, effort: attempt.effort, worktree: options.worktree !== false, tree }))
+      .then(() => runCodex($, { repo: run.repoDir, isCheckout: run.top !== '', outDir, prompt: attempt.prompt, model: attempt.model, effort: attempt.effort, worktree: options.worktree !== false, tree, onStart: () => logStart($, run, attempt) }))
       .catch(error => ({ status: 'failed' as const, error: message(error) }))
     now = await $.clock.now()
     const { reply, usage, costUsd, model, effort, ...codexResult } = result
@@ -72,9 +74,9 @@ export async function runCodexAttempts($: EngineInterface, run: RunState, option
       attempt.status = 'limited'
       run.status = 'paused'
       run.pause = { limit: result.status!, error: result.error ?? result.status!, retryAt: retryTime(result.retryAt) }
-      await save($, run, now)
-      return 'paused'
     } else fail(attempt, result.error ?? `Codex ended ${result.status}.`)
+    await logEnd($, run, attempt)
     await save($, run, now)
+    if (attempt.status === 'limited') return 'paused'
   }
 }

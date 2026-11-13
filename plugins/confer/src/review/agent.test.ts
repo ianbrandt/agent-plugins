@@ -204,6 +204,7 @@ function replaced(id: string, attempt: object) {
   const $ = {
     env: { get: async (name: string) => (name === 'CLAUDE_CONFIG_DIR' ? '/c' : undefined) },
     clock: { now: async () => (await held, 3) },
+    ui: { log: () => {} },
     fs: { read: async () => text, write: async (path: string, text: string) => void (written[path] = text) },
   } as unknown as EngineInterface
   remember(run)

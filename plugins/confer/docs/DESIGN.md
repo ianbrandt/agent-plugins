@@ -34,6 +34,9 @@ uses native events only. Under some managed settings, a user plugin's `classic.*
   Each side sees the other's reply verbatim.
 - The rulings are kept in one `state.json` per run. Consensus and the early stop are computed from
   that file, never judged by the session that runs the rounds.
+- Codex runs inside the round's tool call, where nothing else is shown until the call returns. Each
+  reviewer's start and end is written with `$.ui.log`, a transcript line the model does not see,
+  which reaches a headless run as a `ui_log` message.
 - Tokens and estimated cost for both sides are reported for each run, with no budget cap.
 - In `/confer:ask`, each side answers in the first round without seeing the other's answer, and the
   session only relays. A draft to critique, or one side critiquing the other's first answer, anchors

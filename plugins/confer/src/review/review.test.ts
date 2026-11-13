@@ -36,6 +36,7 @@ function world(on: On, options: Options = {}) {
   const spawned: Record<string, any>[] = []
   const registered: string[] = []
   const agentTypes: Record<string, any>[] = []
+  const logs: string[] = []
   const clock = mock.clock(on, { now: start })
   mock.env(on, { HOME: '/home' })
   const answer = (key: string): Answer => {
@@ -104,6 +105,10 @@ function world(on: On, options: Options = {}) {
     return { value: (options.agents ?? []) as never }
   })
   on('turn.complete', (_, e) => ({ text: e.answer }))
+  on('ui.log', (_, e) => {
+    logs.push(e.text)
+    return { value: undefined }
+  })
   on('tool.call', { tool: 'Agent' }, (_, e) => (options.agentDeny !== undefined ? { deny: options.agentDeny } : {
     result: {
       status: 'completed',
@@ -112,7 +117,7 @@ function world(on: On, options: Options = {}) {
       usage: { input_tokens: 50, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
     } as never,
   }))
-  return { runs, files, codex, codexPrompts, codexDirs, spawned, registered, agentTypes, clock }
+  return { runs, files, codex, codexPrompts, codexDirs, spawned, registered, agentTypes, clock, logs }
 }
 
 const call = async ($: Engine, name: string, input: object = {}): Promise<any> =>
@@ -266,6 +271,45 @@ test('a two-round review reaches consensus, each reviewer reading the other\'s r
   expect(done.report.sides.claude.tokens).toEqual({ input_tokens: 100, output_tokens: 10, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 })
   expect(done.report.sides.codex.tokens).toMatchObject({ input_tokens: 200, output_tokens: 20 })
   expect(state(files, round1.run)).toMatchObject({ status: 'complete', findings: [{ id: 'C1', status: 'agreed' }] })
+})
+
+test('each reviewer\'s start and return is logged with the run, tier, and round', async ($, on) => {
+  const { logs } = world(on, { codex: [codexSays(first()), codexSays(later([ruling('C1', 'agree')]))] })
+
+  const round1 = await begin($)
+  await claude($, round1, first([bug('1')]))
+  const round2 = await call($, 'review_round', { run: round1.run })
+  await claude($, round2, later([ruling('C1', 'agree')]))
+  await call($, 'review_round', { run: round1.run })
+
+  const head = `Confer ${round1.run} review, complex`
+  const codex = `${round1.codex.model}, ${round1.codex.effort}`
+  expect(logs).toEqual([
+    `${head}, round 1: Claude started (opus, high)`,
+    `${head}, round 1: Claude returned after 0s`,
+    `${head}, round 1: Codex started (${codex})`,
+    `${head}, round 1: Codex returned after 0s`,
+    `${head}, round 2: Claude started (opus, high)`,
+    `${head}, round 2: Claude returned after 0s`,
+    `${head}, round 2: Codex started (${codex})`,
+    `${head}, round 2: Codex returned after 0s`,
+  ])
+})
+
+test('a failed reviewer and a Codex limit are logged', async ($, on) => {
+  const { logs } = world(on, { codex: [usageLimit, codexSays(first())] })
+
+  const round1 = await begin($)
+  await claude($, round1, 'I could not decide.')
+  await call($, 'review_round', { run: round1.run })
+
+  const head = `Confer ${round1.run} review, complex, round 1`
+  expect(logs).toEqual([
+    `${head}: Claude started (opus, high)`,
+    `${head}: Claude failed after 0s: The reply is invalid: The reply has no JSON object: send one as the whole reply or in one \`\`\`json block.`,
+    `${head}: Codex started (${round1.codex.model}, ${round1.codex.effort})`,
+    `${head}: Codex hit a usage limit`,
+  ])
 })
 
 // Run 2b1d57dd: Claude's C1 and Codex's X1 were one off-by-one, and the report counted two issues.

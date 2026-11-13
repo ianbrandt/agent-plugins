@@ -48,6 +48,9 @@ capability profile does not match that mapping.
 
 ## Use
 
+During a run, Confer adds a dim line to the transcript each time a reviewer starts or returns, with
+the run id, the tier, and the round.
+
 ### Review a change
 
 Review the uncommitted changes in your checkout, untracked files included:

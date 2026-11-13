@@ -34,6 +34,7 @@ export type Attempt = {
   costUsd?: number | null
   toolUseId?: string
   agentId?: string
+  startedAt?: number
   codex?: Omit<CodexRunResult, 'reply' | 'usage' | 'costUsd' | 'model' | 'effort'>
 }
 
