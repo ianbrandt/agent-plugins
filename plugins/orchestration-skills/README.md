@@ -46,7 +46,7 @@ including "should I proceed?" once the user has already said what to do. The age
 buys. A subagent with no one to ask puts the decision and its options in its report instead of
 settling it silently, which is why this skill is in the same plugin as the delegation rules.
 
-## How it is wired
+## How It Is Wired
 
 One hooks module, `hooks/register.ts`, which is a Claude Code mod and needs Claude Code 2.1.308 or
 later, the oldest version supported. No shell is involved. `hooks/rules.md` is added to the first
@@ -84,7 +84,7 @@ format was proposed and the others were listed as rejected alternatives. The oth
 and the holding message, which measures nothing about the plugin's gain. The run cost $4.46 and
 took 221 seconds.
 
-## The incident numbers
+## The Incident Numbers
 
 The anecdotes in these skills are from real runs, with the project names removed. The numbers are
 kept because they are the evidence for each rule. An over-scoped census agent burning ~800k tokens
