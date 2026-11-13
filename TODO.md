@@ -26,29 +26,30 @@ the Tennex model ids apply there without `--codex-model`. On the Windows machine
 
 Clear this item in a commit with the results in its message.
 
-## Check what Confer left under `C:\Dev\.claude\tmp\confer`
+## Analyze the Confer worktree-cleanup probe results
 
-Do this after the item above. After the Esc probe and `review_cancel`, run `0ee7848e` still had
-`codex-p0-r1-a1-worktree` on disk. Run directories are kept for a week after a run ends by
-design, so the ten older ones are expected. A worktree left inside one is not. On the Windows machine:
+Baseline before the new run: `0ee7848e` had `codex-p0-r1-a1-worktree` both listed in its
+`state.json` and present on disk; no other run had a worktree listed or present; the probe repo at
+`C:\Dev\Temp\confer-review-probe` had only its primary checkout registered as a git worktree.
 
-1. For each run directory, print its status, the worktrees listed in its `state.json`, and the
-   worktree directories on disk:
+The new run was `f487e0df` from `/confer:review --tier routine` in that repo. It ended `complete`
+with "No issues found" in one round at tier routine (Claude Sonnet 5.5 high and Codex GPT-6.1-sol
+medium).
 
-   ```powershell
-   Get-ChildItem C:\Dev\.claude\tmp\confer -Directory | ForEach-Object {
-     $s = Get-Content "$($_.FullName)\state.json" -Raw | ConvertFrom-Json
-     [pscustomobject]@{
-       Run = $_.Name; Status = $s.status
-       Listed = $s.resources.worktrees -join ', '
-       OnDisk = (Get-ChildItem $_.FullName -Directory -Filter '*-worktree').Name -join ', '
-     }
-   } | Format-Table -AutoSize -Wrap
-   ```
+### What matched
 
-2. Run `git -C C:\Dev\Temp\confer-review-probe worktree list --porcelain`.
-3. In `C:\Dev\Temp\confer-review-probe`, run `/confer:review --tier routine` once with the
-   installed plugin. Starting a run removes worktrees that ended runs still list. Then repeat
-   steps 1 and 2.
+- `f487e0df`'s `state.json` lists no worktrees, and none is on disk under its run directory.
+- Only the primary checkout is registered as a git worktree of the probe repo.
 
-Replace this item with the output of each step.
+### What differed
+
+- `codex-p0-r1-a1-worktree` under `0ee7848e` is still on disk and still listed in
+  `0ee7848e/state.json` after `f487e0df` ran. The start-of-run sweep in Confer did not remove it.
+
+### What is still open
+
+- Why `0ee7848e`'s stray worktree is not removed at the start of a new run. One guess: the sweep
+  covers worktrees listed by runs in a set of ended statuses that does not include `cancelled`, so
+  this one survives.
+- Whether the right fix is to extend the sweep to any `*-worktree` directory under a `cancelled`
+  run's folder, or to remove this one by hand.
