@@ -26,10 +26,10 @@
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/roadmap-skills",
-        "ref": "roadmap-skills-v0.23.0",
-        "sha": "276719713f928ffe6912e34d4b1d736663fef328"
+        "ref": "roadmap-skills-v0.24.0",
+        "sha": "0f41d27afbc2bcbc0c6e9da5a776f0f3193efc4d"
       },
-      "version": "0.23.0",
+      "version": "0.24.0",
       "description": "Skills for driving a repo's roadmap: claim the next item and build it, for repos you own or upstream OSS projects you contribute to via a fork.",
       "keywords": ["roadmap", "backlog", "worktree", "oss", "contribution"]
     },
@@ -39,10 +39,10 @@
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/session-skills",
-        "ref": "session-skills-v0.33.1",
-        "sha": "a0c2180645744d04dbd2361b21c4b9ec1505761b"
+        "ref": "session-skills-v0.34.0",
+        "sha": "0f41d27afbc2bcbc0c6e9da5a776f0f3193efc4d"
       },
-      "version": "0.33.1",
+      "version": "0.34.0",
       "description": "Puts a unit of work on its own branch and gets it back off again: pick up the branch work is already in flight on or open a new one, and land the work by what the repo is rather than by a declared mode.",
       "keywords": ["branch", "session", "landing", "wrap-up", "resume"]
     },
@@ -52,10 +52,10 @@
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/parallel-session-skills",
-        "ref": "parallel-session-skills-v0.5.0",
-        "sha": "276719713f928ffe6912e34d4b1d736663fef328"
+        "ref": "parallel-session-skills-v0.6.0",
+        "sha": "0f41d27afbc2bcbc0c6e9da5a776f0f3193efc4d"
       },
-      "version": "0.5.0",
+      "version": "0.6.0",
       "description": "Keeps several sessions working one repo at once off each other's files: open a git worktree for each, claim a lane in a shared ledger before writing code, reap dead claims without killing a live sibling, and conduct 2-5 lanes at once when a run has nobody watching it.",
       "keywords": ["claim-ledger", "parallel", "worktree", "pipeline", "unattended"]
     },
