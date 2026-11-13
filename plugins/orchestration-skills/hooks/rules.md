@@ -25,11 +25,10 @@ self-contained units—never a one-liner. Keep emergent or fuzzy work in the mai
   over-scoped reader overruns context, dies, and retries from scratch: one such agent burned ~800k
   tokens over 4 retries against ~150k for its bounded siblings.
 - **Pick the tier per stage.** Set model by the stage's capability class and effort by its
-  deliberation need. Design and verify run on the everyday tier, with more effort where they need
-  it. Within the limits in the `tier-model-and-effort` skill, the apex tier is for questions that
-  tier has tried and left open, and at Medium for a delegated build stage that would otherwise run
-  on the everyday tier at High. Never write a model name from memory—the current table is in that
-  skill.
+  deliberation need. Design and verify run at the Critical tier. The Escalation tier is for
+  questions the Critical tier has tried and left open, within the limits in the
+  `tier-model-and-effort` skill. Never write a model name from memory: take each tier's model and
+  effort from the table at the end of these rules.
 - **State each stage's tier in the message that launches it.** Nothing later checks the tiers in an
   up-front plan. One session announced `Workflow—design@high, implement@medium, docs@low,
   adversarial-verify@high` and then ran no Workflow, built the item inline, and set no model on
@@ -90,6 +89,6 @@ settling it silently. The agent reading your report is the one who can stop.
 ## The skills behind these rules
 
 `delegate-to-subagents`—the full coordination protocol: briefs, fan-out, isolation, integration.
-`tier-model-and-effort`—the dated model table, the effort labels, and when to opt into a Workflow.
+`tier-model-and-effort`—which stage runs at which tier, the effort labels, and when to opt into a Workflow.
 `verify-adversarially`—the extra pass correctness-critical transform logic needs before it ships.
 `ask-when-needed`—the trigger and anti-trigger lists for stopping, and the tradeoff format.

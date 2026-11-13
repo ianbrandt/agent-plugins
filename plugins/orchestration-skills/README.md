@@ -20,10 +20,10 @@ Ends with how to integrate parallel worktree diffs into commits that can each be
 
 ### `tier-model-and-effort`
 
-Model and effort as two independent knobs: capability class versus deliberation need. Includes the
-dated model tier table (apex, everyday, task hero, mechanical). Tiers from that table are used in
-every other file in this plugin in place of model names, since model names go out of date sooner
-than the rules do. Also covers the desktop effort labels, why a session's high effort setting should
+Model and effort as two independent knobs: capability class versus deliberation need. Includes five
+tiers, each a model and an effort: Mechanical, Routine, Complex, Critical, and Escalation, the same
+names Confer uses. These tiers are used in every other file in this plugin in place of model names,
+since model names go out of date sooner than the rules do. Also covers the desktop effort labels, why a session's high effort setting should
 not be applied to every stage, and what opting into Ultracode does and does not include.
 
 ### `verify-adversarially`
@@ -55,6 +55,15 @@ form that is always loaded, and the full protocols are in the four skills. A sub
 one rule only, the escalation paragraph addressed to a subagent: a hard-to-reverse decision is reported in its result with the options
 instead of being settled silently. The rest of the file applies to the agent doing the delegating,
 so it is not injected into subagents.
+
+## Settings
+
+Each tier's model and effort is a plugin setting, `<tier>Model` and `<tier>Effort`, and the tiers
+as set are added to the end of `hooks/rules.md` when it is injected. The defaults are Haiku at Low
+for Mechanical, Sonnet at Medium for Routine, Opus at High for Complex, Opus at Extra for Critical,
+and Fable at High for Escalation. They differ from Confer's defaults on purpose, since Confer is
+for questions, plans, and reviews and this plugin for everyday building. On an account that is not
+served Fable 5.2, set `escalationModel` to `opus` with `escalationEffort` at `max`.
 
 ## Evals
 
