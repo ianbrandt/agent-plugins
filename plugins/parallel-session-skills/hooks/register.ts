@@ -7,7 +7,7 @@ import { WORKTREE_TOOLS, worktreeTools } from './worktree'
 
 const TOOLS = {
   read_ledger: {
-    description: 'Read the claim ledger in the primary checkout, from any worktree. Dead claims are deleted first: a claim is dead when no worktree has its branch checked out, and none is deleted while a worktree is detached. Returns the ledger path, the claims deleted, and every live claim.',
+    description: 'Read the claim ledger in the primary checkout, from any worktree. Dead claims are deleted first: a claim is dead when no worktree has its branch checked out, and none is deleted while a worktree is detached. Returns the ledger path, the claims deleted, every live claim, and the checkout mode: `worktree`, where a unit of work goes in a worktree unless the user asks for the primary checkout, or `primary`.',
     inputSchema: { type: 'object', properties: {} },
   },
   write_claim: {
@@ -111,6 +111,14 @@ async function lane($: any, main: string, worktree: string): Promise<string> {
 const render = (main: string, list: Entry[]) =>
   `ledger: ${main}/${DIR}\n${list.length ? list.map(e => e.text.trim()).join('\n') : 'no claims'}`
 
+// Where a unit of work goes, with where that was read. Unset, or a value that
+// is neither mode, is a worktree.
+async function checkoutMode($: any, main: string): Promise<string> {
+  const key = 'parallel-session-skills.checkoutMode'
+  const value = await git($, main, 'config', '--get', key).then(v => v.trim(), () => '')
+  return value === 'worktree' || value === 'primary' ? `checkout: ${value} (git config ${key})` : 'checkout: worktree (the default)'
+}
+
 async function readLedger($: any, main: string): Promise<string> {
   const all = await entries($, main)
   await git($, main, 'worktree', 'prune')
@@ -134,7 +142,7 @@ async function readLedger($: any, main: string): Promise<string> {
   for (const e of gone) await remove($, main, e.name)
   const reaped = gone.map(e => `reaped dead claim: ${e.name}\n`).join('')
   const held = detached ? 'a worktree is detached, so no claim that parses was reaped\n' : ''
-  return reaped + held + render(main, all.filter(e => !gone.includes(e)))
+  return `${reaped}${held}${render(main, all.filter(e => !gone.includes(e)))}\n${await checkoutMode($, main)}`
 }
 
 async function writeClaim($: any, main: string, e: any): Promise<string> {

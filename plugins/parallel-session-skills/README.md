@@ -9,11 +9,19 @@ and running several lanes from one conductor session.
 
 ### `work-in-worktree`
 
-Open a git worktree for a unit of work, and remove it once the work has landed. `session-skills`
-puts work on a branch in the primary checkout by default, and one checkout has room for one unit of
-work at a time. A worktree is opened in three cases: you ask for one, a conductor runs the work as
-a lane, or the primary checkout is already on another unit's branch or has changed or untracked
-files.
+Open a git worktree for a unit of work, and remove it once the work has landed. One checkout has
+room for one unit of work at a time, and a session cannot know that you will start a second one
+later, so every unit of work gets a worktree by default. Unless you ask for the primary checkout
+for a task, the work is not put there. To have work go in the primary checkout as `session-skills`
+alone does, set the clone's checkout mode:
+
+```bash
+git config parallel-session-skills.checkoutMode primary
+```
+
+In that mode a worktree is opened in three cases: you ask for one, a conductor runs the work as a
+lane, or the primary checkout is already on another unit's branch or has changed or untracked
+files. `read_ledger` prints the mode on its last line.
 
 The `open_worktree` tool opens `.claude/worktrees/<id>-<name>` on a new branch, or on the branch
 that work is already in flight on. It pulls Git LFS files, copies the primary checkout's

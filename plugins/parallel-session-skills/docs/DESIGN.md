@@ -41,6 +41,14 @@ session that runs beside another, so the two tools for one are registered here, 
 `hooks/worktree.ts`, and `work-in-worktree` is the skill that calls them. Both were in
 `session-skills` through its 0.30.0.
 
+With this plugin installed, every unit of work gets a worktree by default. A session cannot know
+that a sibling will start later, and with the first session's branch in the primary checkout, the
+sibling found only a busy checkout. The per-clone git config `parallel-session-skills.checkoutMode`
+is `worktree` or `primary`, with an unset or unknown value read as `worktree`. In `primary` mode the
+`session-skills` default is kept, and a worktree is opened only when the user asks for one, for a
+conductor's lane, or when the primary checkout is busy. The mode is printed by `read_ledger` rather
+than by a tool of its own, since `claim-a-lane` already calls it before any edit. No tool sets it.
+
 - `open_worktree` opens `.claude/worktrees/<id>-<name>` on a new branch `claude/<id>-<name>`, pulls
   Git LFS files, and links the repo's local notes directory into the worktree: a junction on
   Windows, which needs no privilege, and a symbolic link elsewhere. It does not fetch. The `base`

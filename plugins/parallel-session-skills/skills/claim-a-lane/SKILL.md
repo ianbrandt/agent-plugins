@@ -55,7 +55,8 @@ git log --oneline -15 "$DEFAULT"             # what just landed; $DEFAULT is wor
 ```
 
 Then call `read_ledger`. Its result has the ledger's resolved path, then one line per live claim, or
-`no claims`. Lines about claims it reaped, or did not, come before the path.
+`no claims`. Lines about claims it reaped, or did not, come before the path. The last line is the
+clone's checkout mode, which `work-in-worktree` §1 uses.
 
 The ledger is a **live lease board, not a log**: entries are
 `{"item","branch","started","session","touches"}`, deleted by their own session at *its* finish—which

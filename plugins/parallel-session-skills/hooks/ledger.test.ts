@@ -52,7 +52,7 @@ test('an empty session id matches no claim', () => {
 function world(on: any, worktrees: Record<string, string>, files: Record<string, string>, session = 'MINE', other: Record<string, string> = {}) {
   const posix = (p: string) => p.replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
   const dir = '/repo/.claude/claims/'
-  const w = { files, worktrees, now: 1_000_000, root: '/repo' as string | null, torn: null as { name: string; text: string } | null, writing: null as string | null, stale: {} as Record<string, string>, sessionId: session, def: 'main' as string | null }
+  const w = { files, worktrees, now: 1_000_000, root: '/repo' as string | null, torn: null as { name: string; text: string } | null, writing: null as string | null, stale: {} as Record<string, string>, sessionId: session, def: 'main' as string | null, mode: null as string | null }
   on('session.repo', () => ({ value: w.root ? { root: w.root, remote: null, internal: false } : null }))
   on('session.id', () => ({ value: w.sessionId }))
   on('clock.now', () => ({ value: w.now }))
@@ -86,6 +86,7 @@ function world(on: any, worktrees: Record<string, string>, files: Record<string,
       if (posix(cwd) in all) return out(posix(cwd) + '\n')
       return posix(cwd) in other ? out((posix(cwd).startsWith('/repo/') ? '/repo' : posix(cwd)) + '\n') : out('', 128)
     }
+    if (argv.join(' ') === 'config --get parallel-session-skills.checkoutMode') return w.mode ? out(`${w.mode}\n`) : out('', 1)
     if (argv[0] === 'symbolic-ref') return w.def ? out(`origin/${w.def}\n`) : out('', 1)
     if (argv.join(' ') === 'worktree prune') w.stale = {}
     // As git does with -z: every line ends in NUL, and so does each worktree's block.
@@ -98,18 +99,19 @@ function world(on: any, worktrees: Record<string, string>, files: Record<string,
   on('session.end', () => ({ sessionId: w.sessionId }))
   return w
 }
+const worktreeByDefault = '\ncheckout: worktree (the default)'
 const call = ($: any, name: string, input: object = {}) => $.tool.call({ tool: `mcp__parallel-session-skills__${name}`, ...input })
 
 test('read_ledger deletes dead claims and returns the live ones', async ($: any, on: any) => {
   const w = world(on, { '/wt/a': 'claude/a' }, { 'claude-a.json': claim('claude/a'), 'claude-gone.json': claim('claude/gone') })
-  expect((await call($, 'read_ledger')).result).toBe(`reaped dead claim: claude-gone.json\nledger: /repo/.claude/claims\n${claim('claude/a').trim()}`)
+  expect((await call($, 'read_ledger')).result).toBe(`reaped dead claim: claude-gone.json\nledger: /repo/.claude/claims\n${claim('claude/a').trim()}${worktreeByDefault}`)
   expect(Object.keys(w.files)).toEqual(['claude-a.json'])
 })
 
 test('read_ledger reaps no claim while a linked worktree is detached, such as in a rebase', async ($: any, on: any) => {
   const w = world(on, { '/wt/a': 'HEAD' }, { 'claude-gone.json': claim('claude/gone') })
   const ran = await call($, 'read_ledger')
-  expect(ran.result).toBe(`a worktree is detached, so no claim that parses was reaped\nledger: /repo/.claude/claims\n${claim('claude/gone').trim()}`)
+  expect(ran.result).toBe(`a worktree is detached, so no claim that parses was reaped\nledger: /repo/.claude/claims\n${claim('claude/gone').trim()}${worktreeByDefault}`)
   expect(Object.keys(w.files)).toEqual(['claude-gone.json'])
   w.worktrees = { '/wt/a': 'claude/a' }
   expect((await call($, 'read_ledger')).result).toContain('reaped dead claim: claude-gone.json')
@@ -118,7 +120,7 @@ test('read_ledger reaps no claim while a linked worktree is detached, such as in
 test('a claim that was torn when first read, and whole when read again, is kept', async ($: any, on: any) => {
   const w = world(on, { '/wt/a': 'claude/a' }, { 'claude-a.json': claim('claude/a') })
   w.torn = { name: 'claude-a.json', text: '{ "item": "a", "bran' }
-  expect((await call($, 'read_ledger')).result).toBe(`ledger: /repo/.claude/claims\n${claim('claude/a').trim()}`)
+  expect((await call($, 'read_ledger')).result).toBe(`ledger: /repo/.claude/claims\n${claim('claude/a').trim()}${worktreeByDefault}`)
   expect(Object.keys(w.files)).toEqual(['claude-a.json'])
 })
 
@@ -144,7 +146,17 @@ test('a file that parses on neither read and is a minute old is reaped', async (
 
 test('read_ledger reports an empty or absent ledger with its path', async ($: any, on: any) => {
   world(on, {}, {})
-  expect((await call($, 'read_ledger')).result).toBe('ledger: /repo/.claude/claims\nno claims')
+  expect((await call($, 'read_ledger')).result).toBe(`ledger: /repo/.claude/claims\nno claims${worktreeByDefault}`)
+})
+
+test('read_ledger prints the checkout mode and where it was read, with an unknown value read as the default', async ($: any, on: any) => {
+  const w = world(on, {}, {})
+  w.mode = 'primary'
+  expect((await call($, 'read_ledger')).result).toMatch(/\ncheckout: primary \(git config parallel-session-skills\.checkoutMode\)$/)
+  w.mode = 'worktree'
+  expect((await call($, 'read_ledger')).result).toMatch(/\ncheckout: worktree \(git config parallel-session-skills\.checkoutMode\)$/)
+  w.mode = 'Primary'
+  expect((await call($, 'read_ledger')).result).toMatch(/\ncheckout: worktree \(the default\)$/)
 })
 
 test("write_claim files the claim under the worktree's branch with this session's id", async ($: any, on: any) => {

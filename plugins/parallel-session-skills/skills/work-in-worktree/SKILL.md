@@ -2,18 +2,19 @@
 name: work-in-worktree
 description: >-
   Open a git worktree for a unit of work, for sessions that run side by side in
-  one repo, and remove it once the work has landed. A branch in the primary
-  checkout is the default place for work (work-on-a-branch, in session-skills),
-  and a worktree is opened only when the user asks for one, when a conductor
-  runs the work as a lane, or when the primary checkout is busy with another
-  unit's branch or with changed or untracked files. Includes the naming rules, what the
-  open_worktree tool sets up in the new worktree, and the check before a
-  worktree is removed. Trigger on "in a worktree", "in parallel", "start on
-  this while the other session runs", when work-on-a-branch finds the primary
-  checkout busy, and before removing a worktree. NOT for the fetch, the resume
-  check, or the branch prune (that's work-on-a-branch), NOT for the claim ledger
-  (that's claim-a-lane, which runs next), and NOT for landing (that's
-  land-and-wrap).
+  one repo, and remove it once the work has landed. By default every unit of
+  work gets a worktree, since a session cannot know that a sibling will start
+  later. In a clone set to the primary checkout mode, a worktree is opened only
+  when the user asks for one, when a conductor runs the work as a lane, or when
+  the primary checkout is busy with another unit's branch or with changed or
+  untracked files. Includes the checkout mode, the naming rules, what the open_worktree
+  tool sets up in the new worktree, and the check before a worktree is removed.
+  Trigger before opening a branch for a unit of work, on "in a worktree", "in
+  parallel", "start on this while the other session runs", when
+  work-on-a-branch finds the primary checkout busy, and before removing a
+  worktree. NOT for the fetch, the resume check, or the branch prune (that's
+  work-on-a-branch), NOT for the claim ledger (that's claim-a-lane, which runs
+  next), and NOT for landing (that's land-and-wrap).
 ---
 
 # Work in a worktree
@@ -30,13 +31,31 @@ skill's §2, and no second branch is opened for it.
 
 ## 1. When a worktree is opened
 
-Only in these three cases. In any other, the work goes on a branch in the primary checkout.
+Which case applies depends on the clone's checkout mode. `mcp__parallel-session-skills__read_ledger` prints it on its
+last line, `checkout: worktree` or `checkout: primary`, with where it was read. Call it now where
+this session has not.
 
-- **The user asked for one**: "in a worktree", "in parallel", "while the other session runs".
-- **A conductor is running the work as a lane** (`conduct-a-pipeline`).
-- **The primary checkout is busy**, by `work-on-a-branch` §3's test: it is on a branch other than
-  `$DEFAULT`, or it has changed or untracked paths. Say in one line that the work is in a worktree for
-  that reason.
+- **`worktree`, the default.** Every unit of work gets a worktree. A session cannot know that a
+  sibling will start later, and a branch in the primary checkout would leave that sibling only a
+  busy checkout. The one exception is a user who asks for the primary checkout or the default
+  branch for this work: go back to `work-on-a-branch` §3, where a busy checkout still gets a
+  worktree.
+- **`primary`.** A worktree is opened only in these three cases. In any other, the work goes on a
+  branch in the primary checkout.
+  - **The user asked for one**: "in a worktree", "in parallel", "while the other session runs".
+  - **A conductor is running the work as a lane** (`conduct-a-pipeline`).
+  - **The primary checkout is busy**, by `work-on-a-branch` §3's test: it is on a branch other than
+    `$DEFAULT`, or it has changed or untracked paths. Say in one line that the work is in a
+    worktree for that reason.
+
+The mode is set per clone, only when the user asks for it:
+
+```bash
+git config parallel-session-skills.checkoutMode primary
+```
+
+Setting `worktree` makes the default explicit, and `git config --unset parallel-session-skills.checkoutMode`
+returns to it. Any other value is read as `worktree`.
 
 ## 2. Open it
 
