@@ -5,10 +5,16 @@ import { cancelDesign, designRound, reviseDesign, startDesign } from '../src/des
 import { isOffered, onAgentCall, onSpawn, onTurn } from '../src/review/agent'
 import { reviewerPrefix } from '../src/review/attempts'
 import { cancel, endUnattended, gitTool, round, settleFinding, start, startFixes } from '../src/review/review'
-import { chooseTier, codexModels } from '../src/tier/tier'
+import { chooseTier } from '../src/tier/tier'
 
 const efforts = ['low', 'medium', 'high', 'xhigh', 'max']
 const tiers = ['routine', 'complex', 'critical', 'escalation']
+const fableUsedPercent = {
+  type: 'number',
+  minimum: 0,
+  maximum: 100,
+  description: 'The percent of the weekly Fable limit used, not remaining, from the desktop app\'s get_usage tool. Leave it out where that tool is not listed or reports no Fable window.',
+}
 const run = { type: 'string', description: 'The run id review_start returned.' }
 const designRun = { type: 'string', description: 'The run id plan_start returned.' }
 const askRun = { type: 'string', description: 'The run id ask_start returned.' }
@@ -30,6 +36,7 @@ const tools = [
         args: { type: 'string', description: 'The review command\'s arguments as the user typed them: tier flags, --fix, --findings with an absolute file path, and an optional branch, commit, range, or path.' },
         pick: { type: 'string', enum: tiers, description: 'The tier picked from references/tiers.md.' },
         isSure: { type: 'boolean', description: 'False to ask the user to confirm the tier.' },
+        fableUsedPercent,
         pr: {
           type: 'object',
           description: 'For a PR, the output of `gh pr view N --json url,number,title,body,headRefOid,baseRefName`.',
@@ -69,6 +76,7 @@ const tools = [
         run,
         ids: { type: 'array', items: { type: 'string' }, description: 'The confirmed findings to fix.' },
         pick: { type: 'string', enum: tiers, description: 'The tier of the fix review; the review\'s own when left out. Tier flags typed for the review still apply.' },
+        fableUsedPercent,
       },
       required: ['run', 'ids'],
     },
@@ -88,6 +96,7 @@ const tools = [
         args: { type: 'string', description: 'The ask command\'s arguments exactly as the user typed them: tier flags and --findings with an absolute file path, then the question.' },
         pick: { type: 'string', enum: tiers, description: 'The tier picked from references/tiers.md.' },
         isSure: { type: 'boolean', description: 'False to ask the user to confirm the tier.' },
+        fableUsedPercent,
       },
       required: ['args', 'pick', 'isSure'],
     },
@@ -124,6 +133,7 @@ const tools = [
         args: { type: 'string', description: 'The plan command\'s arguments as the user typed them: tier flags and the path of the file.' },
         pick: { type: 'string', enum: tiers, description: 'The tier picked from references/tiers.md.' },
         isSure: { type: 'boolean', description: 'False to ask the user to confirm the tier.' },
+        fableUsedPercent,
       },
       required: ['args', 'pick', 'isSure'],
     },
@@ -216,7 +226,7 @@ export const register: Register = (on, options) => {
 
   on('command.run', { command: 'confer-tier' }, async ($, e) => {
     try {
-      return { text: JSON.stringify(await chooseTier($, JSON.parse(e.args), codexModels(options))) }
+      return { text: JSON.stringify(await chooseTier($, JSON.parse(e.args), options)) }
     } catch (error) {
       return { text: String(error) }
     }

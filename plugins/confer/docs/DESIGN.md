@@ -16,15 +16,23 @@ uses native events only. Under some managed settings, a user plugin's `classic.*
   call made by a plugin is refused. `$.agent.spawn` takes no effort, so one reviewer agent type is
   registered per effort, `reviewer-low` through `reviewer-max`.
 - The model and effort for both sides come from the run's tier ([references/tiers.md](../references/tiers.md)).
-  Codex has no model aliases and passes the model id to its provider as given. The Codex model for
-  each tier is therefore a plugin setting. The provider is set in Codex's config, never by Confer.
-- Fable 5.2 runs the Claude side at the critical tier, at high, and at the escalation tier, at xhigh.
-  On FrontierCode 2.0 in the 2026-11-09 launch post, Fable 5.2 scored 45.3% at high for $6.72
-  a task, against 43.4% for $5.18 for Opus 5.5 at xhigh. At max it scored below its xhigh
-  for about three times the cost, so it is not run at max at any tier.
-- Before a critical or escalation run, Confer sends Fable 5.2 a one-line completion. Where that call
-  is refused by the engine or answered with a 404, the run falls back to Opus 5.5, at xhigh for
-  critical and max for escalation. A model set with `--claude-model` is never checked.
+  The Claude model and effort and the Codex model for each tier are plugin settings. Codex has no
+  model aliases and passes the model id to its provider as given. The provider is set in Codex's
+  config, never by Confer.
+- By default, Fable runs the Claude side at the critical tier, at high, and at the escalation tier,
+  at xhigh. On FrontierCode 2.0 in the 2026-11-09 launch post, Fable 5.2 scored 45.3% at high for
+  $6.72 a task, against 43.4% for $5.18 for Opus 5.5 at xhigh. At max it scored below its xhigh
+  for about three times the cost, so it is not run at max at any tier by default.
+- Where a tier's Claude model is the `fable` alias, Confer sends a one-line completion to that alias,
+  or to its `ANTHROPIC_DEFAULT_FABLE_MODEL` pin, before the run. Where that call is refused by the
+  engine or answered with a 404, the run falls back to Opus one effort level up. Which Fable
+  answers is not visible to that check, so an account served Fable 5.1 is set to Opus in the
+  settings instead. A model set with `--claude-model` is never checked.
+- Fable usage is not reported to a hook: `$.session.usage()` returned only a `seven_day` window
+  on 2026-11-13, even after a Fable call. The desktop app's `get_usage` tool reports it, so the
+  conductor passes it as `fableUsedPercent`. At 80% or more, every Fable tier but escalation falls
+  back to Opus with no check. An escalation run is started only at the user's request, so it keeps
+  Fable.
 - Each side starts a fresh session every round.
 - Confer checks `codex --version` against a minimum before a run starts.
 

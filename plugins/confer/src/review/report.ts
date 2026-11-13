@@ -75,6 +75,7 @@ export function report(run: RunState) {
     phases: run.phases.map(p => ({
       phase: p.number,
       tier: p.tier,
+      ...(p.fallback && { fallback: p.fallback }),
       tree: p.tree,
       rounds: isBetweenRounds(run, p) ? p.round - 1 : p.round,
       stop: p.stop,

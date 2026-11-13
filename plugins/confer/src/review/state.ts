@@ -1,7 +1,7 @@
 import type { EngineInterface, ModelEffort } from 'claude-code'
 import type { CodexRunResult } from '../codex/run'
 import type { CodexUsage } from '../codex/events'
-import type { Tier } from '../tier/tier'
+import type { Fallback, Tier } from '../tier/tier'
 import type { ClaudeUsage } from './cost'
 import type { Finding, FixOutcome, Reply, ReviewSide } from './types'
 
@@ -44,6 +44,8 @@ export type Phase = {
   tier: Tier
   claude: Side
   codex: Side
+  // Set when a Fable tier ran on Opus instead.
+  fallback?: Fallback
   round: number
   // The reviewed tree; for a fix phase, the fixed tree, once its first review_round has snapshotted it.
   tree?: string

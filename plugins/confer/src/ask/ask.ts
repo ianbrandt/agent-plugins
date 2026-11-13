@@ -6,7 +6,7 @@ import { hasFindings, reclaim, refuseKind, unattended } from '../review/review'
 import { getRun, remember, save, tmpRoot } from '../review/state'
 import type { RunState } from '../review/state'
 import { readFindings } from '../review/target'
-import { chooseTier, codexModels } from '../tier/tier'
+import { chooseTier, fallbackOf } from '../tier/tier'
 import type { Tier } from '../tier/tier'
 
 type Input = Record<string, unknown>
@@ -66,7 +66,7 @@ export async function startAsk($: EngineInterface, input: Input, options: Plugin
   await reclaim($)
   const { flags: words, question } = splitQuestion(String(input.args ?? ''))
   if (question === '') throw new Error('Confer needs a question: type it after the flags.')
-  const choice = await chooseTier($, { command: 'question', pick: input.pick as Tier, isSure: input.isSure === true || hasFindings(words), args: words }, codexModels(options))
+  const choice = await chooseTier($, { command: 'question', pick: input.pick as Tier, isSure: input.isSure === true || hasFindings(words), args: words, fableUsedPercent: input.fableUsedPercent }, options)
   const { findings, rest } = await readFindings($, choice.args, false)
   if (rest.length > 0) throw new Error(`${rest.join(' ')} is not an option of the ask command.`)
   const { top, folder, why } = await readFolder($)
@@ -91,7 +91,7 @@ export async function startAsk($: EngineInterface, input: Input, options: Plugin
     maxRounds: Number(options.maxRounds ?? 8),
     ask: { question, root: realRoot },
     status: 'running',
-    phases: [{ number: 0, tier: choice.tier, claude: choice.claude, codex: choice.codex, round: 1, paths: [], selected: [], state: 'rounds' }],
+    phases: [{ number: 0, tier: choice.tier, claude: choice.claude, codex: choice.codex, ...fallbackOf(choice), round: 1, paths: [], selected: [], state: 'rounds' }],
     findings: [],
     attempts: [],
     resources: { worktrees: [], refs: [] },
@@ -104,7 +104,7 @@ export async function startAsk($: EngineInterface, input: Input, options: Plugin
   remember(run)
   if (findings !== undefined) unattended.add(id)
   await save($, run, await $.clock.now())
-  return warn({ ...roundResult(run), question, tier: choice.tier, claude: choice.claude, codex: choice.codex }, run, why)
+  return warn({ ...roundResult(run), question, tier: choice.tier, claude: choice.claude, codex: choice.codex, ...fallbackOf(choice) }, run, why)
 }
 
 const notFound = (id: unknown) => ({ error: `There is no Confer run ${String(id)}.` })

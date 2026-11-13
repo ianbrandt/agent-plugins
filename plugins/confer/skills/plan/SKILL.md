@@ -20,8 +20,9 @@ yourself, and never edit the file while a round runs.
    is the file. Otherwise, work the document out first, as below.
 3. Pick a tier by [the tier rubric](../../references/tiers.md), from the contents of the file, with
    `isSure` false when it sits between two tiers.
-4. Call `plan_start { args, pick, isSure }` with the arguments as typed. Before the first round,
-   tell the user the file, the `tier`, and the models in `claude` and `codex` from the result.
+4. Call `plan_start { args, pick, isSure, fableUsedPercent? }` with the arguments as typed and the
+   figure from [Fable usage](../../references/tiers.md#fable-usage). Before the first round, tell the user the file, the `tier`, the models in
+   `claude` and `codex` from the result, and any `fallback`.
 
 ## Work it out
 
@@ -43,7 +44,7 @@ yourself, and never edit the file while a round runs.
    design, and the plan, each as long as the goal needs. A roadmap lists each item with its gates,
    the files it touches, and whether it needs someone present.
 6. Pick the tier as in step 3 of Start, then call `plan_start` with the tier and model flags as
-   typed, followed by the path of the file. Tell the user the tier and models as in step 4 of
+   typed, followed by the path of the file, and `fableUsedPercent` as in step 4 of Start. Tell the user the tier and models as in step 4 of
    Start, and go on to the rounds.
 
 ## Rounds

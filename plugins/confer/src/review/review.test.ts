@@ -715,6 +715,46 @@ test('each fix review returns its tier and models, keeps the review\'s model fla
   expect(await call($, 'review_fixes', { run: round1.run, ids: ['C1'] })).toEqual({ error: expect.stringContaining('Two fix reviews') })
 })
 
+// A review with C1 confirmed and complete, ready for review_fixes.
+async function reviewed($: Engine) {
+  const round1 = await begin($)
+  await claude($, round1, first([bug('1')]))
+  await claude($, await call($, 'review_round', { run: round1.run }), later([ruling('C1', 'agree')]))
+  await call($, 'review_round', { run: round1.run })
+  return round1
+}
+
+test('a fix review with no pick decides the Claude side again from a usage figure, and keeps the Codex side', { options: { claudeComplexModel: 'fable' } }, async ($, on) => {
+  const { files } = world(on, { codex: [codexSays(first()), codexSays(later([ruling('C1', 'agree')]))] })
+  on('model.complete', () => ({ value: { isAnswered: true, text: 'OK', usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }))
+
+  const round1 = await reviewed($)
+  const fixing = await call($, 'review_fixes', { run: round1.run, ids: ['C1'], fableUsedPercent: 85 })
+
+  expect(round1.claude).toEqual({ model: 'fable', effort: 'high' })
+  expect(fixing).toMatchObject({
+    tier: 'complex',
+    claude: { model: 'opus', effort: 'xhigh' },
+    codex: { model: 'gpt-6.1-sol', effort: 'xhigh' },
+    fallback: { reason: 'usage', percent: 85 },
+  })
+  expect(state(files, round1.run).phases.map((p: any) => p.fallback)).toEqual([undefined, { reason: 'usage', percent: 85 }])
+  expect((await call($, 'review_cancel', { run: round1.run })).report.phases[1].fallback).toEqual({ reason: 'usage', percent: 85 })
+})
+
+test('a fix review with no pick and no usage figure reuses the review\'s sides and fallback', { options: { claudeComplexModel: 'fable' } }, async ($, on) => {
+  world(on, { codex: [codexSays(first()), codexSays(later([ruling('C1', 'agree')]))] })
+  on('model.complete', () => ({ value: { isAnswered: false, reason: 'api-error', status: 404, error: 'model_not_found', usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }))
+
+  const round1 = await reviewed($)
+
+  expect(round1).toMatchObject({ claude: { model: 'opus', effort: 'xhigh' }, fallback: { reason: 'not-served' } })
+  expect(await call($, 'review_fixes', { run: round1.run, ids: ['C1'] })).toMatchObject({
+    claude: { model: 'opus', effort: 'xhigh' },
+    fallback: { reason: 'not-served' },
+  })
+})
+
 test('cancel is refused while a reviewer runs', async ($, on) => {
   world(on, { codex: [codexSays(first())] })
 

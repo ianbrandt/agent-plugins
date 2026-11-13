@@ -1,7 +1,7 @@
 import type { EngineInterface, PluginOptions } from 'claude-code'
 import { isWindowsPath, refuseGitRouting } from '../codex/run'
 import { setContent } from './brief'
-import { codexModels, chooseTier } from '../tier/tier'
+import { chooseTier, fallbackOf } from '../tier/tier'
 import type { Tier } from '../tier/tier'
 import { current, attemptsOf, description, failures, newAttempt, phaseOf, reviewerPrefix } from '../review/attempts'
 import { view } from '../review/brief'
@@ -120,7 +120,7 @@ function revise(run: RunState): Result {
 export async function startDesign($: EngineInterface, input: Input, options: PluginOptions): Promise<Result> {
   await reclaim($)
   const args = String(input.args ?? '')
-  const choice = await chooseTier($, { command: 'plan', pick: input.pick as Tier, isSure: input.isSure === true || hasFindings(args), args }, codexModels(options))
+  const choice = await chooseTier($, { command: 'plan', pick: input.pick as Tier, isSure: input.isSure === true || hasFindings(args), args, fableUsedPercent: input.fableUsedPercent }, options)
   const { findings, rest } = await readFindings($, choice.args, false)
   const [path, ...more] = rest
   if (path === undefined || more.length > 0) throw new Error('Confer reviews one file: pass its path as the one argument.')
@@ -148,7 +148,7 @@ export async function startDesign($: EngineInterface, input: Input, options: Plu
     maxRounds: Number(options.maxRounds ?? 8),
     design: { path: real, versions: [v1] },
     status: 'running',
-    phases: [{ number: 0, tier: choice.tier, claude: choice.claude, codex: choice.codex, round: 1, paths: [], selected: [], state: 'rounds' }],
+    phases: [{ number: 0, tier: choice.tier, claude: choice.claude, codex: choice.codex, ...fallbackOf(choice), round: 1, paths: [], selected: [], state: 'rounds' }],
     findings: [],
     attempts: [],
     resources: { worktrees: [], refs: [] },
@@ -161,7 +161,7 @@ export async function startDesign($: EngineInterface, input: Input, options: Plu
   if (findings !== undefined) unattended.add(id)
   await $.fs.write(`${run.dir}/v1.md`, text)
   await save($, run, await $.clock.now())
-  return warn({ ...roundResult(run), tier: choice.tier, claude: choice.claude, codex: choice.codex }, run, why)
+  return warn({ ...roundResult(run), tier: choice.tier, claude: choice.claude, codex: choice.codex, ...fallbackOf(choice) }, run, why)
 }
 
 // The checkout's top, or outside a checkout an empty top and the session's folder, with Git's reason.

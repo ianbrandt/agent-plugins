@@ -231,3 +231,88 @@ test('a bad argument fails the choice', async ($) => {
   expect(await choose($, { args: '--tier' })).toBe('Error: --tier needs a value.')
   expect(await choose($, { args: '--codex-model' })).toBe('Error: --codex-model needs a value.')
 })
+
+test('the Claude model and effort of a tier are read from the settings', { options: { claudeRoutineModel: 'opus', claudeRoutineEffort: 'low' } }, async ($, on) => {
+  mock.env(on, {})
+  const checked = serve(on)
+
+  expect(((await choose($, { pick: 'routine' })) as TierChoice).claude).toEqual({ model: 'opus', effort: 'low' })
+  expect(checked).toEqual([])
+})
+
+test('a model setting matches an alias ignoring case and spaces', { options: { claudeComplexModel: ' Fable ' } }, async ($, on) => {
+  mock.env(on, {})
+  const checked = serve(on)
+
+  expect(((await choose($, {})) as TierChoice).claude).toEqual({ model: 'fable', effort: 'high' })
+  expect(checked).toEqual(['fable'])
+})
+
+test('an empty model fails only the tier that runs, and not with --claude-model', { options: { claudeComplexModel: ' ', claudeEscalationModel: '' } }, async ($, on) => {
+  mock.env(on, {})
+  serve(on)
+
+  expect(await choose($, {})).toBe('Error: The claudeComplexModel setting is empty: set a model, such as opus.')
+  expect(((await choose($, { pick: 'routine' })) as TierChoice).claude.model).toBe('sonnet')
+  expect(((await choose($, { args: '--claude-model opus' })) as TierChoice).claude.model).toBe('opus')
+})
+
+test('a tier set to Opus or to a Fable id is not checked', { options: { claudeCriticalModel: 'opus', claudeEscalationModel: 'claude-fable-5-2' } }, async ($, on) => {
+  mock.env(on, {})
+  const checked = serve(on, notFound)
+
+  expect(((await choose($, { pick: 'critical' })) as TierChoice).claude).toEqual({ model: 'opus', effort: 'high' })
+  expect(((await choose($, { args: '--tier escalation' })) as TierChoice).claude).toEqual({ model: 'claude-fable-5-2', effort: 'xhigh' })
+  expect(checked).toEqual([])
+})
+
+test('a Fable tier falls back to Opus one effort level up', { options: { claudeComplexModel: 'fable', claudeComplexEffort: 'medium', claudeEscalationEffort: 'max' } }, async ($, on) => {
+  mock.env(on, {})
+  serve(on, notFound)
+
+  expect(await choose($, {})).toEqual(expect.objectContaining({ claude: { model: 'opus', effort: 'high' }, fallback: { reason: 'not-served' } }))
+  expect(((await choose($, { args: '--tier escalation' })) as TierChoice).claude).toEqual({ model: 'opus', effort: 'max' })
+})
+
+test('--claude-effort applies to the fallback as given', async ($, on) => {
+  mock.env(on, {})
+  serve(on, notFound)
+
+  expect(((await choose($, { pick: 'critical', args: '--claude-effort low' })) as TierChoice).claude).toEqual({ model: 'opus', effort: 'low' })
+})
+
+test('an effort setting outside the five levels runs at the tier default', { options: { claudeCriticalEffort: 'extra' } }, async ($, on) => {
+  mock.env(on, {})
+  serve(on)
+
+  expect(((await choose($, { pick: 'critical' })) as TierChoice).claude).toEqual({ model: 'fable', effort: 'high' })
+})
+
+test('Fable usage at 80% or more falls back with no check, except at escalation', { options: { claudeComplexModel: 'fable' } }, async ($, on) => {
+  mock.env(on, {})
+  const checked = serve(on)
+  const claude = async (fields: object) => ((await choose($, fields)) as TierChoice).claude.model
+
+  expect(await choose($, { pick: 'critical', fableUsedPercent: 80 })).toEqual(
+    expect.objectContaining({ claude: { model: 'opus', effort: 'xhigh' }, fallback: { reason: 'usage', percent: 80 } }),
+  )
+  expect(await claude({ pick: 'critical', fableUsedPercent: 100 })).toBe('opus')
+  expect(await claude({ fableUsedPercent: 80 })).toBe('opus')
+  expect(checked).toEqual([])
+  expect(await claude({ pick: 'critical', fableUsedPercent: 79 })).toBe('fable')
+  expect(await claude({ pick: 'critical', fableUsedPercent: 0 })).toBe('fable')
+  expect(await claude({ pick: 'critical', fableUsedPercent: null })).toBe('fable')
+  expect(await claude({ args: '--tier escalation', fableUsedPercent: 95 })).toBe('fable')
+  expect(checked).toEqual(['fable', 'fable', 'fable', 'fable'])
+})
+
+test('a Fable usage figure that is not a percentage fails before the tier question', async ($, on) => {
+  mock.env(on, {})
+  const asked = answer(on, 'Routine')
+  const error = (value: unknown) => `Error: fableUsedPercent takes the percent of the weekly Fable limit used, from 0 to 100, not ${JSON.stringify(value)}.`
+
+  expect(await choose($, { fableUsedPercent: -1 })).toBe(error(-1))
+  expect(await choose($, { fableUsedPercent: 101 })).toBe(error(101))
+  expect(await choose($, { fableUsedPercent: '85', isSure: false })).toBe(error('85'))
+  expect(asked).toEqual([])
+})

@@ -22,9 +22,9 @@ consensus yourself, and never edit a file while a review round runs.
    change, a branch, a commit, a range `base..head`, a path (quote one with spaces), or a PR
    number. For a PR number, run `gh pr view <N> --json url,number,title,body,headRefOid,baseRefName`
    and pass its output as `pr`. Without `gh`, ask for the PR's branch instead.
-4. Call `review_start { args, pick, isSure, pr? }` with the arguments as typed. Before the first
-   round, tell the user the target, the `tier`, and the models in `claude` and `codex` from the
-   result.
+4. Call `review_start { args, pick, isSure, pr?, fableUsedPercent? }` with the arguments as typed
+   and the figure from [Fable usage](../../references/tiers.md#fable-usage). Before the first round, tell the user the target, the `tier`, the
+   models in `claude` and `codex` from the result, and any `fallback`.
 
 ## Rounds
 
@@ -79,8 +79,8 @@ Only when the result includes `fixable`, as a checkout or path review can. With 
 every fixable finding; otherwise ask the user which to fix, all or none included.
 
 1. Call `review_fixes { run, ids }` before your first edit, with `pick` when a lower tier fits
-   the fix review. Tell the user the `tier` and the models in `claude` and `codex` from the
-   result, and that edits they make while you fix cannot be told apart from yours.
+   the fix review, and `fableUsedPercent` as in [Fable usage](../../references/tiers.md#fable-usage). Tell the user the `tier`, the models in
+   `claude` and `codex` from the result, any `fallback`, and that edits they make while you fix cannot be told apart from yours.
 2. Write each fix with a regression test. Run the test before the fix and watch it fail, then
    after and watch it pass.
 3. Call `review_round { run }` alone. It starts the fix review, in which both models review only

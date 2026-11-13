@@ -28,7 +28,8 @@ or later, signed in or set up for a provider.
    Confer's settings. The install dialog's packaged defaults
    (`gpt-6.1-sol`, `gpt-6-astra`) are the standard OpenAI Codex subscription
    ids; leave them as typed, then overwrite them with the import command.
-   See [Import Codex Model IDs](#import-codex-model-ids) below.
+   See [Import Codex Model IDs](#import-codex-model-ids) below. The Claude
+   model and effort settings can be left at their defaults.
 
 ### Import Codex Model IDs
 
@@ -134,9 +135,18 @@ run, pass `--claude-model`, `--claude-effort`, `--codex-model`, or `--codex-effo
 /confer:ask --codex-effort high Is this lock ordering safe?
 ```
 
-Claude Fable 5.2 runs at the `critical` and `escalation` tiers, and Claude Opus 5.5 runs there
-instead where the account is not served Fable 5.2. The Codex model for each tier, the maximum
-number of rounds, and the review worktree are plugin settings.
+The Claude model and effort and the Codex model for each tier, the maximum number of rounds, and the
+review worktree are plugin settings. By default, Claude Fable runs at the `critical` and
+`escalation` tiers. Wherever a tier's Claude model is `fable`, Claude Opus runs one effort level
+higher instead when the account is not served Fable. In the desktop app, Opus also runs at every
+tier but `escalation` once 80% or more of the weekly Fable limit is used. Pass `--claude-model fable`
+to run Fable anyway.
+
+The `fable` alias can resolve to Fable 5.1, which scored below Opus 5.5 at High on every benchmark
+run for the tier table. On such an account, set `claudeCriticalModel` to `opus` with
+`claudeCriticalEffort` at `xhigh`, and `claudeEscalationModel` to `opus` with
+`claudeEscalationEffort` at `max`. To run a specific Fable id, set `ANTHROPIC_DEFAULT_FABLE_MODEL`
+and keep the model setting at `fable`: a Fable id in the setting is not checked.
 
 ### Run with nobody watching
 

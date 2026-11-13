@@ -18,6 +18,58 @@
       "description": "Run Codex in a detached worktree where the OS does not enforce read-only.",
       "default": true
     },
+    "claudeRoutineModel": {
+      "type": "string",
+      "title": "Claude routine model",
+      "description": "The Claude model of the routine tier: an alias (sonnet, opus, haiku, or fable) or a model id. At fable, Confer runs Opus one effort level up where the account is not served Fable, or when the conductor reports 80% or more of the weekly Fable limit used.",
+      "default": "sonnet"
+    },
+    "claudeRoutineEffort": {
+      "type": "string",
+      "title": "Claude routine effort",
+      "description": "The Claude effort of the routine tier.",
+      "options": ["low", "medium", "high", "xhigh", "max"],
+      "default": "high"
+    },
+    "claudeComplexModel": {
+      "type": "string",
+      "title": "Claude complex model",
+      "description": "The Claude model of the complex tier: an alias (sonnet, opus, haiku, or fable) or a model id. At fable, Confer runs Opus one effort level up where the account is not served Fable, or when the conductor reports 80% or more of the weekly Fable limit used.",
+      "default": "opus"
+    },
+    "claudeComplexEffort": {
+      "type": "string",
+      "title": "Claude complex effort",
+      "description": "The Claude effort of the complex tier.",
+      "options": ["low", "medium", "high", "xhigh", "max"],
+      "default": "high"
+    },
+    "claudeCriticalModel": {
+      "type": "string",
+      "title": "Claude critical model",
+      "description": "The Claude model of the critical tier: an alias (sonnet, opus, haiku, or fable) or a model id. At fable, Confer runs Opus one effort level up where the account is not served Fable, or when the conductor reports 80% or more of the weekly Fable limit used.",
+      "default": "fable"
+    },
+    "claudeCriticalEffort": {
+      "type": "string",
+      "title": "Claude critical effort",
+      "description": "The Claude effort of the critical tier.",
+      "options": ["low", "medium", "high", "xhigh", "max"],
+      "default": "high"
+    },
+    "claudeEscalationModel": {
+      "type": "string",
+      "title": "Claude escalation model",
+      "description": "The Claude model of the escalation tier: an alias (sonnet, opus, haiku, or fable) or a model id. At fable, Confer runs Opus one effort level up where the account is not served Fable.",
+      "default": "fable"
+    },
+    "claudeEscalationEffort": {
+      "type": "string",
+      "title": "Claude escalation effort",
+      "description": "The Claude effort of the escalation tier.",
+      "options": ["low", "medium", "high", "xhigh", "max"],
+      "default": "xhigh"
+    },
     "codexRoutineModel": {
       "type": "string",
       "title": "Codex routine model",

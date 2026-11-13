@@ -1,7 +1,7 @@
 import type { EngineInterface, PluginOptions } from 'claude-code'
 import { isWindowsPath } from '../codex/run'
 import { git } from '../codex/worktree'
-import { chooseTier, codexModels, split } from '../tier/tier'
+import { chooseTier, fallbackOf, refreshClaude, split } from '../tier/tier'
 import type { Tier } from '../tier/tier'
 import { current, description, failures, newAttempt, phaseOf, reviewerPrefix } from './attempts'
 import { applyRound, fixOutcomes, isConfirmed, issues, settle, stopReason } from './consensus'
@@ -204,7 +204,7 @@ export async function start($: EngineInterface, input: Input, options: PluginOpt
   await reclaim($)
   const args = String(input.args ?? '')
   const isSure = input.isSure === true || hasFindings(args)
-  const choice = await chooseTier($, { command: 'review', pick: input.pick as Tier, isSure, args }, codexModels(options))
+  const choice = await chooseTier($, { command: 'review', pick: input.pick as Tier, isSure, args, fableUsedPercent: input.fableUsedPercent }, options)
   const { target, fix, findings, top, head } = await readTarget($, choice.args, input.pr)
   if (isWindowsPath(top)) await confirmForeign($, await foreignSource($, top, target, head), findings !== undefined)
   const id = crypto.randomUUID().slice(0, 8)
@@ -239,15 +239,15 @@ export async function start($: EngineInterface, input: Input, options: PluginOpt
     tree = await prepare($, run, async () => save($, run, await $.clock.now()))
     paths = await changedPaths($, run, run.base, tree, target.kind === 'path' ? target.path : undefined)
   } catch (error) {
-    run.phases.push({ number: 0, tier: choice.tier, claude: choice.claude, codex: choice.codex, round: 0, paths: [], selected: [], state: 'done' })
+    run.phases.push({ number: 0, tier: choice.tier, claude: choice.claude, codex: choice.codex, ...fallbackOf(choice), round: 0, paths: [], selected: [], state: 'done' })
     await end($, run, 'failed', `The review could not start: ${message(error)}`)
     throw error
   }
-  run.phases.push({ number: 0, tier: choice.tier, claude: choice.claude, codex: choice.codex, round: 1, tree, paths, selected: [], state: 'rounds' })
+  run.phases.push({ number: 0, tier: choice.tier, claude: choice.claude, codex: choice.codex, ...fallbackOf(choice), round: 1, tree, paths, selected: [], state: 'rounds' })
   if (paths.length === 0) return end($, run, 'nothing-to-review')
   newAttempt(run, 'claude')
   await save($, run, await $.clock.now())
-  return { ...roundResult(run), target: target.kind, fix, tier: choice.tier, claude: choice.claude, codex: choice.codex }
+  return { ...roundResult(run), target: target.kind, fix, tier: choice.tier, claude: choice.claude, codex: choice.codex, ...fallbackOf(choice) }
 }
 
 export async function round($: EngineInterface, input: Input, options: PluginOptions): Promise<Result> {
@@ -353,15 +353,19 @@ export async function startFixes($: EngineInterface, input: Input, options: Plug
   if (!Array.isArray(ids) || ids.length === 0 || ids.some(id => !allowed.includes(id))) {
     return { error: `ids must list confirmed findings not fixed yet: ${allowed.join(', ') || 'there are none'}.` }
   }
+  // With no pick the fix review keeps the review's tier and Codex side, and the Claude side is chosen again when a usage figure is given.
+  const first = run.phases[0]!
   const tier =
-    input.pick === undefined
-      ? run.phases[0]!
-      : await chooseTier($, { command: 'review', pick: input.pick as Tier, isSure: true, args: run.args ?? '' }, codexModels(options))
+    input.pick !== undefined
+      ? await chooseTier($, { command: 'review', pick: input.pick as Tier, isSure: true, args: run.args ?? '', fableUsedPercent: input.fableUsedPercent }, options)
+      : input.fableUsedPercent === undefined || input.fableUsedPercent === null
+        ? first
+        : { tier: first.tier, codex: first.codex, ...(await refreshClaude($, first.tier, run.args ?? '', options, input.fableUsedPercent)) }
   const drifted = await hasDrifted($, run)
   if (run.status !== 'complete') return ended(run)
   if (drifted) return end($, run, 'drifted', 'The checkout changed after the review and before review_fixes.')
   const from = lastTree(run)
-  run.phases.push({ number: run.phases.length, tier: tier.tier, claude: tier.claude, codex: tier.codex, round: 1, from, paths: [], selected: ids, state: 'rounds' })
+  run.phases.push({ number: run.phases.length, tier: tier.tier, claude: tier.claude, codex: tier.codex, ...fallbackOf(tier), round: 1, from, paths: [], selected: ids, state: 'rounds' })
   run.status = 'running'
   await save($, run, await $.clock.now())
   return {
@@ -372,6 +376,7 @@ export async function startFixes($: EngineInterface, input: Input, options: Plug
     tier: tier.tier,
     claude: tier.claude,
     codex: tier.codex,
+    ...fallbackOf(tier),
     instructions:
       'Write each fix with a regression test that fails before the fix and passes after it. Tell the user that edits anyone else makes to the checkout meanwhile cannot be told apart from the fixes. Then call review_round alone; it returns the first round of the fix review.',
   }

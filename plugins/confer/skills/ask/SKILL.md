@@ -20,11 +20,12 @@ question, add to an answer, or pick one.
    needed. Never take the question from the conversation.
 3. Pick a tier by [the tier rubric](../../references/tiers.md), from the question, with `isSure`
    false when it sits between two tiers.
-4. Call `ask_start { args, pick, isSure }` with the arguments exactly as typed. The flags go first,
+4. Call `ask_start { args, pick, isSure, fableUsedPercent? }` with the arguments exactly as typed
+   and the figure from [Fable usage](../../references/tiers.md#fable-usage). The flags go first,
    and a flag typed after the question stays part of it. Never compose, shorten, or add context to
    the question.
 5. Before round 1, tell the user the `question`, `tier`, and models in `claude` and `codex` from
-   the result, and any `warning`.
+   the result, any `fallback`, and any `warning`.
 
 ## Rounds
 
