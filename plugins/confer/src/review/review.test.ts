@@ -744,7 +744,11 @@ test('a fix review with no pick decides the Claude side again from a usage figur
 
 test('a fix review with no pick and no usage figure reuses the review\'s sides and fallback', { options: { claudeComplexModel: 'fable' } }, async ($, on) => {
   world(on, { codex: [codexSays(first()), codexSays(later([ruling('C1', 'agree')]))] })
-  on('model.complete', () => ({ value: { isAnswered: false, reason: 'api-error', status: 404, error: 'model_not_found', usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }))
+  let checks = 0
+  on('model.complete', () => {
+    checks++
+    return { value: { isAnswered: false, reason: 'api-error', status: 404, error: 'model_not_found', usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }
+  })
 
   const round1 = await reviewed($)
 
@@ -753,6 +757,7 @@ test('a fix review with no pick and no usage figure reuses the review\'s sides a
     claude: { model: 'opus', effort: 'xhigh' },
     fallback: { reason: 'not-served' },
   })
+  expect(checks).toBe(1)
 })
 
 test('cancel is refused while a reviewer runs', async ($, on) => {
