@@ -42,7 +42,7 @@ be a few patch releases behind the CLI. On the Mac, the bundled version is the d
   `plugin.json` there.
 
 The same script runs in GitHub Actions on Linux, macOS, and Windows for each push and pull request,
-under Claude Code 2.1.317 and the latest release ([`test.yml`](.github/workflows/test.yml)). A pass on Windows does not replace a live run there: the
+under Claude Code 2.1.321 and the latest release ([`test.yml`](.github/workflows/test.yml)). A pass on Windows does not replace a live run there: the
 unit tests run against mocked file and git calls. Checks that need another machine are listed in
 `TODO.md` at the root, and each is removed from it once its results are back.
 
@@ -53,7 +53,7 @@ call a model too.
 
 ## Building Confer
 
-Confer needs Node.js and Claude Code 2.1.317 or later. Run these commands in `plugins/confer`.
+Confer needs Node.js and Claude Code 2.1.321 or later. Run these commands in `plugins/confer`.
 
 1. Install TypeScript:
 

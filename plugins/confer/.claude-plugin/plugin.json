@@ -9,7 +9,7 @@
   "license": "MIT",
   "keywords": ["code-review", "planning", "codex", "second-opinion", "consensus"],
   "metadata": {
-    "minClaudeCodeVersion": "2.1.317"
+    "minClaudeCodeVersion": "2.1.321"
   },
   "userConfig": {
     "worktree": {

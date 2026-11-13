@@ -10,8 +10,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        # 2.1.317 is Confer's minClaudeCodeVersion, the newest version any plugin here needs.
-        claude-code: [2.1.317, latest]
+        # 2.1.321 is Confer's minClaudeCodeVersion, the newest version any plugin here needs.
+        claude-code: [2.1.321, latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

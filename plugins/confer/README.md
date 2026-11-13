@@ -10,7 +10,7 @@ default. Any point still disputed at the end is reported with both positions, fo
 
 ## Install
 
-You need Claude Code 2.1.317 or later and the [Codex CLI](https://github.com/openai/codex) 0.167.0
+You need Claude Code 2.1.321 or later and the [Codex CLI](https://github.com/openai/codex) 0.167.0
 or later, signed in or set up for a provider.
 
 1. Add the marketplace and install the plugin:
