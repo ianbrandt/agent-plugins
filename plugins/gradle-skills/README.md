@@ -50,7 +50,7 @@ Install at user scope (available across all your projects):
 /plugin install gradle-skills@ianbrandt
 ```
 
-### Bash permissions (optional)
+### Bash Permissions (Optional)
 
 The dependency update workflow runs `./gradlew` tasks and `git` commands (it commits each verified upgrade automatically). To avoid per-invocation approval prompts, add these permissions in `~/.claude/settings.json`:
 

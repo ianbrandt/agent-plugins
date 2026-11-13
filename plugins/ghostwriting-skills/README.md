@@ -5,7 +5,7 @@ PRs, comments, commit messages, docs, code comments—in your voice rather than 
 register. Only the method is in the skills. Your voice data is read from a directory you keep
 outside this repo.
 
-## Where your voice data lives
+## Where Your Voice Data Lives
 
 A `voice-spec.md` (voice rules, per-genre form, a delta log of your edits) and a `corpus/` of your
 hand-written samples. The directory is asked for when the plugin is enabled (the `voice_dir`
@@ -57,7 +57,7 @@ quoted drafts are scrubbed; and the export is written to a file beside your spec
 before it goes anywhere. A recipient runs the `ghostwrite` bootstrap with the seed, which keeps
 your caps as a starting point and derives the voice rules from the recipient's samples.
 
-## Measuring it
+## Measuring It
 
 [`evals/`](evals/) is a `claude plugin eval` suite of one PR-body drafting task, one issue-body
 task, and one README-section task. In each case `ghostwrite` is run against a fixture voice spec for

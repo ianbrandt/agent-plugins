@@ -52,7 +52,7 @@ capability profile does not match that mapping.
 During a run, Confer adds a dim line to the transcript each time a reviewer starts or returns, with
 the run id, the tier, and the round.
 
-### Review a change
+### Review a Change
 
 Review the uncommitted changes in your checkout, untracked files included:
 
@@ -92,7 +92,7 @@ To fix the confirmed findings and have both sides review the fix, add `--fix`:
 Fixes are offered only for a review of the checkout or a path. Without `--fix`, you're asked which
 findings to fix.
 
-### Work out a plan
+### Work Out a Plan
 
 Give a goal, or a roadmap to plan:
 
@@ -111,7 +111,7 @@ To review a document you already have, pass its path:
 /confer:plan docs/rate-limiting.md
 ```
 
-### Ask a question
+### Ask a Question
 
 ```shell
 /confer:ask Should the session cache be keyed by user or by tenant?
@@ -119,7 +119,7 @@ To review a document you already have, pass its path:
 
 Each side answers on its own first. Then they rule on each other's answers until they agree on one.
 
-### Choose the models
+### Choose the Models
 
 Confer picks the models and effort for each run from how complex and critical the work is, and
 asks you when the work falls between two tiers. Set the tier yourself with `--tier`:
@@ -148,7 +148,7 @@ run for the tier table. On such an account, set `claudeCriticalModel` to `opus` 
 `claudeEscalationEffort` at `max`. To run a specific Fable id, set `ANTHROPIC_DEFAULT_FABLE_MODEL`
 and keep the model setting at `fable`: a Fable id in the setting is not checked.
 
-### Run with nobody watching
+### Run with Nobody Watching
 
 With `--findings`, the report is written to a file and no questions are asked, as in a headless run
 with `claude -p`:
@@ -159,7 +159,7 @@ with `claude -p`:
 
 A plan run with `--findings` needs a document to review, since nobody is there to interview.
 
-## Privacy and safety
+## Privacy and Safety
 
 - The code and documents under review are sent to the model providers Claude Code and Codex are
   configured to use.

@@ -57,7 +57,7 @@ flagged unit stays out of later refills so it isn't picked and run again on ever
 
 Candidates come from a backlog plugin, and each finished unit is recorded there.
 
-## What it needs
+## What It Needs
 
 `session-skills`: `work-on-a-branch` fetches, locates the primary checkout, picks the ref a new
 branch starts from, and resumes the branch work is already in flight on, and `land-and-wrap` gets
@@ -71,7 +71,7 @@ A backlog plugin is optional on top of both. It supplies what is workable and wh
 already in flight. Disjointness is still checked in the ledger, because an issue tracker has no
 record of which paths a task edits.
 
-## How it is wired
+## How It Is Wired
 
 The plugin registers five tools as `mcp__parallel-session-skills__<tool>`: two that open and remove
 a worktree, and three that are the only way the ledger is read and written. Every claim stamped

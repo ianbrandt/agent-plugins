@@ -60,7 +60,7 @@ The loop is kept in `parallel-session-skills` because a conductor with several
 lanes open needs the disjointness check on the claim ledger, and none of that
 work depends on the backlog being a markdown file.
 
-## What it pairs with
+## What It Pairs With
 
 The branch and landing are handled in `session-skills`, and a worktree and the
 claim ledger in `parallel-session-skills`. This plugin is a backlog plugin for both: it
@@ -79,7 +79,7 @@ known before any session starts and is written only in the backlog. Which files
 a lane touches is a fact about the working tree, so disjointness is checked
 against the claim ledger.
 
-## How it is wired
+## How It Is Wired
 
 In a repo with a roadmap, a short rule is added to the first prompt so that a task you state directly
 is given a roadmap item, started through `next-roadmap-item`, and landed through `land-and-wrap`. The skills call

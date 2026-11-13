@@ -11,7 +11,7 @@ it.
 
 Claude Code 2.1.308 or later is required.
 
-## What you will see
+## What You Will See
 
 - The rules in [`hooks/rules.md`](hooks/rules.md) are added to the first prompt of every session,
   again after `/clear` and compaction, and to every subagent's task. They cost about 1,800 tokens each time.
@@ -70,7 +70,7 @@ line per command or tool. You can edit those files. Where a command or tool has 
   and an object that "says" or "wants" something. The rest depends on the session following the
   rules and on the model review.
 
-## Flagging a word
+## Flagging a Word
 
 When you flag a word as jargon or as AI writing, the session adds it to `hooks/rules.md` with its
 plain replacement. With `ghostwriting-skills` installed, general rules from your edits to its drafts

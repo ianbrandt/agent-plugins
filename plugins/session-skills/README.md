@@ -68,7 +68,7 @@ Then the wrap-up actions every session runs whether or not the work finished: st
 tasks, release any lease, and leave the branch of unfinished work standing as the resume record.
 The merged branch of landed work is deleted.
 
-## What it pairs with
+## What It Pairs With
 
 Two seams that other plugins fill are defined in `work-on-a-branch` §0. A concurrency plugin
 adds the half this plugin deliberately leaves out: a worktree for each session that runs beside
@@ -83,7 +83,7 @@ in the marketplace's README.
 
 How the wrap-up reads once these actions are done is covered by `writing-skills`.
 
-## How it is wired
+## How It Is Wired
 
 The skills call five tools that the plugin registers as `mcp__session-skills__<tool>`, and the session
 rules in [`hooks/rules.md`](hooks/rules.md) are added to the first prompt, and again after
@@ -99,7 +99,7 @@ turn ends, and that command shows as one line. Claude Code 2.1.314 or later is r
 [DESIGN.md](docs/DESIGN.md) covers each tool, how the session title is set, and why the rules are
 loaded by a hook.
 
-## Measuring it
+## Measuring It
 
 [`evals/`](evals/) is a `claude plugin eval` suite of seven chat cases: how work lands in a fork, a
 `confirm-push` clone, an `auto-push` clone, and a pull-request repo, a handoff after a landed unit,
