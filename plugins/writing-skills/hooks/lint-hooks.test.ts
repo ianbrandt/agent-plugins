@@ -102,14 +102,14 @@ test('the rules are added to the first prompt, on an older CLI too', async ($: a
 
 test('the lint tool returns the flagged lines, or clean', async ($: any, on: any) => {
   world(on)
-  expect((await $.tool.call({ tool: 'mcp__writing-conventions__lint', text: 'The build is load-bearing.' })).result).toBe('banned word\tload-bearing')
-  expect((await $.tool.call({ tool: 'mcp__writing-conventions__lint', text: 'The build passed.' })).result).toBe('clean')
+  expect((await $.tool.call({ tool: 'mcp__writing-skills__lint', text: 'The build is load-bearing.' })).result).toBe('banned word\tload-bearing')
+  expect((await $.tool.call({ tool: 'mcp__writing-skills__lint', text: 'The build passed.' })).result).toBe('clean')
 })
 
 test('the lint tool reads a draft passed inside its fence', async ($: any, on: any) => {
   world(on)
   const F = '```'
-  expect((await $.tool.call({ tool: 'mcp__writing-conventions__lint', text: `${F}draft\nThe build is load-bearing.\n${F}\n` })).result).toBe('banned word\tload-bearing')
+  expect((await $.tool.call({ tool: 'mcp__writing-skills__lint', text: `${F}draft\nThe build is load-bearing.\n${F}\n` })).result).toBe('banned word\tload-bearing')
 })
 
 test('the note is kept in TEMP where there is no TMPDIR', async ($: any, on: any) => {

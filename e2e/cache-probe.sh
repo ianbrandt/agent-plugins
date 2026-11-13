@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Checks whether the writing-conventions review prompt is read from the prompt cache on this
+# Checks whether the writing-skills review prompt is read from the prompt cache on this
 # machine's endpoint: first-party, Bedrock, Vertex, or a gateway. One headless session runs six
 # reviews at high effort from a scratch plugin's session.start hook, with the gate prompt from
 # this checkout: three with the cache mark on the system prompt, as gate.ts sends it, then three
@@ -11,7 +11,7 @@
 # cache-write price and none reads it back.
 # PROBE_CLAUDE (default claude) is the binary to run, and PROBE_MODEL (default sonnet) the model.
 set -uo pipefail
-hooks=$(cd "$(dirname "$0")/../plugins/writing-conventions/hooks" && pwd)
+hooks=$(cd "$(dirname "$0")/../plugins/writing-skills/hooks" && pwd)
 hooks=$(cygpath -m "$hooks" 2>/dev/null || echo "$hooks")
 dir=${1:?usage: e2e/cache-probe.sh <empty dir>}
 mkdir -p "$dir/plugin/.claude-plugin" "$dir/plugin/hooks" && cd "$dir" || exit 1

@@ -14,7 +14,7 @@ directory can be a symlink into a private repo.
 
 [`hooks/voice.ts`](hooks/voice.ts) adds that data beside the Skill tool's result when the model runs
 the `ghostwrite` skill: the spec, every corpus sample up to 64,000 characters in all, and the
-`writing-conventions` rules file when that plugin is installed. Past that size the samples are
+`writing-skills` rules file when that plugin is installed. Past that size the samples are
 listed by name for the model to read by genre. For `share-ghostwriting-spec` only the directory is
 added, with whether it has a spec. When a skill is typed as a slash command, the same text is added
 as context on the prompt instead, as checked on 2.1.310. No `skill.prompt` hook is registered:
@@ -33,7 +33,7 @@ The drafting protocol and the correction loop it runs inside.
   contrast pairs rather than writing from a rule list. Most drafts should come in under the cap.
 - Self-review, lint, then a fresh-context rewrite by a subagent given only the draft, the rules, and
   your spec's contrast pairs, since a draft's tells read as natural to the model that produced it.
-  The lint is the `writing-conventions` plugin's, when that plugin is installed. The rewrite is
+  The lint is the `writing-skills` plugin's, when that plugin is installed. The rewrite is
   skipped for a draft of up to about five sentences with no lint hits. A longer one is rewritten,
   then checked for dropped facts and linted again, because some tells survive a rewrite. Then the
   draft goes in the reply for your explicit go, with at most one line after it: a check that did not
@@ -42,7 +42,7 @@ The drafting protocol and the correction loop it runs inside.
 - Log the delta once, after you edit or give the go, never in the hand-over. A rule missing from
   the spec is added as a new entry. A rule that was in the spec and was broken anyway is recorded as
   a procedure failure, with no new rule. A rule general enough to bind every reply is routed to the
-  always-on writing rules file your session loads, when one does (the `writing-conventions` plugin's
+  always-on writing rules file your session loads, when one does (the `writing-skills` plugin's
   `hooks/rules.md`, or your global `CLAUDE.md`); everything about the form and size of one genre
   stays in your spec.
 - Bootstrap when you have no spec yet: an interview for hand-written samples, then a first spec
@@ -72,7 +72,7 @@ the plugin's drafting procedure. Run it from the plugin directory:
 claude plugin eval . --scaffold --runs 4 --judge-model sonnet --no-publish -j 4
 ```
 
-No shell is granted in the cases and `writing-conventions` is not loaded, so the lint step in
+No shell is granted in the cases and `writing-skills` is not loaded, so the lint step in
 `ghostwrite` does not run. Only the README section is longer than five sentences, so the subagent
 rewrite runs only in that case, and a run of it with no subagent call fails a scored check. On a
 single-turn prompt the default register is already clean, so every arm, including no plugin, passes
@@ -87,9 +87,9 @@ Most of the gap was on the README-section case (+0.18), the PR body with a repor
 its facts was removed that day, since every body passed every check with and without the plugin: the prohibitions in the
 fixture spec are read in both runs.
 
-## Works with `writing-conventions`
+## Works with `writing-skills`
 
-Neither plugin needs the other. `writing-conventions` loads the prohibitions in every session (no
+Neither plugin needs the other. `writing-skills` loads the prohibitions in every session (no
 personified subjects, no spaced em dashes, a banned-word list), and they apply to chat replies too.
 This plugin is run on demand to draft in your voice. With both installed, the general rules
 that come out of your edits are added to the file that is loaded in every session.

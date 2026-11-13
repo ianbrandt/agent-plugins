@@ -81,7 +81,7 @@ is the record. The dependency runs one way—a plugin filling a seam references 
 reverse—so no such plugin is mentioned here. The family map, with which plugins fill which seam, is
 in the marketplace's README.
 
-How the wrap-up reads once these actions are done is covered by `writing-conventions`.
+How the wrap-up reads once these actions are done is covered by `writing-skills`.
 
 ## How it is wired
 

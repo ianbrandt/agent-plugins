@@ -1,5 +1,5 @@
 {
-  "name": "writing-conventions",
+  "name": "writing-skills",
   "description": "Always-on rules for plain prose without AI tells—in chat, in repo docs, and in anything published under your name—with a lint that reports each miss in the next turn.",
   "author": {
     "name": "Ian Brandt"

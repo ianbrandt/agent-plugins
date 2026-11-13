@@ -1,4 +1,4 @@
-# writing-conventions
+# writing-skills
 
 A [Claude Code](https://claude.ai/code) plugin that keeps an agent's writing plain: no AI tells, and
 replies you can follow without having watched the work. A short set of rules is loaded into every
@@ -6,7 +6,7 @@ session, replies are checked against them, and text is reviewed before a command
 it.
 
 ```sh
-/plugin install writing-conventions@ianbrandt
+/plugin install writing-skills@ianbrandt
 ```
 
 Claude Code 2.1.308 or later is required.
@@ -50,7 +50,7 @@ Set these in the `env` block of a settings file:
 - `WRITING_CONVENTIONS_SHELL_CLASSIFIER=0`: review only `git commit` and `gh`.
 - `WRITING_CONVENTIONS_STOP_READER=0`: skip review of `draft` blocks, in the lint tool too.
 
-The classifier's answers are cached in `${CLAUDE_CONFIG_DIR:-~/.claude}/writing-conventions/`, one
+The classifier's answers are cached in `${CLAUDE_CONFIG_DIR:-~/.claude}/writing-skills/`, one
 line per command or tool. You can edit those files. Where a command or tool has both a
 `CAN_PUBLISH` line and a `NEVER` line, it is reviewed.
 

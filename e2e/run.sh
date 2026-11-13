@@ -27,7 +27,7 @@ settings="{\"enabledPlugins\":{$(IFS=,; echo "${off[*]}")}}"
   --model "${E2E_MODEL:-opus}" "${dirs[@]}" --settings "$settings" --strict-mcp-config \
   --permission-mode acceptEdits \
   --allowedTools Bash Read Edit Write Glob Grep Skill Agent \
-    mcp__roadmap-skills mcp__session-skills mcp__parallel-session-skills mcp__writing-conventions \
+    mcp__roadmap-skills mcp__session-skills mcp__parallel-session-skills mcp__writing-skills \
   --output-format stream-json --verbose > "$D/session.jsonl" 2> "$D/session.err" < /dev/null)
 echo "exit $?" > "$D/state.txt"
 

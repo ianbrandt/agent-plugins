@@ -19,11 +19,11 @@ These two are mostly rules that load with the first prompt, so they change every
 invoked.
 
 ```sh
-/plugin install writing-conventions@ianbrandt
+/plugin install writing-skills@ianbrandt
 /plugin install orchestration-skills@ianbrandt
 ```
 
-- [`writing-conventions`](plugins/writing-conventions) changes how a session writes: to you, in
+- [`writing-skills`](plugins/writing-skills) changes how a session writes: to you, in
   repo docs, and in anything published under your name. Jargon, personified subjects, and
   back-references a cold reader cannot follow are kept out of replies, and a lint reports each miss
   in the next turn.
@@ -46,7 +46,7 @@ invoked.
 
 - [`ghostwriting-skills`](plugins/ghostwriting-skills) drafts text that ships under your name from a
   voice spec built out of your writing, hands each draft over for your go, and logs what your edits
-  change. With `writing-conventions` installed, the general rules from those edits are added to
+  change. With `writing-skills` installed, the general rules from those edits are added to
   that plugin's always-on file.
 - [`session-skills`](plugins/session-skills) puts a unit of work on its own branch and gets it
   back off again, landing it by what the repo is rather than by a mode you declare. It also has two

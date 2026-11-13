@@ -114,7 +114,7 @@ A draft for publication—any text the user will paste, post, send, or file some
 its own fenced block with the info string `draft`, even mid-task, and in a longer fence when the
 draft itself contains one. Nothing else takes that info string. A draft written to a file goes
 through `Write` or `Edit`, never a shell redirect. Before the reply ends, call
-`mcp__writing-conventions__lint` with each draft exactly as it will appear, fix what it flags, and
+`mcp__writing-skills__lint` with each draft exactly as it will appear, fix what it flags, and
 call it again on the fixed text. A draft emitted without a clean result is held and reviewed when
 the reply ends, and a finding comes back as a lint result to act on in the same turn.
 

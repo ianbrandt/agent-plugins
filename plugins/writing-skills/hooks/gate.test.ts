@@ -6,7 +6,7 @@ import { hold } from './hold'
 
 const SAYS = 'git commit -m "The report says so."'
 const FINDING = 'VIOLATION\n"The report says so." -> It is shown in the report.'
-const CONFIG = '/cfg/writing-conventions'
+const CONFIG = '/cfg/writing-skills'
 
 type World = {
   // The review model's reply, the classifiers' replies, and whether the call fails.
@@ -174,7 +174,7 @@ test('a commit is not stopped when the model call fails, and the user is told on
   expect(seen.reader).toHaveLength(2)
   expect(seen.toasts).toHaveLength(1)
   expect(seen.toasts[0]).toContain('A model review did not run: API error overloaded, HTTP 529.')
-  expect(seen.toasts[0]).not.toContain('writing-conventions:')
+  expect(seen.toasts[0]).not.toContain('writing-skills:')
 })
 
 test('a check that cannot read the session lets the command through, and the user is told', async ($: any, on: any) => {
@@ -389,7 +389,7 @@ test('a tool classifier reply that opens on a bare carriage return is doubt', as
 
 test('the plugin\'s lint tool is not gated', async ($: any, on: any) => {
   const seen = world(on, { tool: 'CAN_PUBLISH', verdict: FINDING })
-  await $.tool.call({ tool: 'mcp__writing-conventions__lint', text: 'The report says so.' })
+  await $.tool.call({ tool: 'mcp__writing-skills__lint', text: 'The report says so.' })
   expect(seen.tool).toHaveLength(0)
 })
 
@@ -458,7 +458,7 @@ test('what is not reviewed in an edit is stated', async ($: any, on: any) => {
 })
 
 const F = '```'
-const LINT = 'mcp__writing-conventions__lint'
+const LINT = 'mcp__writing-skills__lint'
 // A lone tilde stands for a backtick fence, and a run of tildes is a tilde fence.
 const fenced = (text: string) => text.replace(/(?<!~)~(?!~)/g, F)
 // One model response through the plugin's stream, as it leaves the plugin.

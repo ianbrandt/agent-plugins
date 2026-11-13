@@ -120,7 +120,7 @@ function hash(text: string): string {
 
 async function cachePath($: any, name: string, prompt: string): Promise<string> {
   const config = (await $.env.get('CLAUDE_CONFIG_DIR')) || `${(await $.env.get('HOME')) || (await $.env.get('USERPROFILE'))}/.claude`
-  return `${config}/writing-conventions/${name}-${hash(await $.fs.read(`${$.plugin.root}/hooks/${prompt}`))}.txt`
+  return `${config}/writing-skills/${name}-${hash(await $.fs.read(`${$.plugin.root}/hooks/${prompt}`))}.txt`
 }
 
 // A cache the user saved from an editor may have CRLF line ends.
@@ -443,7 +443,7 @@ let calls = 0
 export async function flagged($: any, turnId: string, answer: string): Promise<Call | undefined> {
   const verdict = await gate($, () => stop($, turnId, answer))
   if (!verdict.block) return undefined
-  const id = `toolu_writing_conventions_${Date.now()}_${++calls}`
+  const id = `toolu_writing_skills_${Date.now()}_${++calls}`
   awaiting.set(id, verdict.block)
   return { tool: TOOL, id }
 }
@@ -464,7 +464,7 @@ const REMINDER = 'Style, for this reply and any prose written to files: an inani
 const NUDGE = "You just wrote prose to a file. Re-read it now for inanimate agency (report/build/entry/declaration as subject of says/gives/owns/configures/carries), spaced em dashes, and banned vocabulary; fix in place before moving on. If this text will publish under the user's name, have a fresh-context subagent sweep it against the rules before hand-over."
 
 // The lint tool, for a skill that has a draft to check before the reply.
-const TOOL = 'mcp__writing-conventions__lint'
+const TOOL = 'mcp__writing-skills__lint'
 
 // Where the note on a session's last reply is kept until the next prompt: a
 // file named for the session, so that it is still read in a resumed session.
@@ -609,7 +609,7 @@ export const register: Register = on => {
     if (await isChecked($)) {
       listed = await $.tool.register({
         name: 'lint',
-        description: 'Lint prose against the writing-conventions patterns (inanimate agency, spaced em dashes, banned words, a missing Oxford comma, and a bold list label), then have a review model read it against the writing conventions. Returns one line per flagged sentence, <group><TAB><matched text>, then each finding of the review model as "quote" -> rewrite, or "clean". Call it on each draft for publication before the reply ends.',
+        description: 'Lint prose against the always-on writing rules (inanimate agency, spaced em dashes, banned words, a missing Oxford comma, and a bold list label), then have a review model read it against the writing conventions. Returns one line per flagged sentence, <group><TAB><matched text>, then each finding of the review model as "quote" -> rewrite, or "clean". Call it on each draft for publication before the reply ends.',
         inputSchema: { type: 'object', properties: { text: { type: 'string', description: 'The prose to lint.' } }, required: ['text'] },
       }).then(() => true, () => false)
     }

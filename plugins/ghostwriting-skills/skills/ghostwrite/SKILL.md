@@ -34,7 +34,7 @@ project repo, or in memory. No spec ⇒ **bootstrap** (§5).
 
 **Always-on rules are kept elsewhere, split by when they load.** Prohibitions that must hold in chat
 replies too—typography, formatting tells, banned vocabulary—are kept in an always-on rules file that
-loads every session: the `writing-conventions` plugin's `hooks/rules.md` when that plugin is
+loads every session: the `writing-skills` plugin's `hooks/rules.md` when that plugin is
 installed, or the user's global `CLAUDE.md` (`~/.claude/CLAUDE.md`) when they keep them there
 instead. Check which of those loaded in this session, and follow a pointer rather than assuming a
 file; `voice-spec.md` is the positive spec, read on demand. Both are maintained here (§4, §5). With
@@ -82,8 +82,8 @@ a draft written from the rule list alone drifts back to the default register.
 Check the draft against the spec rule by rule and fix what you broke **before** the user sees it; a
 rule you broke and fixed yourself still goes to §4 as a procedure failure, recorded when §4 runs.
 
-**Then run the lint over the draft.** With `writing-conventions` installed, call its
-`mcp__writing-conventions__lint` tool with the draft as `text`. It returns one line per flagged
+**Then run the lint over the draft.** With `writing-skills` installed, call its
+`mcp__writing-skills__lint` tool with the draft as `text`. It returns one line per flagged
 sentence and the review model's findings, each with a suggested rewrite, or `clean` for clean text.
 Fix a real hit by hand, in place, and leave a false positive alone. Call it last on the draft
 exactly as you hand it over: a draft with no clean result is reviewed again after the reply, and a
@@ -183,7 +183,7 @@ guessing. One-time setup; afterwards proceed from §1.
    **Procedure** (§1–§4 in a line each, so the spec stands alone).
 5. **Route the always-on rules** the samples imply: the step-3 prohibitions belong in the always-on
    file from §0, which already includes the typography and banned-vocabulary rules when it is the
-   `writing-conventions` file—add only what it lacks. With no always-on file, they go in the spec's
+   `writing-skills` file—add only what it lacks. With no always-on file, they go in the spec's
    prohibitions section. Show any edit and ask before making it, and where the file ships from a
    plugin, make the edit by the rule in §4.
 6. **Say what you could not derive.** Write no entry for a genre with no sample—don't invent one.

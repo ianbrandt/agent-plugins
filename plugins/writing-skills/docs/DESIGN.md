@@ -1,4 +1,4 @@
-# writing-conventions design
+# writing-skills design
 
 How the plugin works and the measurements behind its defaults, for anyone changing it. The
 [README](../README.md) covers installing and using it.
@@ -36,7 +36,7 @@ when it is prose, or is a source file with comments and test names in it (`.md`,
 `.txt`, `.kt`, `.kts`, `.java`, `.groovy`, in any letter case). The lint itself is `lint()` in
 [`hooks/lint.ts`](../hooks/lint.ts), a pure function over text, tested in
 [`hooks/lint.test.ts`](../hooks/lint.test.ts). The module also registers it as a tool,
-`mcp__writing-conventions__lint`, which the session calls on each chat draft before the reply ends
+`mcp__writing-skills__lint`, which the session calls on each chat draft before the reply ends
 ([Chat drafts](#chat-drafts)).
 
 A word is letters and digits in ASCII and Latin-1, so `café` is one word, and a character outside
@@ -312,7 +312,7 @@ as the prompt. A key missing from the reply is doubt: it reads as `CAN_PUBLISH` 
 command with keys that are all `NEVER` makes no call.
 
 The answers are appended to
-`${CLAUDE_CONFIG_DIR:-~/.claude}/writing-conventions/shell-commands-<hash>.txt`, one line each:
+`${CLAUDE_CONFIG_DIR:-~/.claude}/writing-skills/shell-commands-<hash>.txt`, one line each:
 `<scope><TAB><class><TAB><key>`. The scope is `*` for a key every project shares, or the project
 directory for a task name or a program run by path. The file is yours to read and edit, and for one
 key a `CAN_PUBLISH` line wins over the other classes.
@@ -386,7 +386,7 @@ inputs (Jira, Confluence, Bitbucket, GitHub, GitLab, Slack, mail, and read-only 
 tools), all 20 publishing tools came back `CAN_PUBLISH` and all 10 others `NEVER`.
 
 The answer is appended as one line, `<tool name> <answer>`, to
-`${CLAUDE_CONFIG_DIR:-~/.claude}/writing-conventions/mcp-tools-<hash>.txt`, where the hash is of the
+`${CLAUDE_CONFIG_DIR:-~/.claude}/writing-skills/mcp-tools-<hash>.txt`, where the hash is of the
 classifier prompt, so a changed prompt starts a new file. The file is yours to read and edit: for one tool a `CAN_PUBLISH` line wins
 over a `NEVER` line, and a malformed line is ignored. A `NEVER` tool costs no model call after the
 first. A wrong `NEVER` is a lasting gap on that machine until the line is edited.
@@ -446,7 +446,7 @@ tool call. A draft for publication goes in its own fenced block with the info st
 is loaded into every session.
 
 The review runs before the reply ends where it can. Under the same rule, the session calls
-`mcp__writing-conventions__lint` on each draft and fixes what comes back in the same reply. The tool
+`mcp__writing-skills__lint` on each draft and fixes what comes back in the same reply. The tool
 runs the reply lint and then sends the draft to the review model. A draft with no finding is kept in
 memory as passed, by its text with the whitespace at either end trimmed. Without the fence, the
 whole `text` is read as one draft. A `turn.complete` hook can return only text and usage, so the check runs on the stream.
@@ -459,7 +459,7 @@ is. A clean reply is then released whole and in order. A reply with no such fenc
 no model call. A draft changed after the tool passed it is read again. A response that asks for
 tools is released with no review, since it does not end the turn. A subagent's response is not held.
 
-After a verified finding, what was held is replaced with a call to `mcp__writing-conventions__lint`,
+After a verified finding, what was held is replaced with a call to `mcp__writing-skills__lint`,
 and the findings are kept for that call to return, so the draft is not reviewed twice. The engine runs the
 tool and the same turn goes on, so there is no second turn and no prompt in the transcript. This was
 measured on 2.1.316, on Sonnet and on Opus with thinking on, in auto mode and with default
