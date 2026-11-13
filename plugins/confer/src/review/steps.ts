@@ -1,7 +1,7 @@
 import type { EngineInterface, PluginOptions } from 'claude-code'
-import { runCodex } from '../codex/run'
+import { isWindowsPath, runCodex } from '../codex/run'
 import type { CodexRunResult } from '../codex/run'
-import { removeWorktree } from '../codex/worktree'
+import { git, removeWorktree } from '../codex/worktree'
 import { current, fail, failures, newAttempt, receive } from './attempts'
 import { logEnd, logStart } from './progress'
 import { save } from './state'
@@ -16,10 +16,27 @@ function retryTime(text: string | undefined): number | undefined {
   return Number.isNaN(time) ? undefined : time
 }
 
+// git refuses to remove a directory it no longer lists as a worktree, which a removal on Windows can leave behind.
+// Confer made the directory inside its run folder, so it is deleted directly.
+async function removeUnlisted($: EngineInterface, top: string, path: string): Promise<boolean> {
+  const listed = await git($, ['-C', top, 'worktree', 'list', '--porcelain', '-z']).catch(() => undefined)
+  if (listed === undefined) return false
+  const isWindows = isWindowsPath(top)
+  const key = (p: string) => (isWindows ? p.replace(/\\/g, '/').toLowerCase() : p)
+  if (listed.split('\0').some(line => line.startsWith('worktree ') && key(line.slice('worktree '.length)) === key(path))) return false
+  const argv = isWindows
+    ? ['powershell', '-NoProfile', '-NonInteractive', '-Command', 'Remove-Item -LiteralPath $env:CONFER_WORKTREE -Recurse -Force']
+    : ['rm', '-rf', '--', path]
+  const removed = await $.process.run(argv, { ...(isWindows && { env: { CONFER_WORKTREE: path } }), timeoutMs: 600_000 }).catch(() => undefined)
+  return removed?.exitCode === 0
+}
+
 export async function cleanup($: EngineInterface, run: RunState): Promise<void> {
   for (const path of [...run.resources.worktrees]) {
     const isThere = await $.fs.exists(path).catch(() => true)
-    if (!isThere || (await removeWorktree($, run.top, path)) === undefined) run.resources.worktrees = run.resources.worktrees.filter(p => p !== path)
+    if (!isThere || (await removeWorktree($, run.top, path)) === undefined || (await removeUnlisted($, run.top, path))) {
+      run.resources.worktrees = run.resources.worktrees.filter(p => p !== path)
+    }
   }
   for (const ref of [...run.resources.refs]) {
     const removed = await $.process.run(['git', '-C', run.top, 'update-ref', '-d', ref], { timeoutMs: 600_000 }).catch(() => undefined)

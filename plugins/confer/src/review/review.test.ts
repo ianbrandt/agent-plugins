@@ -1074,6 +1074,43 @@ test('review_start removes what an ended run could not remove before', async ($,
   expect(state(files, round1.run)).toMatchObject({ status: 'cancelled', resources: { worktrees: [], refs: [] } })
 })
 
+// A removal on Windows can end with the directory still there and git no longer listing it, and git refuses to remove a directory it does not list.
+test('review_start deletes a leftover worktree directory that git no longer lists, and keeps one it still lists', async ($, on) => {
+  const windowsTop = 'C:\\repo'
+  const listing = (...paths: string[]) => ({ stdout: paths.map(path => `worktree ${path}\0HEAD head1\0detached\0\0`).join('') })
+  const { runs, files, clock } = world(on, {
+    answers: {
+      [`git -C ${top} worktree list --porcelain -z`]: listing(top),
+      [`git -C ${windowsTop} worktree list --porcelain -z`]: listing('C:/repo', 'c:/confer/abcdef03/checkout'),
+    },
+    match: key => (key.includes(' worktree remove --force ') ? { exitCode: 128, stderr: 'fatal: not a working tree' } : undefined),
+  })
+
+  const old = await begin($)
+  await call($, 'review_cancel', { run: old.run })
+  const ended = state(files, old.run)
+  const posix = `${root}/abcdef01/codex-p0-r1-a1-worktree`
+  // The fixture's fs.exists finds any checkout, wherever the engine resolves a drive-letter path on this host.
+  const windows = (id: string) => `C:\\confer\\${id}\\checkout`
+  const left = (id: string, runTop: string, worktree: string) => {
+    files[`${root}/${id}/state.json`] = JSON.stringify({ ...ended, id, dir: `${root}/${id}`, top: runTop, resources: { worktrees: [worktree], refs: [] } })
+  }
+  files[posix] = ''
+  left('abcdef01', top, posix)
+  left('abcdef02', windowsTop, windows('abcdef02'))
+  left('abcdef03', windowsTop, windows('abcdef03'))
+  const started = anotherStart($)
+  await clock.advance(60_000)
+  await started
+
+  expect(runs.map(r => r.key)).toContain(`rm -rf -- ${posix}`)
+  expect(runs.find(r => r.key.startsWith('powershell '))?.init?.env).toEqual({ CONFER_WORKTREE: windows('abcdef02') })
+  expect(runs.filter(r => r.key.startsWith('powershell '))).toHaveLength(1)
+  expect(state(files, 'abcdef01').resources.worktrees).toEqual([])
+  expect(state(files, 'abcdef02').resources.worktrees).toEqual([])
+  expect(state(files, 'abcdef03').resources.worktrees).toEqual([windows('abcdef03')])
+})
+
 test('a target that is no commit and no path fails the start', async ($, on) => {
   world(on, {
     answers: {
