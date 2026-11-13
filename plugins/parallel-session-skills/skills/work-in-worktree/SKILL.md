@@ -38,8 +38,9 @@ this session has not.
 - **`worktree`, the default.** Every unit of work gets a worktree. A session cannot know that a
   sibling will start later, and a branch in the primary checkout would leave that sibling only a
   busy checkout. The one exception is a user who asks for the primary checkout or the default
-  branch for this work: go back to `work-on-a-branch` §3, where a busy checkout still gets a
-  worktree.
+  branch for this work while the primary checkout is not busy, by `work-on-a-branch` §3's test.
+  Then no worktree is opened: go back to the step of `work-on-a-branch` that ran this skill. A
+  busy checkout gets a worktree whatever the user asked.
 - **`primary`.** A worktree is opened only in these three cases. In any other, the work goes on a
   branch in the primary checkout.
   - **The user asked for one**: "in a worktree", "in parallel", "while the other session runs".

@@ -136,8 +136,9 @@ a repo with no concurrency plugin has.
 - **In no worktree**: where a concurrency plugin's worktree skill is among the available skills,
   run it. Where the work goes in a worktree by that skill's rules, open one on this existing branch,
   never on a new one. Otherwise switch the primary checkout to it, `git -C "$MAIN" switch "$BRANCH"`,
-  and `$WT` is `$MAIN`. Where the primary checkout is busy by §3's test, never switch it: stop and
-  report, as in §3.
+  and `$WT` is `$MAIN`. Where the primary checkout is busy by §3's test, never switch it. With a
+  concurrency plugin's worktree skill, open a worktree on this existing branch. Without one, stop
+  and report, as in §3.
 
 Skip §3, and read the branch's state before writing anything:
 `git -C "$WT" log --oneline "$BASE..HEAD"` and `git -C "$WT" status` show what already landed and
@@ -154,24 +155,26 @@ Take the first of these that applies.
 1. **The session's directory is a worktree other than the primary checkout.** The host opened it
    for this session: that directory is `$WT`, its branch is `$BRANCH`, and nothing is opened. §5
    has the rules for working there.
-2. **A concurrency plugin's worktree skill is among the available skills** (§0), and the user did
-   not ask for the primary checkout or the default branch for this work. Run it. Whether this work
-   gets a worktree depends on how the clone is set, and by default it does. Where it does not,
-   continue with case 3. Where the user asked for a worktree and no such skill is available,
-   tell the user that a worktree needs a concurrency plugin, and stop.
-3. **The primary checkout is busy**: its row in §1's list has a branch other than `$DEFAULT`, or §1
+2. **The user asked for a worktree, or a conductor is running this work as a lane.** Run
+   the concurrency plugin's worktree skill (§0). Where no skill that opens a worktree is among the
+   available skills, tell the user that a worktree needs a concurrency plugin, and stop.
+3. **A concurrency plugin's worktree skill is among the available skills**, and the user did not
+   ask for the primary checkout or the default branch for this work. Run it. Whether this work gets
+   a worktree depends on how the clone is set, and by default it does. Where it does not, continue
+   with the next case.
+4. **The primary checkout is busy**: its row in §1's list has a branch other than `$DEFAULT`, or §1
    reports changed or untracked paths there. Another session may be working in it, and a switch would put
    that session's next edits on your branch. Never switch a busy checkout, stash its changes, or
    commit them. Where a concurrency plugin's worktree skill is among the available skills, run it,
    and say in one line that the work is in a worktree because the primary checkout was busy. Where
    none is, stop and report the branch and the paths that are there. The checkout is free once the user says
    that no session is using it, or says to go ahead.
-4. **The user asked for the work on the default branch.** Nothing is opened: `$WT` is `$MAIN` and
+5. **The user asked for the work on the default branch.** Nothing is opened: `$WT` is `$MAIN` and
    `$BRANCH` is `$DEFAULT`. This case needs the user's request in this conversation, and it is
    refused where work lands as a pull request (`land-and-wrap` §1: a fork, or `pr` mode): say so,
    and open a branch. Where `$BASE` is `origin/$DEFAULT`, bring the local branch up to it first:
    `git -C "$MAIN" merge --ff-only "origin/$DEFAULT"`.
-5. **Otherwise, open a branch in the primary checkout**, and `$WT` is `$MAIN`:
+6. **Otherwise, open a branch in the primary checkout**, and `$WT` is `$MAIN`:
 
    ```bash
    git -C "$MAIN" switch -c claude/<id>-<name> --no-track "$BASE"
