@@ -5,9 +5,7 @@
 Work moves between the Mac and the Windows machine through `TODO.md` at
 the repo root. On this machine, add the next step as a new `##` item. On
 the other machine, carry the item out, and commit the results as a
-replacement item under the same heading. A commit reaches the other
-machine by a push that the user asks for, never by a step in an item.
-The file itself is never deleted; when nothing is pending, only the `# To do`
+replacement item under the same heading. The file itself is never deleted; when nothing is pending, only the `# To do`
 heading remains.
 
 A probe item: an imperative-form title ("Check …"), numbered steps with
