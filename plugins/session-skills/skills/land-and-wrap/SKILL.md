@@ -108,6 +108,11 @@ no backlog at all, the landing commit is the record and there is nothing else to
 such edit minimal, localized, and in its own final commit—a backlog file is a collision seam every
 other lane is also editing.
 
+**Sweep the writing next**, where `writing-skills` is installed: run its `sweep` skill in `$WT` on
+the commits the push will send, `origin/$DEFAULT..HEAD`, or `upstream/$DEFAULT..HEAD` in a fork
+(§3). The skill rewords unpushed commits by rebase, so run it before the rebase onto the default
+branch (`merge` step 1, `pr` step 2).
+
 Follow the repo's end-of-session merge protocol if it has one (a repo-local landing skill or
 runbook), otherwise land by the mode from §1.
 
