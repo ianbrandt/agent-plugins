@@ -22,8 +22,9 @@ function later(a: number[], b: number[]): boolean {
   return false
 }
 
-// The newest installed copy of the writing-conventions rules, or none. An entry
-// that is not named for a version, such as a .DS_Store, is passed over.
+// The newest installed copy of the writing-skills rules, or none, looked for
+// under the plugin's old name too. An entry that is not named for a version,
+// such as a .DS_Store, is passed over.
 // ponytail: the newest copy in the cache, which is not always the one this
 // session loaded (a --plugin-dir run, a pinned version). Read the installed
 // plugins record if that turns out to matter.
@@ -32,12 +33,14 @@ async function rules($: any, config: string): Promise<string> {
   let best = ''
   let bestKey: number[] = []
   for (const market of await $.fs.list(cache).catch(() => [])) {
-    for (const version of await $.fs.list(`${cache}/${market.name}/writing-conventions`).catch(() => [])) {
-      if (!/^\d+(\.\d+)*$/.test(version.name)) continue
-      const key = version.name.split('.').map(Number)
-      if (best === '' || later(key, bestKey)) {
-        best = `${cache}/${market.name}/writing-conventions/${version.name}/hooks/rules.md`
-        bestKey = key
+    for (const plugin of ['writing-skills', 'writing-conventions']) {
+      for (const version of await $.fs.list(`${cache}/${market.name}/${plugin}`).catch(() => [])) {
+        if (!/^\d+(\.\d+)*$/.test(version.name)) continue
+        const key = version.name.split('.').map(Number)
+        if (best === '' || later(key, bestKey)) {
+          best = `${cache}/${market.name}/${plugin}/${version.name}/hooks/rules.md`
+          bestKey = key
+        }
       }
     }
   }

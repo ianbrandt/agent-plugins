@@ -127,6 +127,17 @@ test('a cache entry that is not a version is passed over', async ($: any, on: an
   expect(text).not.toContain('BRANCH RULES')
 })
 
+test('the newest rules file is taken across the old and the new plugin name', async ($: any, on: any) => {
+  files(on, {
+    [SPEC]: 'SPEC TEXT',
+    [`${CACHE}/m/writing-conventions/0.55.2/hooks/rules.md`]: 'OLD NAME RULES',
+    [`${CACHE}/m/writing-skills/0.56.0/hooks/rules.md`]: 'NEW NAME RULES',
+  })
+  const text = await loaded($, 'ghostwrite')
+  expect(text).toContain('NEW NAME RULES')
+  expect(text).not.toContain('OLD NAME RULES')
+})
+
 test('with no rules file the model is told to re-read it by hand', async ($: any, on: any) => {
   files(on, { [SPEC]: 'SPEC TEXT' })
   const text = await loaded($, 'ghostwrite')
