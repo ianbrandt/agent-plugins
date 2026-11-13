@@ -1,56 +1,9 @@
 # To do
 
-## Analyze the Confer review results
-
-- `claude --version` on the probe machine, before and after plugin update, is up to date; the
-  installed `confer@ianbrandt` is at 0.14.5.
-
-Step 2, baseline. First attempt with `claude --plugin-dir
-C:\Dev\Repos\IanBrandt\agent-plugins\plugins\confer` ended incomplete: Codex failed twice with
-`/responses: Invalid model name passed in model=gpt-6.1-sol`. The packaged default in
-`plugins/confer/.claude-plugin/plugin.json` is `gpt-6.1-sol`, with no `bedrock-` prefix the
-Tennex gateway requires. The four tier ids configured under
-`pluginConfigs."confer@ianbrandt"` in `C:\Dev\.claude\settings.json` were not applied, because
-Claude Code loads a plugin from `--plugin-dir` as a bare `confer`, not as `confer@ianbrandt`.
-Rerun with `--codex-model bedrock-gpt-6.1-sol` passed on the command line: clean. Claude
-`bedrock-claude-sonnet-5-5[1m]` at high and Codex `bedrock-gpt-6.1-sol` at medium each returned
-no findings. Codex cost $0.0484.
-
-Step 3, Esc probe. Partial pass. After Esc on the `Codex started` line, Codex aborted after 3s
-with `confer: $.process.spawn(codex) aborted`, the Claude reviewer round still completed, no
-`pwsh.exe` started by Codex was left in Task Manager after a minute, and `review_cancel`
-returned status `cancelled`. Fail on worktree cleanup: `C:\Dev\.claude\tmp\confer\0ee7848e\`
-was still on disk after the cancel, with `codex-p0-r1-a1-worktree`, `state.json`, and the
-per-attempt trees intact. Ten older run directories from 2026-11-10 and 2026-11-12 were there
-too, which points to a stale-worktree leak on cancel going back several days.
-
-Step 4, UNC path. Fails. `/confer:review` run from
-`\\localhost\c$\Dev\Temp\confer-review-probe`, after a `safe.directory` entry for that path
-was added, ended incomplete on both sides:
-
-- Codex: two attempts, each `fatal: detected dubious ownership in repository at
-  '//localhost/c$/Dev/Temp/confer-review-probe'`. The per-attempt paths were
-  `C:/Dev/.claude/tmp/confer/<run>/codex-p0-r1-a{1,2}-worktree`. A wildcard
-  `safe.directory = '*'` would cover them, but then every repo on the machine is trusted.
-- Claude reviewer: `Error: A plugin's agent.spawn hook set cwd on this spawn: cwd must be a
-  local path with no ".." in it, whose every part can be examined.` The Confer worktree
-  under `C:/Dev/.claude/tmp/confer/...` inherits the UNC identity from the primary checkout.
-
-Also under UNC, non-blocking: `SessionStart` and `UserPromptSubmit` hook errors with
-`node:internal/modules/package_json_reader:197`. A Claude Code harness issue, outside Confer.
-
-The `safe.directory` entry added for step 4 was removed afterward.
-
-Still open:
-
-- The `--plugin-dir` pluginConfigs mismatch. One workaround is to add a bare `confer` key under
-  `pluginConfigs` with the same options, and keep it in sync with `confer@ianbrandt`.
-- The stale-worktree leak on cancel.
-- Confer does not run against a UNC-mounted primary checkout on Windows.
-
 ## Switch the Windows machine from claudex-loop to Confer
 
-Do this after the item above passes. On the Windows machine:
+The installed `confer@ianbrandt` reads its options from `pluginConfigs."confer@ianbrandt"`, so
+the Tennex model ids apply there without `--codex-model`. On the Windows machine:
 
 1. Install Confer from the `ianbrandt` marketplace. `claude plugin list` should show Confer 0.14.5:
 
@@ -72,3 +25,30 @@ Do this after the item above passes. On the Windows machine:
 4. In a new session, check that `/confer:review`, `/confer:plan`, and `/confer:ask` are listed.
 
 Clear this item in a commit with the results in its message.
+
+## Check what Confer left under `C:\Dev\.claude\tmp\confer`
+
+Do this after the item above. After the Esc probe and `review_cancel`, run `0ee7848e` still had
+`codex-p0-r1-a1-worktree` on disk. Run directories are kept for a week after a run ends by
+design, so the ten older ones are expected. A worktree left inside one is not. On the Windows machine:
+
+1. For each run directory, print its status, the worktrees listed in its `state.json`, and the
+   worktree directories on disk:
+
+   ```powershell
+   Get-ChildItem C:\Dev\.claude\tmp\confer -Directory | ForEach-Object {
+     $s = Get-Content "$($_.FullName)\state.json" -Raw | ConvertFrom-Json
+     [pscustomobject]@{
+       Run = $_.Name; Status = $s.status
+       Listed = $s.resources.worktrees -join ', '
+       OnDisk = (Get-ChildItem $_.FullName -Directory -Filter '*-worktree').Name -join ', '
+     }
+   } | Format-Table -AutoSize -Wrap
+   ```
+
+2. Run `git -C C:\Dev\Temp\confer-review-probe worktree list --porcelain`.
+3. In `C:\Dev\Temp\confer-review-probe`, run `/confer:review --tier routine` once with the
+   installed plugin. Starting a run removes worktrees that ended runs still list. Then repeat
+   steps 1 and 2.
+
+Replace this item with the output of each step.
