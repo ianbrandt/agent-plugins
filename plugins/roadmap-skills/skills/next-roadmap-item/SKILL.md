@@ -84,8 +84,9 @@ local-only.
 ## 2. Get onto the item's branch
 
 Run **`work-on-a-branch`** now: locate `$MAIN`, then resume the item's in-flight branch or open a
-new one. The branch is in the primary checkout unless that skill's §3 sends the work to a worktree:
-the user asked for one, or the primary checkout is busy. If the skill is not among the available
+new one. Where `parallel-session-skills` is installed, the branch is in a worktree by default
+(`work-in-worktree` §1). Otherwise it is in the primary checkout unless that skill's §3 sends the
+work to a worktree. If the skill is not among the available
 skills, **stop and tell the user to install `session-skills`**—nothing below fails loudly without
 it, so proceeding just edits the default branch in the primary checkout.
 
