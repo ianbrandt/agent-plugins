@@ -27,4 +27,5 @@ without it.
 
 When a result includes `fallback`, tell the user why Opus runs in place of Fable, with the models:
 for reason `not-served` the account is not served Fable, and for reason `usage` the weekly Fable
-limit is `percent`% used. For reason `usage`, add that `--claude-model fable` runs Fable anyway.
+limit is `percent`% used. For reason `usage` after a start call, add that `--claude-model fable` runs Fable anyway. A fix
+review takes no model flag.
