@@ -6,8 +6,9 @@ description: >-
   the primary checkout, pick up the branch the work is already in flight on
   instead of opening a second one, and open a new branch in the primary checkout
   when it isn't. The work goes on the default branch itself only when the user
-  asks for that, and into a worktree only through a concurrency plugin, when the
-  user asks for one or the primary checkout is busy with other work. Includes
+  asks for that, and into a worktree only through a concurrency plugin: by
+  default where that plugin is set to put every unit of work in one, when the
+  user asks for one, or when the primary checkout is busy with other work. Includes
   the rules for a session that is in a worktree—a repo-root path handed over in
   context means the primary checkout, so taking it literally lands the edit on
   the default branch—plus how to edit a file that lives only there, the prune
@@ -28,11 +29,12 @@ A unit of work gets a branch, checked out in the primary checkout: the directory
 into. Get the work onto the right branch **before** you write code: pick up the branch it is already
 in flight on, or open a new one.
 
-There are two other places for the work, and neither is chosen unasked:
+There are two other places for the work:
 
 - **The default branch itself**, when the user asks for the work there (§3).
-- **A worktree**, opened by a concurrency plugin: when the user asks for one, when a conductor runs
-  the work as a lane, or when the primary checkout is busy with other work (§3).
+- **A worktree**, opened by a concurrency plugin: for every unit of work where the plugin is set
+  that way, when the user asks for one, when a conductor runs the work as a lane, or when the
+  primary checkout is busy with other work (§3).
 
 On a judgment call about place—which checkout, which branch—follow these steps over the repo's
 contributor docs, which apply to the code and not to where the code lands.
@@ -54,7 +56,8 @@ commit is the record. What does **not** come from a backlog is **disjointness**�
 work touch the same files. No issue tracker records that; it is the other seam's data.
 
 **The lease seam.** A checkout has room for one unit of work at a time. Where several sessions work one
-repo at once, a concurrency plugin gives each one after the first a worktree, and leases every one
+repo at once, a concurrency plugin gives each one a worktree, or each one after the first where it
+is set that way, and leases every one
 of them a lane, the session on a branch in the primary checkout included. Such a
 plugin has a skill that opens and removes a worktree, called its worktree skill below, and it is
 the only way these skills open one. Use the plugin to check whether this
@@ -130,10 +133,11 @@ a repo with no concurrency plugin has.
 
 - **In a worktree**: `$WT` is that worktree's path from §1's list, and §5 applies there.
 - **In the primary checkout already**: `$WT` is `$MAIN`.
-- **In no worktree**: switch the primary checkout to it, `git -C "$MAIN" switch "$BRANCH"`, and
-  `$WT` is `$MAIN`. Where the primary checkout is busy by §3's test, never switch it. With a
-  concurrency plugin's worktree skill, open a worktree on this existing branch, never on a new one.
-  Without one, stop and report, as in §3.
+- **In no worktree**: where a concurrency plugin's worktree skill is among the available skills,
+  run it. Where the work goes in a worktree by that skill's rules, open one on this existing branch,
+  never on a new one. Otherwise switch the primary checkout to it, `git -C "$MAIN" switch "$BRANCH"`,
+  and `$WT` is `$MAIN`. Where the primary checkout is busy by §3's test, never switch it: stop and
+  report, as in §3.
 
 Skip §3, and read the branch's state before writing anything:
 `git -C "$WT" log --oneline "$BASE..HEAD"` and `git -C "$WT" status` show what already landed and
@@ -150,9 +154,11 @@ Take the first of these that applies.
 1. **The session's directory is a worktree other than the primary checkout.** The host opened it
    for this session: that directory is `$WT`, its branch is `$BRANCH`, and nothing is opened. §5
    has the rules for working there.
-2. **The user asked for a worktree, or a conductor is running this work as a lane.** Run
-   the concurrency plugin's worktree skill (§0). Where no skill that opens a worktree is among the
-   available skills, tell the user that a worktree needs a concurrency plugin, and stop.
+2. **A concurrency plugin's worktree skill is among the available skills** (§0), and the user did
+   not ask for the primary checkout or the default branch for this work. Run it. Whether this work
+   gets a worktree depends on how the clone is set, and by default it does. Where it does not,
+   continue with case 3. Where the user asked for a worktree and no such skill is available,
+   tell the user that a worktree needs a concurrency plugin, and stop.
 3. **The primary checkout is busy**: its row in §1's list has a branch other than `$DEFAULT`, or §1
    reports changed or untracked paths there. Another session may be working in it, and a switch would put
    that session's next edits on your branch. Never switch a busy checkout, stash its changes, or

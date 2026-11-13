@@ -35,6 +35,9 @@ registered by `parallel-session-skills`, and a branch in the primary checkout is
   untracked paths. Untracked ones count because a session that has only added files has nothing
   else. A session never switches a busy checkout: with `parallel-session-skills` installed it
   opens a worktree, and without it the session stops and reports what is there.
+- Where a concurrency plugin's worktree skill is available, it is run in `work-on-a-branch` §3
+  before the busy test, since that plugin can be set to put every unit of work in a worktree.
+  `parallel-session-skills` is set that way by default.
 - A branch stays checked out in the primary checkout until its work lands: `land-and-wrap`
   switches back to the default branch for the merge, and after a pull request is opened. A branch
   in review is then in no worktree, which is why `find_checkouts` lists those. Each is counted

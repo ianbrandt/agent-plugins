@@ -26,8 +26,8 @@ A branch in the primary checkout is the default place for work. There are two ot
 - The default branch itself, when you ask for the work there. This is refused in a fork and where
   work lands as a pull request.
 - A git worktree, which this plugin does not open. A concurrency plugin opens one when you ask for
-  it, and when the primary checkout is already on another unit's branch or has changed or
-  untracked files. Without such a plugin, a session that finds the primary checkout busy stops and reports
+  it, when the primary checkout is already on another unit's branch or has changed or untracked
+  files, and for every unit of work where it is set that way. Without such a plugin, a session that finds the primary checkout busy stops and reports
   what is there.
 
 A branch stays checked out in the primary checkout until its work is merged or its pull request is

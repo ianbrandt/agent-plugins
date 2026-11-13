@@ -108,8 +108,9 @@ self-contained work that needs no decision from the user and would start on its 
 `work-on-a-branch`—getting the work onto the right branch before touching code, off a
 **fetched** default branch: a clean working tree is no evidence the checkout is current, and a
 file another machine edits too, such as a shared to-do, needs that fetch even for a one-line edit
-on the default branch. A branch in the primary checkout is the default, and a worktree is opened
-only by a concurrency plugin.
+on the default branch. Where a concurrency plugin is installed, its worktree skill is run before a
+branch is opened, since the work may go in a worktree by default. Otherwise the branch is in the
+primary checkout.
 `land-and-wrap`—how finished work leaves its branch, and the rest of the wrap-up. **Invoke it at
 the end of any session that opened a branch or a worktree**, including one where a repo-local landing runbook
 already merged the work: that runbook covers the landing, not the wrap-up.
