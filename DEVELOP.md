@@ -16,6 +16,14 @@ The tag is pushed with `main`, since CI checks each pin against its tag:
 git push origin main gradle-skills-v1.12.0
 ```
 
+## Claude Code version
+
+A plugin can require any Claude Code release up to the one bundled with the desktop app, which can
+be a few patch releases behind the CLI. On the Mac, the bundled version is the directory name under
+`~/Library/Application Support/Claude/claude-code/`. When a plugin needs a newer API, raise
+`minClaudeCodeVersion` in its `plugin.json` and the oldest version in the matrix in
+[`test.yml`](.github/workflows/test.yml) together.
+
 ## Checks
 
 `test.sh` runs every check that needs no model call, in about 30 seconds. It needs `claude` and
