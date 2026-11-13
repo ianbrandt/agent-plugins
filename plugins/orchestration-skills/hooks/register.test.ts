@@ -4,6 +4,21 @@ import { expect, test } from 'claude-code/testing'
 import { SUBAGENT_RULE } from './register'
 
 const RULES = 'ORCHESTRATION MODE ACTIVE\n\nthe rules'
+// The rules as added, with the tiers at the plugin.json defaults.
+const TEXT = `${RULES}
+
+## The tiers in this session's settings
+
+Pass these as \`model\` and \`effort\` on \`Agent\` and on a Workflow \`agent()\`. Which stage runs at which tier is in the \`tier-model-and-effort\` skill.
+
+| Tier | Model | Effort |
+|---|---|---|
+| Mechanical | haiku | low |
+| Routine | sonnet | medium |
+| Complex | opus | high |
+| Critical | opus | xhigh |
+| Escalation | fable | high |
+`
 
 // `read` is the text the model still reads, and `task` the last subagent task.
 function world(on: any) {
@@ -15,13 +30,23 @@ function world(on: any) {
   return w
 }
 
-test('the rules are added to a prompt once the model no longer reads them', async ($: any, on: any) => {
+test('the rules, with the tiers at the plugin.json defaults, are added to a prompt once the model no longer reads them', async ($: any, on: any) => {
   const w = world(on)
-  expect((await $.prompt.submit({ text: 'hi' })).context).toEqual([RULES])
-  w.read = [`<system-reminder>\n${RULES}\n</system-reminder>`]
+  expect((await $.prompt.submit({ text: 'hi' })).context).toEqual([TEXT])
+  w.read = [`<system-reminder>\n${TEXT}\n</system-reminder>`]
   expect((await $.prompt.submit({ text: 'again' })).context ?? []).toEqual([])
-  w.read = ['ORCHESTRATION MODE ACTIVE\n\nolder rules']
-  expect((await $.prompt.submit({ text: 'after an update' })).context).toEqual([RULES])
+  w.read = [`<system-reminder>\n${RULES}\n</system-reminder>`]
+  expect((await $.prompt.submit({ text: 'after a settings change' })).context).toEqual([TEXT])
+})
+
+const rows = (context: string[]) => context[0]!.split('\n').filter(line => /^\| [A-Z][a-z]+ \|/.test(line))
+
+test('a tier set in the settings replaces its default, an effort outside the five levels does not, and an empty model is left to the session', { options: { criticalModel: ' Fable ', criticalEffort: 'high', routineEffort: 'extra', complexModel: '' } }, async ($: any, on: any) => {
+  world(on)
+  const table = rows((await $.prompt.submit({ text: 'hi' })).context)
+  expect(table).toContain('| Critical | Fable | high |')
+  expect(table).toContain('| Routine | sonnet | medium |')
+  expect(table).toContain("| Complex | the session's model | high |")
 })
 
 // Auto mode refuses an Agent call if a hook changed its input after review, so
@@ -58,7 +83,7 @@ const call = async ($: any, agentId?: string) => (await $.tool.call({ tool: 'Bas
 const restored = (text: string) => ({ result: `ok\n\n<system-reminder>\ntool.call hook additional context: ${text}\n</system-reminder>` })
 
 test('a Workflow agent gets the escalation rule with its first tool result only', async ($: any, on: any) => {
-  const w = agents(on, { '': [RULES] })
+  const w = agents(on, { '': [TEXT] })
   w.deny = true
   expect(await call($, 'w1')).toEqual([])
   w.deny = false
@@ -68,7 +93,7 @@ test('a Workflow agent gets the escalation rule with its first tool result only'
 })
 
 test('an Agent subagent gets the escalation rule again only once its task is compacted away', async ($: any, on: any) => {
-  const read: Record<string, Read[]> = { '': [RULES], a1: [`${SUBAGENT_RULE}\n\nlook`] }
+  const read: Record<string, Read[]> = { '': [TEXT], a1: [`${SUBAGENT_RULE}\n\nlook`] }
   agents(on, read)
   expect(await call($, 'a1')).toEqual([])
   read.a1 = ['a summary']
@@ -85,19 +110,19 @@ test('an Agent subagent gets the escalation rule again only once its task is com
 })
 
 test('the rules are added to one tool result after a compaction, until the model reads them there', async ($: any, on: any) => {
-  const read: Record<string, Read[]> = { '': [`<system-reminder>\n${RULES}\n</system-reminder>`] }
+  const read: Record<string, Read[]> = { '': [`<system-reminder>\n${TEXT}\n</system-reminder>`] }
   const w = agents(on, read)
   expect(await call($)).toEqual([])
   read[''] = ['a summary']
   w.deny = true
   expect(await call($)).toEqual([])
   w.deny = false
-  expect(await Promise.all([call($), call($), call($)])).toEqual([[RULES], [], []])
-  read[''] = ['a summary', restored(RULES)]
+  expect(await Promise.all([call($), call($), call($)])).toEqual([[TEXT], [], []])
+  read[''] = ['a summary', restored(TEXT)]
   expect(await call($)).toEqual([])
   read[''] = ['another summary']
-  expect(await call($)).toEqual([RULES])
+  expect(await call($)).toEqual([TEXT])
   // A second compaction before the model read them back.
   read[''] = ['a third summary']
-  expect(await call($)).toEqual([RULES])
+  expect(await call($)).toEqual([TEXT])
 })

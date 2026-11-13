@@ -13,5 +13,72 @@
     "workflow",
     "verification",
     "escalation"
-  ]
+  ],
+  "userConfig": {
+    "mechanicalModel": {
+      "type": "string",
+      "title": "Mechanical model",
+      "description": "The model of the mechanical tier, for a stage whose failure is loud: an alias (sonnet, opus, haiku, or fable) or a model id.",
+      "default": "haiku"
+    },
+    "mechanicalEffort": {
+      "type": "string",
+      "title": "Mechanical effort",
+      "description": "The effort of the mechanical tier.",
+      "options": ["low", "medium", "high", "xhigh", "max"],
+      "default": "low"
+    },
+    "routineModel": {
+      "type": "string",
+      "title": "Routine model",
+      "description": "The model of the routine tier, for a well-specified unit with an objective check: an alias (sonnet, opus, haiku, or fable) or a model id.",
+      "default": "sonnet"
+    },
+    "routineEffort": {
+      "type": "string",
+      "title": "Routine effort",
+      "description": "The effort of the routine tier.",
+      "options": ["low", "medium", "high", "xhigh", "max"],
+      "default": "medium"
+    },
+    "complexModel": {
+      "type": "string",
+      "title": "Complex model",
+      "description": "The model of the complex tier, for the main loop and a loosely specified build stage: an alias (sonnet, opus, haiku, or fable) or a model id.",
+      "default": "opus"
+    },
+    "complexEffort": {
+      "type": "string",
+      "title": "Complex effort",
+      "description": "The effort of the complex tier.",
+      "options": ["low", "medium", "high", "xhigh", "max"],
+      "default": "high"
+    },
+    "criticalModel": {
+      "type": "string",
+      "title": "Critical model",
+      "description": "The model of the critical tier, for design, adversarial verification, and judge stages: an alias (sonnet, opus, haiku, or fable) or a model id.",
+      "default": "opus"
+    },
+    "criticalEffort": {
+      "type": "string",
+      "title": "Critical effort",
+      "description": "The effort of the critical tier.",
+      "options": ["low", "medium", "high", "xhigh", "max"],
+      "default": "xhigh"
+    },
+    "escalationModel": {
+      "type": "string",
+      "title": "Escalation model",
+      "description": "The model of the escalation tier, for a stage the critical tier left open: an alias (sonnet, opus, haiku, or fable) or a model id. On an account not served Fable 5.2, set it to opus with the effort at max.",
+      "default": "fable"
+    },
+    "escalationEffort": {
+      "type": "string",
+      "title": "Escalation effort",
+      "description": "The effort of the escalation tier.",
+      "options": ["low", "medium", "high", "xhigh", "max"],
+      "default": "high"
+    }
+  }
 }

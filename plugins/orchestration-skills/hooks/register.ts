@@ -23,11 +23,23 @@ async function head($: any, agentId?: string): Promise<string> {
   return Array.isArray(messages) ? JSON.stringify(messages[0] ?? null) : ''
 }
 
-export const register: Register = on => {
+const TIERS = ['mechanical', 'routine', 'complex', 'critical', 'escalation']
+
+// The rules, then the model and effort of each tier as set in the plugin's
+// settings, where the engine puts a plugin.json default for one left unset.
+async function rulesText($: any, options: Record<string, unknown>): Promise<string> {
+  const rules = await $.fs.read(`${$.plugin.root}/hooks/rules.md`).catch(() => '')
+  if (!rules) return ''
+  // An empty model setting leaves `model` off, so the agent runs on the session's model.
+  const rows = TIERS.map(tier => `| ${tier[0]!.toUpperCase()}${tier.slice(1)} | ${String(options[`${tier}Model`] ?? '').trim() || "the session's model"} | ${options[`${tier}Effort`]} |`)
+  return `${rules}\n\n## The tiers in this session's settings\n\nPass these as \`model\` and \`effort\` on \`Agent\` and on a Workflow \`agent()\`. Which stage runs at which tier is in the \`tier-model-and-effort\` skill.\n\n| Tier | Model | Effort |\n|---|---|---|\n${rows.join('\n')}\n`
+}
+
+export const register: Register = (on, options) => {
   // The rules go with the first prompt, and again once the model no longer
   // reads them.
   on('prompt.submit', async ($, e: any, next: any) => {
-    const rules = await $.fs.read(`${$.plugin.root}/hooks/rules.md`).catch(() => '')
+    const rules = await rulesText($, options)
     return next(rules && !(await isRead($, rules)) ? { ...e, context: [...(e.context ?? []), rules] } : e)
   })
 
@@ -50,7 +62,7 @@ export const register: Register = on => {
     const ran = await next(e)
     if (ran.deny !== undefined) return ran
     const key = e.agentId ?? (await $.session.id().catch(() => ''))
-    const text = e.agentId ? SUBAGENT_RULE : await $.fs.read(`${$.plugin.root}/hooks/rules.md`).catch(() => '')
+    const text = e.agentId ? SUBAGENT_RULE : await rulesText($, options)
     if (!text) return ran
     const read = await isRead($, text, e.agentId)
     if (read) added.delete(key)
