@@ -64,7 +64,7 @@ Recommending a fresh session comes with a launch snippet. Three parts, all requi
 2. **One line on why the work goes to a fresh session** rather than this one.
 3. **The model and effort to run it at**, in bold, as the picker's model name and effort label:
    **Opus + High**. The effort is one of Low, Medium, High, Extra, or Max. Never a tier name
-   ("everyday") or "default", which match nothing in the picker.
+   ("Complex") or "default", which match nothing in the picker.
 
 **Writing the next session's entry point into a sentence is that recommendation, not a substitute
 for it.** "Next session starts clean on the parser item" is this handoff in a form nobody can

@@ -198,7 +198,7 @@ consecutive IDs is written as a range, and others are listed, then one phrase co
 ## 5. Emit the tier plan—never pause
 
 Model and effort are the **user's controls**: **start building immediately, no pause, no
-end-of-turn checkpoint.** Sessions launch at the everyday baseline and the main loop stays there;
+end-of-turn checkpoint.** The main loop stays at the settings the session launched with;
 escalate by **delegation, not the session pickers**.
 
 Immediately after the title, emit a one-line **tier plan** stating the stages **this item
@@ -207,7 +207,7 @@ has**, then execute it. Two decisions go into it, and they are independent:
 - **How much verification the item needs.** The question: **would this repo's test suite catch this
   item going silently wrong?** A loud suite lets the implement stage run cheap and the verify run at
   High, or not at all. A silent failure mode—transform or rewrite machinery—puts the weight on
-  design and adversarial-verify, at Extra effort on the everyday model.
+  design and adversarial-verify, at the Critical tier.
 - **What runs each stage.** Inline in the main loop, a delegated agent, or a Workflow. A single
   roadmap item is usually a linear design → build → verify, which the main loop plus one or two
   agents handles with nothing to script. Reach for a **Workflow** when there is fan-out, a loop
@@ -225,8 +225,9 @@ adversarial-verify agent at Extra against the merge logic.`
 The plan is a forecast, so restate each stage's tier in the message that launches it, and say so
 when a planned stage turns out not to run.
 
-`tier-model-and-effort` has the current model table and the per-stage override syntax; take tier
-names from it rather than from memory, since model names age faster than the rules around them.
+`tier-model-and-effort` has the tiers and the per-stage override syntax; take each tier's model and
+effort from it, or from the table in the session's rules, rather than from memory, since model names
+age faster than the rules around them.
 
 ## 6. Build it, then land it
 
