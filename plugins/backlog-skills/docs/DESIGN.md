@@ -69,14 +69,17 @@ seconds of clock time.
 Each file a tool rewrites goes through a journal under `<git common dir>/backlog/journal/`: the new
 content and a copy of the old are written and read back before the file is touched, and the file is
 read back after. The fs API has no delete, so a settled entry is overwritten with a tombstone. An
-entry left by an interrupted call is settled at the start of the next call: a file cut short is
-saved as `.found` and written again, and a file a person edited in the meantime is kept, with the old
-copy saved as `.prev`. Saved files are numbered rather than overwritten.
+entry left by an interrupted call is settled at the start of the next call: a file that is a
+prefix of the new content is saved as `.found` and written again, and any other file a person
+edited in the meantime is kept, with the old copy saved as `.prev`. A prefix is most likely a write
+cut short, but a person who deleted the end of the file looks the same, so the message includes both
+causes and the `.found` path. Saved files are numbered rather than overwritten, and no file is
+written through a symbolic link.
 
 A tool that writes two files writes the target first and reads it back before it changes the
 source. A retry of `close_item`, `park_item`, `decline_item`, or `reactivate_item` finds its own
-first write and finishes the delete. `record_progress` has no such check, so a retry after an
-interruption appends a second record.
+first write and finishes the delete. A retry of `record_progress` skips a record identical to the
+last one when `Branch` is not yet set.
 
 `reserve_id` creates `refs/backlog/ids/<ID>` the same way as the lock, so two sessions never get one
 ID. The refs are not pushed. A sub-item's ID is reserved the same way.
