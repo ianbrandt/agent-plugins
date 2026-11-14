@@ -97,3 +97,17 @@ In a repo with a backlog, a short rule is added to the first prompt, and again o
 longer reads it. It includes the backlog's and the plan's paths, the steps for a task the user states
 directly, and the citation form. In the three migration kinds, instructions for the migration are added in its place. In a repo
 with no backlog nothing is added.
+
+## Migration
+
+`migrate_backlog` converts a repo from `roadmap-skills` once. The session supplies the converted
+backlog and plan text, and the tool does the rest: the preconditions, the exclusions, a backup of a
+local-only roadmap in `notes.local/backlog-migration/<date>/`, the writes, validation, the check that
+the new files hold the same IDs as the old, and the deletion of the old files. Untracked files are
+deleted with `git clean`, which never removes a tracked file. On a tracked roadmap the tool commits
+the migration on the branch it is given.
+
+A marker at `<git common dir>/backlog/migration/marker.json` records each destination before and
+after it is written, so a rerun continues from the first step not done. A destination with a hash that
+no longer matches is saved as `.found` in the backup directory and written again. The write tools
+refuse until the marker is complete.
