@@ -52,12 +52,12 @@ session, so they change how a session works without being invoked.
 
 ### Branches and Sessions
 
-`parallel-session-skills` and `roadmap-skills` both need `session-skills`.
+`parallel-session-skills` and `backlog-skills` both need `session-skills`.
 
 ```sh
 /plugin install session-skills@ianbrandt
 /plugin install parallel-session-skills@ianbrandt
-/plugin install roadmap-skills@ianbrandt
+/plugin install backlog-skills@ianbrandt
 ```
 
 - [`session-skills`](plugins/session-skills) puts a unit of work on its own branch and gets it
@@ -68,9 +68,11 @@ session, so they change how a session works without being invoked.
   other's files, with a git worktree for each and a claim ledger of the paths each lane will touch. It also has the
   unattended conductor that runs several lanes at once and refills them as they finish. Install it
   if you run more than one session against a repo at a time.
-- [`roadmap-skills`](plugins/roadmap-skills) backs a lane with a markdown backlog: `Rn` items in
-  priority order, claimed one at a time or fed to the conductor in a batch. Feeding the conductor needs
-  `parallel-session-skills` as well.
+- [`backlog-skills`](plugins/backlog-skills) backs a lane with a markdown backlog: `Rn` items in
+  priority order, each with a short list of fields, claimed one at a time or worked through
+  unattended. Scope and standing instructions go in a separate plan file. Working several items at
+  once needs `parallel-session-skills` as well. It replaces `roadmap-skills`, and offers a one-time
+  migration of an old roadmap.
 
 ### Gradle
 
