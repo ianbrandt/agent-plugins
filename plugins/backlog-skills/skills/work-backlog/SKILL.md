@@ -71,7 +71,7 @@ does the same at its landing step. Record the item with `next-backlog-item` §6'
   rebased tip. Every other lane edits the same file, so nothing else in the file changes. After the
   merge is confirmed, `confirm_landed`.
 - **A local-only backlog**: `close_item` with the done-record, after the unit passes the build gate.
-  On a fork the record has a status (`BUILT-LOCAL`, `DRAFTED`, `FILED`, `PR-READY`, or
+  On a fork the record has a status (`BUILT-LOCAL`, `DRAFTED`, or
   `MERGED-UPSTREAM`). The changelog is where the reasoning behind each item goes: record what the
   commit messages won't.
 - **In `pr` mode**, the item stays open until its PR merges. On a tracked backlog the `close_item`
