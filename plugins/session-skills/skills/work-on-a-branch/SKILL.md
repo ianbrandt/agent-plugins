@@ -41,7 +41,7 @@ contributor docs, which apply to the code and not to where the code lands.
 
 ## 0. The two seams
 
-Choosing *what* to work on is outside these skills. Where a repo keeps a backlog—a roadmap file, GitHub
+Choosing *what* to work on is outside these skills. Where a repo keeps a backlog—a markdown file, GitHub
 issues, Jira—a plugin for it answers three questions, and how it stores the answers does not matter
 here:
 

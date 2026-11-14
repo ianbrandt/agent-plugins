@@ -79,10 +79,10 @@ function repo(on: any, files: Record<string, string>, afterRead: (n: number) => 
 }
 
 test('the tool edits a file in the primary checkout, and appends to one that is not there yet', async ($: any, on: any) => {
-  const files = repo(on, { '/repo/ROADMAP.local.md': '## R1: one\n\n## R2: two\n' })
-  expect((await $.tool.call({ tool: EDIT, path: '/repo/ROADMAP.local.md', old: '## R2: two\n', new: '## R3: three\n' })).result).toBe('edited /repo/ROADMAP.local.md')
+  const files = repo(on, { '/repo/BACKLOG.local.md': '## R1: one\n\n## R2: two\n' })
+  expect((await $.tool.call({ tool: EDIT, path: '/repo/BACKLOG.local.md', old: '## R2: two\n', new: '## R3: three\n' })).result).toBe('edited /repo/BACKLOG.local.md')
   await $.tool.call({ tool: EDIT, path: '/repo/notes.local/log.md', old: '', new: 'first\n' })
-  expect(files).toEqual({ '/repo/ROADMAP.local.md': '## R1: one\n\n## R3: three\n', '/repo/notes.local/log.md': 'first\n' })
+  expect(files).toEqual({ '/repo/BACKLOG.local.md': '## R1: one\n\n## R3: three\n', '/repo/notes.local/log.md': 'first\n' })
 })
 
 test('the tool writes nothing for a drifted passage or a path outside the primary checkout', async ($: any, on: any) => {

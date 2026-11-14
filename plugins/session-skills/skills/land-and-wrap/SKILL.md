@@ -96,7 +96,7 @@ In an unattended run with the mode unknown, merge locally and push nothing. Both
 undone.
 
 These facts are independent of the backlog. A repo you own can track its work in an untracked,
-local-only roadmap and still merge into its default branch; that combination needs no special
+local-only backlog and still merge into its default branch; that combination needs no special
 handling.
 
 ## 2. Landing in a repo you own

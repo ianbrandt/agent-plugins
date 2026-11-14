@@ -57,7 +57,7 @@ mode is left as local commits and draft files. To switch a clone, ask the sessio
 "switch this clone to auto-push": the `set_push_policy` tool asks for confirmation and writes the
 mode.
 
-None of these facts depends on the backlog, so a repo you own with an untracked, local-only roadmap
+None of these facts depends on the backlog, so a repo you own with an untracked, local-only backlog
 needs no special case.
 
 A branch checked out in the primary checkout is merged by switching to the default branch and
