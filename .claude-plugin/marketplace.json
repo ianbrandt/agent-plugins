@@ -4,7 +4,8 @@
     "name": "Ian Brandt"
   },
   "renames": {
-    "writing-conventions": "writing-skills"
+    "writing-conventions": "writing-skills",
+    "roadmap-skills": "backlog-skills"
   },
   "plugins": [
     {
@@ -21,17 +22,17 @@
       "keywords": ["gradle", "dependencies", "version-catalog", "wrapper"]
     },
     {
-      "name": "roadmap-skills",
+      "name": "backlog-skills",
       "source": {
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/agent-plugins.git",
-        "path": "plugins/roadmap-skills",
-        "ref": "roadmap-skills-v0.24.1",
-        "sha": "f53fb4d1cc978fcbffe67644bdc9fb041fd3b6c9"
+        "path": "plugins/backlog-skills",
+        "ref": "backlog-skills-v0.25.0",
+        "sha": "0ff5b36bbc6fd69432ddab8d6bb36ba50c4ec505"
       },
-      "version": "0.24.1",
-      "description": "Skills for driving a repo's roadmap: claim the next item and build it, for repos you own or upstream OSS projects you contribute to via a fork.",
-      "keywords": ["roadmap", "backlog", "worktree", "oss", "contribution"]
+      "version": "0.25.0",
+      "description": "Skills for working through a repo's backlog of markdown items: claim the next item and build it, or work through the backlog unattended, for repos you own or upstream OSS projects you contribute to via a fork.",
+      "keywords": ["backlog", "roadmap", "worktree", "oss", "contribution"]
     },
     {
       "name": "session-skills",
@@ -39,10 +40,10 @@
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/session-skills",
-        "ref": "session-skills-v0.35.1",
-        "sha": "f53fb4d1cc978fcbffe67644bdc9fb041fd3b6c9"
+        "ref": "session-skills-v0.35.2",
+        "sha": "0ff5b36bbc6fd69432ddab8d6bb36ba50c4ec505"
       },
-      "version": "0.35.1",
+      "version": "0.35.2",
       "description": "Puts a unit of work on its own branch and gets it back off again: pick up the branch work is already in flight on or open a new one, and land the work by what the repo is rather than by a declared mode.",
       "keywords": ["branch", "session", "landing", "wrap-up", "resume"]
     },
