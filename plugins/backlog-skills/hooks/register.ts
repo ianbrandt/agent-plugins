@@ -3,6 +3,7 @@
 import type { Register } from 'claude-code'
 import { citations, replyNote } from './cite'
 import { rule } from './plan'
+import { MIGRATE_TOOLS, migrateTools } from './migrate'
 import { facts } from './repo'
 import { TOOLS, tools } from './tools'
 import { WRITE_TOOLS, writeTools } from './write'
@@ -32,7 +33,7 @@ function isRead(messages: any[], text: string): boolean {
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    for (const t of [...TOOLS, ...WRITE_TOOLS]) await $.tool.register({ ...t, isDeferred: false })
+    for (const t of [...TOOLS, ...WRITE_TOOLS, ...MIGRATE_TOOLS]) await $.tool.register({ ...t, isDeferred: false })
     return next(e)
   })
 
@@ -71,5 +72,6 @@ export const register: Register = on => {
 
   tools(on)
   writeTools(on)
+  migrateTools(on)
   citations(on)
 }

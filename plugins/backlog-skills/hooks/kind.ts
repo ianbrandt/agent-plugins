@@ -16,8 +16,8 @@ export type Facts = {
   oldTracked?: string[]
 }
 
-const LOCAL: Paths = { backlog: 'BACKLOG.local.md', parked: 'BACKLOG-PARKED.local.md', declined: 'BACKLOG-DECLINED.local.md', changelog: 'BACKLOG-CHANGELOG.local.md', plan: 'PLAN.local.md' }
-const TRACKED: Paths = { backlog: 'BACKLOG.md', parked: 'BACKLOG-PARKED.md', declined: 'BACKLOG-DECLINED.md', plan: 'PLAN.md' }
+export const LOCAL: Paths = { backlog: 'BACKLOG.local.md', parked: 'BACKLOG-PARKED.local.md', declined: 'BACKLOG-DECLINED.local.md', changelog: 'BACKLOG-CHANGELOG.local.md', plan: 'PLAN.local.md' }
+export const TRACKED: Paths = { backlog: 'BACKLOG.md', parked: 'BACKLOG-PARKED.md', declined: 'BACKLOG-DECLINED.md', plan: 'PLAN.md' }
 
 export function kindOf(f: Facts): { kind: Kind; paths?: Paths; report: string[] } {
   const report: string[] = []

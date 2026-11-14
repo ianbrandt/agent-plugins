@@ -23,6 +23,8 @@ export function world(on: any, files: Record<string, string> = { [`${MAIN}/BACKL
     writes: [] as string[], tear: undefined as undefined | ((path: string, text: string) => string | void),
     onSleep: undefined as undefined | (() => void),
     cwd: MAIN,
+    // The index and HEAD, by path from a checkout's root, for migrate_backlog's commit.
+    head: new Set<string>(), staged: new Set<string>(), commits: [] as { message: string; paths: string[] }[], status: '',
   }
   let n = 0
   const zero = () => '0'.repeat(w.format === 'sha256' ? 64 : 40)
@@ -54,8 +56,10 @@ export function world(on: any, files: Record<string, string> = { [`${MAIN}/BACKL
   })
   on('process.run', (_$: any, e: any) => {
     const argv = e.argv as string[]
-    expect(argv.slice(0, 3)).toEqual(['git', '-C', MAIN])
-    expect(e.init?.cwd).toBe(MAIN)
+    expect(argv.slice(0, 2)).toEqual(['git', '-C'])
+    const root = argv[2]
+    expect(w.worktrees.map(t => t.path)).toContain(root)
+    expect(e.init?.cwd).toBe(root)
     const a = argv.slice(3)
     const line = a.join(' ')
     w.git.push(line)
@@ -66,7 +70,34 @@ export function world(on: any, files: Record<string, string> = { [`${MAIN}/BACKL
     if (said) return { value: { stdout: '', ...said } }
     if (line === 'rev-parse --path-format=absolute --git-common-dir --show-object-format') return ok(`${COMMON}\n${w.format}\n`)
     if (line === 'remote get-url upstream') return typeof w.upstream === 'object' ? { value: { stdout: '', ...w.upstream } } : w.upstream ? ok('u\n') : fail(2)
-    if (a[0] === 'ls-files') return ok(w.tracked.map(t => `${t}\n`).join(''))
+    const paths = a.slice(a.indexOf('--') + 1)
+    if (a[0] === 'ls-files') return ok(w.tracked.filter(t => paths.includes(t)).map(t => `${t}\n`).join(''))
+    if (line === 'hash-object --stdin') return ok(`h${[...String(e.init.stdin)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7)}\n`)
+    if (a[0] === 'check-ignore') {
+      const globs = (w.files[`${COMMON}/info/exclude`] ?? '').split('\n').filter(l => l.startsWith('/'))
+      const hit = globs.some(g => new RegExp(`^${g.slice(1).replace(/\./g, '\\.').replace(/\*/g, '[^/]*')}$`).test(a[4]))
+      return hit ? ok() : fail(1, '')
+    }
+    if (a[0] === 'clean') {
+      const name = a[5].replace(':(top,literal)', '')
+      if (!w.tracked.includes(name)) delete w.files[`${root}/${name}`]
+      return ok()
+    }
+    // shortcut: a path already in HEAD is taken as unchanged, since HEAD's content is not kept here.
+    if (a[0] === 'add') { for (const p of paths) { if (!w.tracked.includes(p)) w.tracked.push(p); if (!w.head.has(p)) w.staged.add(p) } return ok() }
+    if (a[0] === 'rm') {
+      for (const p of paths) if (w.tracked.includes(p)) { delete w.files[`${root}/${p}`]; w.tracked = w.tracked.filter(t => t !== p); w.staged.add(p) }
+      return ok()
+    }
+    if (line.startsWith('diff --cached --quiet')) return paths.some(p => w.staged.has(p)) ? fail(1, '') : ok()
+    if (a[0] === 'commit') {
+      w.commits.push({ message: a[a.indexOf('-m') + 1], paths })
+      for (const p of paths) { if (`${root}/${p}` in w.files) w.head.add(p); else w.head.delete(p); w.staged.delete(p) }
+      return ok()
+    }
+    if (a[0] === 'status') return ok(w.status)
+    if (line === 'rev-parse HEAD') return ok('c2\n')
+    if (a[0] === 'cat-file' && a[1] === '-e' && a[2].startsWith('HEAD:')) return w.head.has(a[2].slice(5)) ? ok() : fail(128)
     if (line.startsWith('for-each-ref --format=%(objectname)')) {
       const rows = [...w.refs].map(([r, o]) => `${o} ${r} \n`)
       if (w.originHead) rows.push(`x refs/remotes/origin/HEAD ${w.originHead}\n`)

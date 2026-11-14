@@ -80,6 +80,8 @@ type Edit = { repo: Repo; lock: Lock; texts: Texts; ctx: Ctx; out: string[]; at:
 const fail = (message: string): never => { throw new Error(message) }
 const topOf = (id: string) => Number(/\d+/.exec(id)![0])
 const pad = (n: number) => String(n).padStart(2, '0')
+// The local date, as YYYY-MM-DD.
+export const dateOf = (ms: number) => { const d = new Date(ms); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` }
 const or = (xs: string[]) => `${xs.slice(0, -1).join(', ')}, and ${xs.at(-1)}`
 
 // The checkout to change: the primary checkout, or on a tracked backlog the
@@ -103,10 +105,9 @@ async function editing($: any, e: any, fn: (x: Edit) => Promise<void>): Promise<
     const { texts, ctx } = await load($, repo!, root)
     const file = problemsOf(ctx).filter(p => p.level === 'file')
     if (file.length) fail(`the backlog files have file-level problems, so nothing was written:\n${problemLines(repo!, file).join('\n')}`)
-    const d = new Date(await $.clock.now())
     await fn({
       repo: repo!, lock, texts, ctx, out, at: f => `${root}/${repo!.paths![f]}`, local: repo!.kind === 'local-only',
-      date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+      date: dateOf(await $.clock.now()),
     })
     return out.join('\n')
   })

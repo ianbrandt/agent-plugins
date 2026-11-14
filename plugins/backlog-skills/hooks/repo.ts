@@ -1,6 +1,6 @@
 // Facts about the repo read from git and the primary checkout, and the backlog
 // files parsed into the context the gates and the claimable check take.
-import { type Ctx, type FileName, type Files, branchId, idsIn, parseBacklog, parseHeadings } from './format'
+import { type Ctx, type FileName, type Files, GROUP, branchId, idsGrouped, idsIn, parseBacklog, parseHeadings } from './format'
 import { type Kind, type Paths, kindOf } from './kind'
 
 export type Run = { exitCode: number; stdout: string; stderr: string; isStdoutTruncated?: boolean }
@@ -157,22 +157,31 @@ async function inFlight($: any, main: string, defaultRef: string, worktrees: Wor
   return ids
 }
 
-// IDs in the live claims of parallel-session-skills' ledger, where there is
-// one. A claim is live while a worktree has its branch checked out, and every
-// claim is while any worktree is detached, as the ledger's own rule has it. A
-// file that does not parse may be a claim being written, and has no ID to read.
-async function claimIds($: any, main: string, worktrees: Worktree[]): Promise<Set<string>> {
+export type Claim = { file: string; branch: string; item: string }
+
+// The live claims in parallel-session-skills' ledger, where there is one. A
+// claim is live while a worktree has its branch checked out, and every claim is
+// while any worktree is detached, per the ledger's rule. A file that
+// does not parse may be a claim being written, and is listed as unread.
+export async function claims($: any, main: string, worktrees: Worktree[]): Promise<{ live: Claim[]; unread: string[] }> {
   const dir = `${main}/.claude/claims`
   const listed: any[] = await $.fs.list(dir).catch(() => [])
-  const live = worktrees.map(w => w.branch)
+  const branches = worktrees.map(w => w.branch)
   const detached = worktrees.some(w => !w.branch)
-  const ids = new Set<string>()
+  const out = { live: [] as Claim[], unread: [] as string[] }
   for (const f of listed.filter(f => f.kind === 'file' && f.name.endsWith('.json'))) {
     let c: any
-    try { c = JSON.parse((await read($, `${dir}/${f.name}`)) ?? '') } catch { continue }
-    if (!c || typeof c.branch !== 'string' || !(detached || live.includes(c.branch))) continue
-    for (const id of [...idsIn(String(c.item ?? '')), branchId(c.branch) ?? '']) if (id) ids.add(id)
+    try { c = JSON.parse((await read($, `${dir}/${f.name}`)) ?? '') } catch {}
+    if (!c || typeof c.branch !== 'string') out.unread.push(f.name)
+    else if (detached || branches.includes(c.branch)) out.live.push({ file: f.name, branch: c.branch, item: String(c.item ?? '') })
   }
+  return out
+}
+
+// IDs in the live claims, from each claim's item text and its branch name.
+async function claimIds($: any, main: string, worktrees: Worktree[]): Promise<Set<string>> {
+  const ids = new Set<string>()
+  for (const c of (await claims($, main, worktrees)).live) for (const id of [...idsIn(c.item), branchId(c.branch) ?? '']) if (id) ids.add(id)
   return ids
 }
 
@@ -185,7 +194,9 @@ export async function deletedOnDefault($: any, repo: Repo): Promise<Set<string>>
     if (c.tip === repo.tip && Array.isArray(c.ids)) return new Set(c.ids)
   } catch {}
   const out = await git($, repo.main, 'log', '-p', '-U0', '--format=', '-G^#', repo.defaultRef, '--', 'BACKLOG.md', 'ROADMAP.md', 'docs/roadmap.md')
-  const ids = new Set(lines(out).flatMap(l => /^-#{2,3}[ \t]+([^:]*):/.exec(l)?.[1] ?? []).flatMap(idsIn))
+  // Old roadmaps also have headings such as `### R12—Title`, so the heading's leading IDs count, whatever follows them.
+  const led = new RegExp(`^-#{2,3}[ \\t]+(${GROUP})`)
+  const ids = new Set(lines(out).flatMap(l => led.exec(l)?.[1] ?? []).flatMap(idsGrouped))
   await $.fs.write(cache, JSON.stringify({ tip: repo.tip, ids: [...ids] }))
   return ids
 }
