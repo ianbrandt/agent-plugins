@@ -69,6 +69,12 @@ const FIELD = /^- ([A-Za-z][A-Za-z ]*?):(?:[ \t]+(.*?))?[ \t]*$/
 // A field line as markdown renders it: any space after the dash, a bold key, a space before the colon.
 const LOOSE = /^-[ \t]+(\*\*|__)?([A-Za-z][A-Za-z \t]*?)[ \t]*\1?:\1?(?:[ \t]+(.*?))?[ \t]*$/
 const known = (key: string) => KEYS.find(k => k.toLowerCase() === key.replace(/[ \t]+/g, ' ').toLowerCase())
+// A first-block line read as a field: the strict `- Key:` form with any key, or
+// the loose form with a known key. `key` is set for a known key only.
+export function fieldLine(text: string): { key?: string; raw: string; value: string } | undefined {
+  const m = LOOSE.exec(text)
+  return m && (FIELD.test(text) || known(m[2])) ? { key: known(m[2]), raw: m[2], value: m[3] ?? '' } : undefined
+}
 const SHAPED = new RegExp(`^\\s*[-*+][ \\t]+(\\*\\*|__)?(?:${KEYS.map(k => k.replace(' ', '[ \\t]+')).join('|')})[ \\t]*\\1?:`, 'i')
 const NEEDS = /needs the user/i
 const needsUser = (value?: string) => /^user\b/i.test(value?.trim() ?? '')
@@ -128,12 +134,11 @@ export function parseBacklog(text: string): Backlog {
     while (j < body.length && body[j].text.trim()) j++
     const block = body.slice(k, j)
     // A known key in another spelling or case is read as that key.
-    const fields = block.map(l => { const m = l.code ? null : LOOSE.exec(l.text); return m && (FIELD.test(l.text) || known(m[2])) ? m : null })
+    const fields = block.map(l => (l.code ? undefined : fieldLine(l.text)))
     const isList = block.length > 0 && fields.every(Boolean)
     if (isList) {
       block.forEach((l, i) => {
-        const [, , raw, value = ''] = fields[i]!
-        const key = known(raw)
+        const { key, raw, value } = fields[i]!
         if (!key) add('warning', l.n, `an unknown field key: ${raw}`, id)
         else if (key in item.fields) add('item', l.n, `${key} is set twice`, id)
         else {
@@ -154,7 +159,8 @@ export function parseBacklog(text: string): Backlog {
   return out
 }
 
-const STATUS = /(?<![\w-])(BUILT-LOCAL|DRAFTED|FILED|PR-READY|MERGED-UPSTREAM|DONE)(?![\w-])/
+export const STATUSES = ['BUILT-LOCAL', 'DRAFTED', 'FILED', 'PR-READY', 'MERGED-UPSTREAM', 'DONE']
+const STATUS = new RegExp(`(?<![\\w-])(${STATUSES.join('|')})(?![\\w-])`)
 // A record's status: the first status keyword in the last parenthesized group
 // that has one, so `(PR-READY 2026-11-01)` and `(2026-11-01, PR-READY)` both read PR-READY.
 const statusOf = (title: string) =>

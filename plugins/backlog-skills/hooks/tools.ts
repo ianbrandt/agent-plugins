@@ -34,14 +34,14 @@ export const TOOLS = [
 ]
 
 // What to do in each migration kind, as stated in the session-start rule (D3).
-const MIGRATION: Record<string, string> = {
+export const MIGRATION: Record<string, string> = {
   'partial-migration': 'A migration of this repo\'s roadmap was started and did not finish. Continue it with migrate_backlog before any other backlog work. Until then the write tools refuse.',
   'migration-pending': 'The migration is committed on its branch, and BACKLOG.md is not on the default branch yet. Land that branch first. Until then the write tools refuse.',
   'needs-migration': 'This repo still has an old roadmap. Offer the migration to the user, and run it with migrate_backlog if they agree. Until then the write tools refuse.',
 }
 
 const relOf = (repo: Repo, p: Problem) => (p.file && repo.paths?.[p.file]) || 'backlog'
-const problemLines = (repo: Repo, ps: Problem[]) => ps.map(p => `  ${relOf(repo, p)} line ${p.line} (${p.level} level): ${p.message}`)
+export const problemLines = (repo: Repo, ps: Problem[]) => ps.map(p => `  ${relOf(repo, p)} line ${p.line} (${p.level} level): ${p.message}`)
 
 // D6: in a repo with an upstream remote, the plan holds the House style section.
 async function houseStyle($: any, repo: Repo, plan: string | undefined): Promise<string[]> {
@@ -98,7 +98,7 @@ async function listItems($: any, unattended: boolean): Promise<string> {
   return out.join('\n')
 }
 
-const checkId = (id: unknown): string => {
+export const checkId = (id: unknown): string => {
   if (typeof id !== 'string' || !new RegExp(`^${ID}$`).test(id)) throw new Error(`not an item ID: ${JSON.stringify(id)}`)
   return id
 }
@@ -133,6 +133,19 @@ async function findMentions($: any, input: any): Promise<string> {
   return [...out, ...(hits.length ? hits : [`no mentions of ${id}`])].join('\n')
 }
 
+// Creates refs/backlog/ids/<prefix><n>, or the ref for the first number past
+// it that no other session took first. write_item reserves sub-items with it.
+export async function reserve($: any, repo: Repo, prefix: string, n: number): Promise<{ id: string; lines: string[] }> {
+  const own = await blob($, repo.main, [`session ${await $.session.id().catch(() => '')}`, `time ${await $.clock.now()}`])
+  const skipped: string[] = []
+  for (; !(await create($, repo, `refs/backlog/ids/${prefix}${n}`, own)); n++) {
+    skipped.push(`${prefix}${n}`)
+    if (skipped.length >= 100) throw new Error(`refs/backlog/ids/ already has the next 100 IDs, ${skipped[0]} to ${prefix}${n}`)
+  }
+  const id = `${prefix}${n}`
+  return { id, lines: [`id: ${id}`, `ref: refs/backlog/ids/${id}`, ...(skipped.length ? [`skipped, reserved by another session: ${skipped.join(', ')}`] : [])] }
+}
+
 // D5: the next ID past every source, held with a ref under refs/backlog/ids/.
 // A ref another session created first is skipped for the next number.
 async function reserveId($: any): Promise<string> {
@@ -150,14 +163,9 @@ async function reserveId($: any): Promise<string> {
       ids: [...ctx.backlog.items.map(i => i.id), ...headings, ...repo.reserved, ...repo.closed, ...repo.claimIds],
       branches: [...repo.branches, ...repo.worktrees.slice(1).map(w => w.path.split('/').pop()!)],
     }).slice(1))
-    const own = await blob($, repo.main, [`session ${await $.session.id().catch(() => '')}`, `time ${await $.clock.now()}`])
-    const skipped: string[] = []
-    for (; !(await create($, repo, `refs/backlog/ids/R${n}`, own)); n++) {
-      skipped.push(`R${n}`)
-      if (skipped.length >= 100) throw new Error(`refs/backlog/ids/ already has the next 100 IDs, ${skipped[0]} to R${n}`)
-    }
-    out.push(`id: R${n}`, `ref: refs/backlog/ids/R${n}`)
-    if (skipped.length) out.push(`skipped, reserved by another session: ${skipped.join(', ')}`)
+    const { id, lines } = await reserve($, repo, 'R', n)
+    out.push(...lines)
+    n = Number(id.slice(1))
     if (repo.kind === 'local-only') {
       const path = `${repo.main}/${repo.paths!.backlog}`
       const text = texts.backlog!.replace(/(Highest ID used:\s*`?[A-Z]+)\d+/, `$1${n}`)
@@ -168,7 +176,7 @@ async function reserveId($: any): Promise<string> {
 }
 
 // Each tool's error is its result, marked as an error.
-const answer = async (name: string, fn: () => Promise<string>) => {
+export const answer = async (name: string, fn: () => Promise<string>) => {
   try {
     return { result: await fn() }
   } catch (err) {

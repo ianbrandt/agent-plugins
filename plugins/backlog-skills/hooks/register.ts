@@ -1,11 +1,10 @@
 // The plugin's hooks module: the roadmap rule a session starts with, and the
-// tools a session calls to find and read the backlog and to delete a landed item.
+// tools a session calls to read and change the backlog.
 import type { Register } from 'claude-code'
-import { deleteItem } from './item'
 import { type Plan, planOf, rule } from './plan'
 import { TOOLS, tools } from './tools'
+import { WRITE_TOOLS, writeTools } from './write'
 
-const DELETE = 'mcp__backlog-skills__delete_item'
 const FIND = 'mcp__backlog-skills__find_roadmap'
 
 // The first line git wrote for a command that failed, or its exit code: Claude
@@ -57,20 +56,7 @@ function isRead(messages: any[], text: string): boolean {
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    for (const t of TOOLS) await $.tool.register({ ...t, isDeferred: false })
-    await $.tool.register({
-      name: 'delete_item',
-      description: 'Delete one landed item from a roadmap file: from its heading to the next heading of the same or a higher level, sub-items included. Returns the headings removed. Nothing is written when the ID matches no heading or more than one, or when the file changes during the call. Two calls at the same moment can both succeed with one edit lost, so read the file afterward where that matters.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          path: { type: 'string', description: 'Absolute path to the roadmap file, inside the primary checkout or one of its worktrees.' },
-          id: { type: 'string', description: 'The item ID its heading starts with, such as R12 or R12.3.' },
-        },
-        required: ['path', 'id'],
-      },
-      isDeferred: false,
-    })
+    for (const t of [...TOOLS, ...WRITE_TOOLS]) await $.tool.register({ ...t, isDeferred: false })
     return next(e)
   })
 
@@ -107,6 +93,7 @@ export const register: Register = on => {
   })
 
   tools(on)
+  writeTools(on)
 
   // shortcut: find_roadmap is no longer registered, and its handler stays only for plan.test.ts; remove both when plan.ts is replaced.
   on('tool.call', { tool: FIND }, async $ => {
@@ -120,29 +107,6 @@ export const register: Register = on => {
       return { result: lines.join('\n') }
     } catch (err) {
       const text = `find_roadmap: ${(err as Error).message}`
-      return { result: text, text, isError: true }
-    }
-  })
-
-  on('tool.call', { tool: DELETE }, async ($, e: any) => {
-    try {
-      const main = (await $.session.repo())?.root
-      if (!main) throw new Error('not inside a git repository')
-      const path = String(e.path).replace(/\\/g, '/')
-      // A tracked roadmap is edited in a lane's worktree, which can be anywhere.
-      // With -z each line ends in NUL, so a newline in a path stays in it.
-      const listed = await $.process.run(['git', '-C', main, 'worktree', 'list', '--porcelain', '-z'], { cwd: main })
-      if (listed.exitCode !== 0) throw new Error(`git worktree list in ${main}: ${why(listed)}`)
-      const roots = [main, ...String(listed.stdout).split('\0').filter(l => l.startsWith('worktree ')).map(l => l.slice('worktree '.length))].map(r => r.replace(/\\/g, '/').replace(/\/$/, ''))
-      if (!roots.some(r => path.startsWith(`${r}/`)) || path.split('/').includes('..')) throw new Error(`${e.path} is not inside the primary checkout ${main} or one of its worktrees`)
-      const before = await $.fs.read(e.path)
-      const { text, removed } = deleteItem(before, String(e.id))
-      // Another session may have added an item since the read above.
-      if ((await $.fs.read(e.path)) !== before) throw new Error(`${e.path} changed while the item was being deleted. Nothing was written. Call the tool again.`)
-      await $.fs.write(e.path, text)
-      return { result: `removed:\n${removed.join('\n')}` }
-    } catch (err) {
-      const text = `delete_item: ${(err as Error).message}`
       return { result: text, text, isError: true }
     }
   })
