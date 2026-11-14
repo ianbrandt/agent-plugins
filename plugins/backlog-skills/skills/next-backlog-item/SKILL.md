@@ -183,7 +183,8 @@ things:
 - **Record the item done.** Call `close_item` with the item's ID and, on a local-only backlog, its
   done-record: mechanism notes, corrections, refuted hypotheses, the local-to-upstream commit and PR
   map, and findings a later session should not have to re-derive, under a status (`BUILT-LOCAL`,
-  `DRAFTED`, `FILED`, `PR-READY`, or `MERGED-UPSTREAM`). On a tracked backlog the deletion is the
+  `DRAFTED`, `MERGED-UPSTREAM`, or `DONE`, the default). `PR-READY` and `FILED` are written by
+  `record_progress` instead. On a tracked backlog the deletion is the
   done-record: call `close_item` in the copy under `$WT` and commit it as the branch's last commit.
   After the landing is confirmed—after the merge in direct mode, or when the merged branch is
   pruned in `pr` mode—call `confirm_landed`, so items gated on this one open in this clone. An item
