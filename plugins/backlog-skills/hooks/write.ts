@@ -3,7 +3,7 @@
 // and writes through the journal, a move's target before its source.
 import { type Ctx, type FileName, type Item, ID, KEYS, STATUSES, fieldLine, nextSubId, parseBacklog, scan } from './format'
 import { deleteItem } from './item'
-import { placeOf, problemsOf, settleLocked, writeFiles } from './journal'
+import { placeOf, problemsOf, reporting, settleLocked, writeFiles } from './journal'
 import { type Lock, blob, create, withLock } from './lock'
 import { type Repo, type Texts, facts, git, load, run, why } from './repo'
 import { MIGRATION, answer, checkId, problemLines, reserve } from './tools'
@@ -102,14 +102,16 @@ async function editing($: any, e: any, fn: (x: Edit) => Promise<void>): Promise<
   const root = rootOf(repo!, e.path)
   return withLock($, repo!, async lock => {
     const out = await settleLocked($, repo!, lock)
-    const { texts, ctx } = await load($, repo!, root)
-    const file = problemsOf(ctx).filter(p => p.level === 'file')
-    if (file.length) fail(`the backlog files have file-level problems, so nothing was written:\n${problemLines(repo!, file).join('\n')}`)
-    await fn({
-      repo: repo!, lock, texts, ctx, out, at: f => `${root}/${repo!.paths![f]}`, local: repo!.kind === 'local-only',
-      date: dateOf(await $.clock.now()),
+    return reporting(out, async () => {
+      const { texts, ctx } = await load($, repo!, root)
+      const file = problemsOf(ctx).filter(p => p.level === 'file')
+      if (file.length) fail(`the backlog files have file-level problems, so nothing was written:\n${problemLines(repo!, file).join('\n')}`)
+      await fn({
+        repo: repo!, lock, texts, ctx, out, at: f => `${root}/${repo!.paths![f]}`, local: repo!.kind === 'local-only',
+        date: dateOf(await $.clock.now()),
+      })
+      return out.join('\n')
     })
-    return out.join('\n')
   })
 }
 
@@ -289,8 +291,15 @@ async function recordProgress($: any, e: any): Promise<string> {
   return editing($, e, async x => {
     if (!x.local) fail('a tracked backlog has no changelog: its item stays open until close_item')
     const item = itemOf(x.ctx, id)
-    const changelog = append(x.texts.changelog ?? header('Changelog', true), `## ${id}: ${item.title} (${e.status}, ${x.date})\n${record ? `\n${record}\n` : ''}`)
-    await write($, x, [['changelog', changelog], ['backlog', withField(x.texts.backlog!, item, 'Branch', branch)!]])
+    const block = `## ${id}: ${item.title} (${e.status}, ${x.date})\n${record ? `\n${record}\n` : ''}`
+    const backlog = withField(x.texts.backlog!, item, 'Branch', branch)!
+    // The same record last for the ID, with Branch not set yet, is this call's own first write, from a call interrupted before the second.
+    const last = x.ctx.changelog?.filter(h => h.ids.length === 1 && h.ids[0] === id).at(-1)
+    if (last && last.text.trimEnd() === block.trimEnd() && item.fields.Branch !== branch) {
+      x.out.push(`record: the changelog already has this record for ${id} at line ${last.line}, from an earlier call, so it was not written again`)
+      return write($, x, [['backlog', backlog]])
+    }
+    await write($, x, [['changelog', append(x.texts.changelog ?? header('Changelog', true), block)], ['backlog', backlog]])
   })
 }
 
@@ -308,6 +317,11 @@ async function closeItem($: any, e: any): Promise<string> {
       fail(`${id} is not in the backlog${h ? `. The changelog has a record for it at line ${h.line}` : ''}`)
     }
     const { text, removed } = deleteItem(x.texts.backlog!, id)
+    if (!x.local) {
+      // D5: an ID is never used again. Each deleted ID gets a ref, so write_item does not give it to a new sub-item before the deletion lands.
+      const ids = [id, ...ctx.backlog.items.filter(i => i.parent === id).map(i => i.id)].filter(i => !x.repo.reserved.includes(i) && !x.repo.closed.includes(i))
+      for (const i of ids) await create($, x.repo, `refs/backlog/ids/${i}`, await blob($, x.repo.main, [`session ${await $.session.id().catch(() => '')}`, `closed ${i}`]))
+    }
     const writes: [FileName, string][] = []
     if (x.local) {
       const status = e.status ?? 'DONE'

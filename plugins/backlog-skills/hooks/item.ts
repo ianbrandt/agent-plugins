@@ -9,7 +9,8 @@ export function deleteItem(text: string, id: string): { text: string; removed: s
   const { lines, unclosed } = scan(text)
   if (unclosed) throw new Error('a fenced block is not closed')
   const heads = headings(text, lines, 6)
-  const own = heads.filter(h => h.rest.startsWith(id) && !/^[\w.]/.test(h.rest.slice(id.length)))
+  // Only an item heading, ## or ###, is the item's: prose may use #### and deeper (D4).
+  const own = heads.filter(h => (h.level === 2 || h.level === 3) && h.rest.startsWith(id) && !/^[\w.]/.test(h.rest.slice(id.length)))
   if (own.length !== 1) throw new Error(`${id}: ${own.length} headings`)
   const { line: { at }, end } = own[0]
   return {

@@ -255,9 +255,9 @@ test('a file with the content from before the write is kept', async ($: any, on:
   expect(w.files[`${MAIN}/BACKLOG.local.md`]).toBe(BACKLOG)
 })
 
-test('a write cut short is saved as .found and written again', async ($: any, on: any) => {
+test('a file that is the start of the new content is saved as .found and written again, with both causes reported', async ($: any, on: any) => {
   const { w, out } = await settled($, on, { state: 'ready' }, NEW.slice(0, 20))
-  expect(out).toContain(`the write was cut short, so the partial file was saved as ${J}/BACKLOG.local.md.found and the new content was written again`)
+  expect(out).toContain(`the write was cut short, or a person deleted the end of the file after an interrupted write. The new content was written again, and the file as it was, the person's version if they edited it, was saved as ${J}/BACKLOG.local.md.found. Tell the user, so they can compare the two.`)
   expect(w.files[`${J}/BACKLOG.local.md.found`]).toBe(NEW.slice(0, 20))
   expect(w.files[`${MAIN}/BACKLOG.local.md`]).toBe(NEW)
 })

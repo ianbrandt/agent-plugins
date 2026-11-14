@@ -3,10 +3,10 @@
 // judgment, so the session supplies that text; the tool does every mechanical
 // step and records each in a marker, so a rerun continues where a call stopped.
 import { type FileName, type Problem, GROUP, branchId, headings, idsGrouped, parseBacklog, parseHeadings, scan } from './format'
-import { problemsOf, settleLocked } from './journal'
+import { problemsOf, reporting, settleLocked } from './journal'
 import { LOCAL, TRACKED } from './kind'
 import { withLock } from './lock'
-import { type Repo, claims, deletedOnDefault, facts, filesOf, git, run, why } from './repo'
+import { type Repo, claims, deletedOnDefault, facts, filesOf, git, noLink, run, why } from './repo'
 import { MIGRATION, answer } from './tools'
 import { dateOf } from './write'
 
@@ -45,7 +45,9 @@ const top = (id: string) => Number(/\d+/.exec(id)![0])
 const list = (xs: string[]) => xs.join(', ') || 'none'
 const markerAt = (repo: Repo) => `${repo.common}/backlog/migration/marker.json`
 
-async function put($: any, path: string, text: string, what: string): Promise<void> {
+// `base` is the directory below which no part of `path` may be a symbolic link.
+async function put($: any, base: string, path: string, text: string, what: string): Promise<void> {
+  await noLink($, base, path)
   await $.fs.write(path, text)
   if ((await read($, path)) !== text) fail(`${path} did not read back as written, ${what}`)
 }
@@ -221,177 +223,184 @@ async function migrate($: any, e: any): Promise<string> {
   }
   return withLock($, repo!, async lock => {
     const out = await settleLocked($, repo!, lock)
-    // A marker found with needs-migration is complete or stale, and a new migration replaces it.
-    const m = repo!.kind === 'partial-migration' ? await markerOf($, repo!) : undefined
-    const s = await setup($, repo!, m, e)
-    const texts = await oldTexts($, s, m)
-    const roadmap = s.old.find(n => ROLE[n] === 'backlog')
-    const highest = await highestOf($, repo!, s, texts)
-    const backup = m?.backup ?? `${repo!.main}/notes.local/backlog-migration/${dateOf(await $.clock.now())}`
-
-    // Each destination: kept when an earlier call wrote it and it is unchanged,
-    // else written, with any file there saved as <name>.found first.
-    const dests = [...new Set(['backlog', ...s.old.map(n => ROLE[n]).filter(r => r !== 'backlog'), 'plan'] as Role[])]
-    const state: Record<string, 'new' | 'kept' | 'found'> = {}
-    for (const r of dests) {
-      const name = roleName(s, r)
-      const d = m?.dests[name]
-      const now = await read($, `${s.root}/${name}`)
-      state[r] = now === undefined ? (d?.none && d.started ? 'kept' : 'new') : d?.hash !== undefined && d.hash === (await hashOf($, repo!, now)) ? 'kept' : 'found'
-    }
-    const from = (r: Role) => r === 'backlog' ? 'the backlog text' : r === 'plan' ? 'the plan text' : `a copy of ${s.old.find(n => ROLE[n] === r)}`
-
-    if (!go) {
-      out.push(`migration: ${s.tracked ? 'tracked' : 'local-only'}, in ${s.root}`)
-      out.push(m ? `marker: ${markerAt(repo!)}, from a migration that did not finish. This call continues it` : `marker: none yet${(await $.fs.exists(markerAt(repo!))) ? `. The old marker at ${markerAt(repo!)} will be replaced` : ''}`)
-      out.push('preconditions:', ...s.checks.map(([ok, t]) => `  ${ok ? 'ok' : 'not met'}: ${t}`),
-        '  not checked: no other session is working this repo on the old roadmap rule. Ask the user to stop any such session before the next call.')
-      out.push('destinations:', ...dests.map(r => `  ${s.root}/${roleName(s, r)}: ${state[r] === 'kept' ? 'kept, written by an earlier call and unchanged' : `${from(r)}${state[r] === 'found' ? `. The file there now will be saved as ${roleName(s, r)}.found in ${backup}` : ''}`}`))
-      out.push(`Highest ID used will be R${highest}.`, 'old files:')
-      for (const name of s.old) {
-        const lines = headerOf(texts[name])
-        out.push(`  ${s.root}/${name}: IDs ${list(idsOf(texts[name]))}`, `  header, lines 1 to ${lines.length}:`, ...lines)
-      }
-      out.push(...s.old.flatMap(n => (ROLE[n] === 'backlog' ? [] : unread(roleName(s, ROLE[n]), texts[n], ROLE[n]))))
-      out.push('Next, call migrate_backlog again with:',
-        `- backlog, unless kept: the items of ${roadmap ?? 'the old roadmap (there is none, so pass "")'}, from the first item heading on, with nothing above it. Each item is \`## ID: Title\` and each sub-item \`### ID.n: Title\`, one heading for every ID listed for it above and no other ID. An item's field list is the first block under its heading, one \`- Key: value\` line each, with the keys Touches, Gated by, Needs, Branch, and Check. Prose follows, with headings of level 4 and deeper only. Drop section and band headings.`,
-        '- plan, unless kept: the plan, from the headers above, without the rules already stated in this plugin; "" for no plan.',
-        ...(s.tracked ? ['- branch and message: the branch the migration is committed on, and the commit message.'] : []),
-        '- run: true, when every destination is kept.')
-      return out.join('\n')
-    }
-
-    const unmet = s.checks.filter(([ok]) => !ok).map(([, t]) => `  ${t}`)
-    if (unmet.length) fail(`nothing was written, since these preconditions are not met:\n${unmet.join('\n')}`)
-
-    // The new text of each destination, checked in full before anything is written.
-    const next: Partial<Record<Role, string>> = {}
-    for (const r of dests) {
-      if (state[r] === 'kept') {
-        if ((r === 'backlog' && e.backlog !== undefined) || (r === 'plan' && e.plan !== undefined)) out.push(`${roleName(s, r)} is kept from an earlier call, so the ${r} text passed was not used`)
-        continue
-      }
-      if (r === 'backlog') {
-        if (e.backlog === undefined) fail(`nothing was written: pass backlog, since ${roleName(s, r)} is not written yet`)
-        const items = itemsOf(e.backlog)
-        const head = s.tracked ? `# Backlog\n\nHighest ID used: R${highest}\n` : `# Backlog (local only)\n\nNever commit or push this file. Highest ID used: R${highest}\n`
-        next.backlog = items ? `${head}\n${items}\n` : head
-      } else if (r === 'plan') {
-        if (typeof e.plan !== 'string') fail(`nothing was written: pass plan, or "" for no plan, since ${roleName(s, r)} is not written yet`)
-        if (e.plan.trim()) next.plan = `${e.plan.replace(/\r\n/g, '\n').trimEnd()}\n`
-      } else next[r] = texts[s.old.find(n => ROLE[n] === r)!]
-    }
-    const textOf = async (r: Role) => next[r] ?? (await read($, `${s.root}/${roleName(s, r)}`))
-    const files = filesOf({ backlog: (await textOf('backlog')) ?? '', parked: await textOf('parked'), declined: await textOf('declined'), changelog: s.tracked ? undefined : await textOf('changelog') })
-    const was = new Set(roadmap ? idsOf(texts[roadmap]) : [])
-    const now = new Set(files.backlog.items.map(i => i.id))
-    const lost = [...was].filter(id => !now.has(id))
-    const added = [...now].filter(id => !was.has(id))
-    if (lost.length || added.length) {
-      fail(`nothing ${m ? 'more ' : ''}was written, since the IDs in the new backlog differ from those in ${roadmap ?? 'the old roadmap'}:\n  missing from the new backlog: ${list(lost)}\n  not in the old roadmap: ${list(added)}`)
-    }
-
-    const lineOf = (p: Problem) => `  ${roleName(s, p.file ?? 'backlog')} line ${p.line} (${p.level} level): ${p.message}`
-    const ps = problemsOf(files)
-    const fileLevel = ps.filter(p => p.level === 'file')
-    if (fileLevel.length) fail(`nothing ${m ? 'more ' : ''}was written, since the new files have file-level problems:\n${fileLevel.map(lineOf).join('\n')}`)
-
-    // Step 1: the exclusions, each confirmed with git check-ignore.
-    const exclude = `${repo!.common}/info/exclude`
-    const lines = ['/notes.local', ...(s.tracked ? [] : ['/BACKLOG*.local.md', '/PLAN*.local.md'])]
-    const had = (await read($, exclude)) ?? ''
-    const missing = lines.filter(l => !had.split(/\r?\n/).includes(l))
-    if (missing.length) {
-      await put($, exclude, `${had && !had.endsWith('\n') ? `${had}\n` : had}${missing.join('\n')}\n`, 'so nothing else was written')
-      out.push(`added ${missing.join(', ')} to ${exclude}`)
-    }
-    for (const p of ['notes.local', ...(s.tracked ? [] : Object.values(LOCAL) as string[])]) {
-      const r = await run($, repo!.main, ['check-ignore', '-q', '--no-index', '--', p])
-      if (r.exitCode === 1) fail(`git check-ignore does not show ${p} as ignored after ${exclude} was written, so nothing else was written`)
-      if (r.exitCode !== 0) fail(`git check-ignore ${p} in ${repo!.main}: ${why(r)}`)
-    }
-
-    // Step 2: the marker, then on a local-only roadmap the backup of the old files.
-    let marker: Marker
-    if (m) marker = m
-    else {
-      let dir = backup
-      for (let n = 2; await $.fs.exists(dir); n++) dir = `${backup}-${n}`
-      marker = { complete: false, tracked: s.tracked, ...(s.branch ? { branch: s.branch } : {}), backup: dir, old: s.old, dests: {} }
-    }
-    if (!m && (await $.fs.exists(markerAt(repo!)))) out.push(`replaced the marker of an earlier migration at ${markerAt(repo!)}`)
-    const save = () => put($, markerAt(repo!), JSON.stringify(marker, null, 2), 'so the migration stopped there')
-    await save()
-    out.push(`marker: ${markerAt(repo!)}`)
-    if (!s.tracked) {
-      for (const name of s.old) {
-        const to = `${marker.backup}/${name}`
-        const there = await read($, to)
-        if (there === undefined) await put($, to, texts[name], 'so nothing else was written')
-        else if (there !== texts[name]) fail(`${to} differs from ${s.root}/${name}, which changed after the backup. Compare the two before going on`)
-      }
-      out.push(`backup: ${marker.backup}`)
-    }
-
-    // Steps 3 and 5: each destination, recorded as started before its write and
-    // with its hash after it.
-    for (const r of dests) {
-      const name = roleName(s, r)
-      const path = `${s.root}/${name}`
-      if (state[r] === 'kept') { out.push(`kept ${path}, written by an earlier call`); continue }
-      if (state[r] === 'found') {
-        let to = `${marker.backup}/${name}.found`
-        for (let n = 2; await $.fs.exists(to); n++) to = `${marker.backup}/${name}.found.${n}`
-        await put($, to, (await read($, path))!, 'so nothing else was written')
-        out.push(`saved ${path} as ${to}, since an earlier call did not finish it or it was changed after`)
-      }
-      marker.dests[name] = { started: true }
-      await save()
-      if (next[r] === undefined) {
-        marker.dests[name].none = true
-        out.push(`no plan: ${name} was not written`)
-      } else {
-        await put($, path, next[r]!, 'so the migration stopped there. Call migrate_backlog again')
-        marker.dests[name].hash = await hashOf($, repo!, next[r]!)
-        out.push(`wrote ${path}`)
-      }
-      await save()
-    }
-    const other = ps.filter(p => p.level !== 'file')
-    if (other.length) out.push('problems in the new backlog files, to fix with the write tools:', ...other.map(lineOf))
-    out.push(...s.old.flatMap(n => (ROLE[n] === 'backlog' ? [] : unread(roleName(s, ROLE[n]), texts[n], ROLE[n]))))
-
-    // Step 6: delete the old files, commit on a tracked roadmap, and mark the migration complete.
-    const written = Object.keys(marker.dests).filter(n => !marker.dests[n].none)
-    if (s.tracked) {
-      await must($, s.root, ['add', '--', ...written])
-      await must($, s.root, ['rm', '-q', '--ignore-unmatch', '--', ...s.old])
-      const staged = await run($, s.root, ['diff', '--cached', '--quiet', '--', ...written, ...s.old])
-      if (staged.exitCode === 1) await must($, s.root, ['commit', '-q', '-m', e.message, '--', ...written, ...s.old])
-      else if (staged.exitCode !== 0) fail(`git diff --cached in ${s.root}: ${why(staged)}`)
-      const inHead = async (p: string) => (await run($, s.root, ['cat-file', '-e', `HEAD:${p}`])).exitCode === 0
-      const left: string[] = []
-      for (const p of s.old) if (await inHead(p)) left.push(p)
-      if (!(await inHead(roleName(s, 'backlog')))) fail(`HEAD of ${s.branch} has no ${roleName(s, 'backlog')}, so the migration is not complete`)
-      if (left.length) fail(`HEAD of ${s.branch} still has ${list(left)}, so the migration is not complete`)
-      out.push(`committed ${(await git($, s.root, 'rev-parse', 'HEAD')).trim()} on ${s.branch}`)
-    } else {
-      for (const name of s.old) {
-        const path = `${s.root}/${name}`
-        if (!(await $.fs.exists(path))) continue
-        // git clean deletes only an untracked file, and -x includes the excluded ones.
-        const r = await run($, s.root, ['clean', '-f', '-x', '-q', '--', `:(top,literal)${name}`])
-        if (r.exitCode !== 0 || (await $.fs.exists(path))) fail(`${path} was not deleted${r.exitCode ? `: ${why(r)}` : ''}. Its copy is in ${marker.backup}; delete it by hand, then call migrate_backlog again`)
-        out.push(`deleted ${path}`)
-      }
-    }
-    marker.complete = true
-    await save()
-    out.push(s.tracked
-      ? `The migration is complete. find_backlog returns migration-pending until ${s.branch} lands: land it through land-and-wrap.`
-      : `The migration is complete. The old files are kept in ${marker.backup} until the user deletes them.`)
-    return out.join('\n')
+    return reporting(out, () => steps($, repo!, e, go, out))
   })
+}
+
+// Everything after the settle. The settle's steps are already in `out`.
+async function steps($: any, repo: Repo, e: any, go: boolean, out: string[]): Promise<string> {
+  // A marker found with needs-migration is complete or stale, and a new migration replaces it.
+  const m = repo.kind === 'partial-migration' ? await markerOf($, repo) : undefined
+  const s = await setup($, repo, m, e)
+  const texts = await oldTexts($, s, m)
+  const roadmap = s.old.find(n => ROLE[n] === 'backlog')
+  const highest = await highestOf($, repo, s, texts)
+  // notes.local itself may be a link, as it is in a worktree; nothing under it may be.
+  const notes = `${repo.main}/notes.local`
+  const backup = m?.backup ?? `${notes}/backlog-migration/${dateOf(await $.clock.now())}`
+
+  // Each destination: kept when an earlier call wrote it and it is unchanged,
+  // else written, with any file there saved as <name>.found first.
+  const dests = [...new Set(['backlog', ...s.old.map(n => ROLE[n]).filter(r => r !== 'backlog'), 'plan'] as Role[])]
+  const state: Record<string, 'new' | 'kept' | 'found'> = {}
+  for (const r of dests) {
+    const name = roleName(s, r)
+    const d = m?.dests[name]
+    const now = await read($, `${s.root}/${name}`)
+    state[r] = now === undefined ? (d?.none && d.started ? 'kept' : 'new') : d?.hash !== undefined && d.hash === (await hashOf($, repo, now)) ? 'kept' : 'found'
+  }
+  const from = (r: Role) => r === 'backlog' ? 'the backlog text' : r === 'plan' ? 'the plan text' : `a copy of ${s.old.find(n => ROLE[n] === r)}`
+
+  if (!go) {
+    out.push(`migration: ${s.tracked ? 'tracked' : 'local-only'}, in ${s.root}`)
+    out.push(m ? `marker: ${markerAt(repo)}, from a migration that did not finish. This call continues it` : `marker: none yet${(await $.fs.exists(markerAt(repo))) ? `. The old marker at ${markerAt(repo)} will be replaced` : ''}`)
+    out.push('preconditions:', ...s.checks.map(([ok, t]) => `  ${ok ? 'ok' : 'not met'}: ${t}`),
+      '  not checked: no other session is working this repo on the old roadmap rule. Ask the user to stop any such session before the next call.')
+    out.push('destinations:', ...dests.map(r => `  ${s.root}/${roleName(s, r)}: ${state[r] === 'kept' ? 'kept, written by an earlier call and unchanged' : `${from(r)}${state[r] === 'found' ? `. The file there now will be saved as ${roleName(s, r)}.found in ${backup}` : ''}`}`))
+    out.push(`Highest ID used will be R${highest}.`, 'old files:')
+    for (const name of s.old) {
+      const lines = headerOf(texts[name])
+      out.push(`  ${s.root}/${name}: IDs ${list(idsOf(texts[name]))}`, `  header, lines 1 to ${lines.length}:`, ...lines)
+    }
+    out.push(...s.old.flatMap(n => (ROLE[n] === 'backlog' ? [] : unread(roleName(s, ROLE[n]), texts[n], ROLE[n]))))
+    out.push('Next, call migrate_backlog again with:',
+      `- backlog, unless kept: the items of ${roadmap ?? 'the old roadmap (there is none, so pass "")'}, from the first item heading on, with nothing above it. Each item is \`## ID: Title\` and each sub-item \`### ID.n: Title\`, one heading for every ID listed for it above and no other ID. An item's field list is the first block under its heading, one \`- Key: value\` line each, with the keys Touches, Gated by, Needs, Branch, and Check. Prose follows, with headings of level 4 and deeper only. Drop section and band headings.`,
+      '- plan, unless kept: the plan, from the headers above, without the rules already stated in this plugin; "" for no plan.',
+      ...(s.tracked ? ['- branch and message: the branch the migration is committed on, and the commit message.'] : []),
+      '- run: true, when every destination is kept.')
+    return out.join('\n')
+  }
+
+  const unmet = s.checks.filter(([ok]) => !ok).map(([, t]) => `  ${t}`)
+  if (unmet.length) fail(`nothing was written, since these preconditions are not met:\n${unmet.join('\n')}`)
+
+  // The new text of each destination, checked in full before anything is written.
+  const next: Partial<Record<Role, string>> = {}
+  for (const r of dests) {
+    if (state[r] === 'kept') {
+      if ((r === 'backlog' && e.backlog !== undefined) || (r === 'plan' && e.plan !== undefined)) out.push(`${roleName(s, r)} is kept from an earlier call, so the ${r} text passed was not used`)
+      continue
+    }
+    if (r === 'backlog') {
+      if (e.backlog === undefined) fail(`nothing was written: pass backlog, since ${roleName(s, r)} is not written yet`)
+      const items = itemsOf(e.backlog)
+      const head = s.tracked ? `# Backlog\n\nHighest ID used: R${highest}\n` : `# Backlog (local only)\n\nNever commit or push this file. Highest ID used: R${highest}\n`
+      next.backlog = items ? `${head}\n${items}\n` : head
+    } else if (r === 'plan') {
+      if (typeof e.plan !== 'string') fail(`nothing was written: pass plan, or "" for no plan, since ${roleName(s, r)} is not written yet`)
+      if (e.plan.trim()) next.plan = `${e.plan.replace(/\r\n/g, '\n').trimEnd()}\n`
+    } else next[r] = texts[s.old.find(n => ROLE[n] === r)!]
+  }
+  const textOf = async (r: Role) => next[r] ?? (await read($, `${s.root}/${roleName(s, r)}`))
+  const files = filesOf({ backlog: (await textOf('backlog')) ?? '', parked: await textOf('parked'), declined: await textOf('declined'), changelog: s.tracked ? undefined : await textOf('changelog') })
+  const was = new Set(roadmap ? idsOf(texts[roadmap]) : [])
+  const now = new Set(files.backlog.items.map(i => i.id))
+  const lost = [...was].filter(id => !now.has(id))
+  const added = [...now].filter(id => !was.has(id))
+  if (lost.length || added.length) {
+    fail(`nothing ${m ? 'more ' : ''}was written, since the IDs in the new backlog differ from those in ${roadmap ?? 'the old roadmap'}:\n  missing from the new backlog: ${list(lost)}\n  not in the old roadmap: ${list(added)}`)
+  }
+
+  const lineOf = (p: Problem) => `  ${roleName(s, p.file ?? 'backlog')} line ${p.line} (${p.level} level): ${p.message}`
+  const ps = problemsOf(files)
+  const fileLevel = ps.filter(p => p.level === 'file')
+  if (fileLevel.length) fail(`nothing ${m ? 'more ' : ''}was written, since the new files have file-level problems:\n${fileLevel.map(lineOf).join('\n')}`)
+
+  // Step 1: the exclusions, each confirmed with git check-ignore.
+  const exclude = `${repo.common}/info/exclude`
+  const lines = ['/notes.local', ...(s.tracked ? [] : ['/BACKLOG*.local.md', '/PLAN*.local.md'])]
+  const had = (await read($, exclude)) ?? ''
+  const missing = lines.filter(l => !had.split(/\r?\n/).includes(l))
+  if (missing.length) {
+    await put($, repo.common, exclude, `${had && !had.endsWith('\n') ? `${had}\n` : had}${missing.join('\n')}\n`, 'so nothing else was written')
+    out.push(`added ${missing.join(', ')} to ${exclude}`)
+  }
+  for (const p of ['notes.local', ...(s.tracked ? [] : Object.values(LOCAL) as string[])]) {
+    const r = await run($, repo.main, ['check-ignore', '-q', '--no-index', '--', p])
+    if (r.exitCode === 1) fail(`git check-ignore does not show ${p} as ignored after ${exclude} was written, so nothing else was written`)
+    if (r.exitCode !== 0) fail(`git check-ignore ${p} in ${repo.main}: ${why(r)}`)
+  }
+
+  // Step 2: the marker, then on a local-only roadmap the backup of the old files.
+  let marker: Marker
+  if (m) marker = m
+  else {
+    let dir = backup
+    for (let n = 2; await $.fs.exists(dir); n++) dir = `${backup}-${n}`
+    marker = { complete: false, tracked: s.tracked, ...(s.branch ? { branch: s.branch } : {}), backup: dir, old: s.old, dests: {} }
+  }
+  if (!m && (await $.fs.exists(markerAt(repo)))) out.push(`replaced the marker of an earlier migration at ${markerAt(repo)}`)
+  const save = () => put($, repo.common, markerAt(repo), JSON.stringify(marker, null, 2), 'so the migration stopped there')
+  await save()
+  out.push(`marker: ${markerAt(repo)}`)
+  if (!s.tracked) {
+    for (const name of s.old) {
+      const to = `${marker.backup}/${name}`
+      const there = await read($, to)
+      if (there === undefined) await put($, notes, to, texts[name], 'so nothing else was written')
+      else if (there !== texts[name]) fail(`${to} differs from ${s.root}/${name}, which changed after the backup. Compare the two before going on`)
+    }
+    out.push(`backup: ${marker.backup}`)
+  }
+
+  // Steps 3 and 5: each destination, recorded as started before its write and
+  // with its hash after it.
+  for (const r of dests) {
+    const name = roleName(s, r)
+    const path = `${s.root}/${name}`
+    if (state[r] === 'kept') { out.push(`kept ${path}, written by an earlier call`); continue }
+    if (state[r] === 'found') {
+      let to = `${marker.backup}/${name}.found`
+      for (let n = 2; await $.fs.exists(to); n++) to = `${marker.backup}/${name}.found.${n}`
+      await put($, notes, to, (await read($, path))!, 'so nothing else was written')
+      out.push(`saved ${path} as ${to}, since an earlier call did not finish it or it was changed after`)
+    }
+    marker.dests[name] = { started: true }
+    await save()
+    if (next[r] === undefined) {
+      marker.dests[name].none = true
+      out.push(`no plan: ${name} was not written`)
+    } else {
+      await put($, s.root, path, next[r]!, 'so the migration stopped there. Call migrate_backlog again')
+      marker.dests[name].hash = await hashOf($, repo, next[r]!)
+      out.push(`wrote ${path}`)
+    }
+    await save()
+  }
+  const other = ps.filter(p => p.level !== 'file')
+  if (other.length) out.push('problems in the new backlog files, to fix with the write tools:', ...other.map(lineOf))
+  out.push(...s.old.flatMap(n => (ROLE[n] === 'backlog' ? [] : unread(roleName(s, ROLE[n]), texts[n], ROLE[n]))))
+
+  // Step 6: delete the old files, commit on a tracked roadmap, and mark the migration complete.
+  const written = Object.keys(marker.dests).filter(n => !marker.dests[n].none)
+  if (s.tracked) {
+    await must($, s.root, ['add', '--', ...written])
+    await must($, s.root, ['rm', '-q', '--ignore-unmatch', '--', ...s.old])
+    const staged = await run($, s.root, ['diff', '--cached', '--quiet', '--', ...written, ...s.old])
+    if (staged.exitCode === 1) await must($, s.root, ['commit', '-q', '-m', e.message, '--', ...written, ...s.old])
+    else if (staged.exitCode !== 0) fail(`git diff --cached in ${s.root}: ${why(staged)}`)
+    const inHead = async (p: string) => (await run($, s.root, ['cat-file', '-e', `HEAD:${p}`])).exitCode === 0
+    const left: string[] = []
+    for (const p of s.old) if (await inHead(p)) left.push(p)
+    if (!(await inHead(roleName(s, 'backlog')))) fail(`HEAD of ${s.branch} has no ${roleName(s, 'backlog')}, so the migration is not complete`)
+    if (left.length) fail(`HEAD of ${s.branch} still has ${list(left)}, so the migration is not complete`)
+    out.push(`committed ${(await git($, s.root, 'rev-parse', 'HEAD')).trim()} on ${s.branch}`)
+  } else {
+    for (const name of s.old) {
+      const path = `${s.root}/${name}`
+      if (!(await $.fs.exists(path))) continue
+      // git clean deletes only an untracked file, and -x includes the excluded ones.
+      const r = await run($, s.root, ['clean', '-f', '-x', '-q', '--', `:(top,literal)${name}`])
+      if (r.exitCode !== 0 || (await $.fs.exists(path))) fail(`${path} was not deleted${r.exitCode ? `: ${why(r)}` : ''}. Its copy is in ${marker.backup}; delete it by hand, then call migrate_backlog again`)
+      out.push(`deleted ${path}`)
+    }
+  }
+  marker.complete = true
+  await save()
+  out.push(s.tracked
+    ? `The migration is complete. find_backlog returns migration-pending until ${s.branch} lands: land it through land-and-wrap.`
+    : `The migration is complete. The old files are kept in ${marker.backup} until the user deletes them.`)
+  return out.join('\n')
 }
 
 export function migrateTools(on: any) {

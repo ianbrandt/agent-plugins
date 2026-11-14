@@ -343,3 +343,104 @@ test('delete_item is gone: close_item replaces it', async ($: any, on: any) => {
   const ran = await call($, 'delete_item', { path: LOCAL, id: 'R1' }).then(() => 'answered', (err: Error) => err.message)
   expect(ran).toBe('no implementation for tool.call')
 })
+
+// Regressions from an adversarial verify of the write path
+
+// Throws on the first write of `path`, as a call interrupted there would stop.
+const failOnce = (w: any, path: string) => {
+  let armed = true
+  w.tear = (p: string) => { if (armed && p === path) { armed = false; throw new Error('EIO') } }
+}
+
+test('a journal step settled by a call that then fails is still reported', async ($: any, on: any) => {
+  const entry = `/repo/.git/backlog/journal/${encodeURIComponent(LOCAL)}`
+  const w = local(on, {
+    [`${entry}.json`]: JSON.stringify({ state: 'ready', path: LOCAL, existed: true, new: BACKLOG.replace('R2\n', 'R9\n') }),
+    [`${entry}.copy`]: BACKLOG,
+    [LOCAL]: BACKLOG.replace('## R1: One', '## R1: One, edited by hand'),
+  })
+  const out = await failed($, 'set_field', { id: 'R7', key: 'Check', value: 'x' })
+  expect(out).toContain('R7 is not in the backlog')
+  expect(out).toContain('most likely from a hand edit. It was kept, the content from before the write was saved as /repo/.git/backlog/journal/BACKLOG.local.md.prev')
+  expect(w.files[`${entry}.json`]).toBe('{"state":"done"}')
+})
+
+test('a file that is the start of the new content after an interrupted write is written again, and both causes are reported', async ($: any, on: any) => {
+  const w = local(on, { [LOCAL]: BACKLOG.replace('R2\n', 'R3\n') })
+  w.refs.set('refs/backlog/ids/R3', 'o')
+  failOnce(w, LOCAL)
+  await failed($, 'write_item', { id: 'R3', title: 'Three', position: 'bottom' })
+  // The person deletes R2, the last item, before the next call.
+  const byHand = HEAD.replace('R2\n', 'R3\n') + '## R1: One\n'
+  w.files[LOCAL] = byHand
+  const out = await text($, 'list_items')
+  expect(w.files['/repo/.git/backlog/journal/BACKLOG.local.md.found']).toBe(byHand)
+  expect(w.files[LOCAL]).toContain('## R2: Two\n')
+  expect(out).toContain('the write was cut short, or a person deleted the end of the file after an interrupted write')
+  expect(out).toContain('saved as /repo/.git/backlog/journal/BACKLOG.local.md.found')
+})
+
+test('a reactivate_item retry finishes the move of a top-level item kept under a ### heading in the parked file', async ($: any, on: any) => {
+  const w = local(on, { [PARKED]: '# Parked\n\n## Parked in 2026\n\n### R0: Zero\n\nWhy parked.\n' })
+  failOnce(w, PARKED)
+  await failed($, 'reactivate_item', { id: 'R0', position: 'top' })
+  expect(w.files[LOCAL]).toContain('## R0: Zero\n\nWhy parked.\n')
+  expect(await text($, 'reactivate_item', { id: 'R0', position: 'top' })).toContain(`wrote ${PARKED}`)
+  expect(w.files[PARKED]).toBe('# Parked\n\n## Parked in 2026\n')
+})
+
+test('an unclosed fence in the changelog or the parked file is a file-level problem, so nothing is appended inside it', async ($: any, on: any) => {
+  const w = local(on, {
+    [CHANGELOG]: '# Changelog\n\n## R0: Zero (DONE, 2026-11-01)\n\n```sh\nmake check\n',
+    [PARKED]: '# Parked\n\n## R0.5: Half\n\n~~~\nnotes\n',
+  })
+  expect(await failed($, 'close_item', { id: 'R1', record: 'Done.' })).toContain('a fenced block is not closed')
+  expect(await failed($, 'park_item', { id: 'R2' })).toContain('a fenced block is not closed')
+  expect(w.files[LOCAL]).toBe(BACKLOG)
+})
+
+test('close_item closes an item when its ID starts a #### prose heading in another item', async ($: any, on: any) => {
+  const w = local(on, { [LOCAL]: HEAD + '## R1: One\n\n#### R2: why R1 waits\n\nProse.\n\n## R2: Two\n' })
+  expect(await text($, 'close_item', { id: 'R2', record: 'Done.' })).toContain('removed:\n## R2: Two')
+  expect(w.files[LOCAL]).toBe(HEAD + '## R1: One\n\n#### R2: why R1 waits\n\nProse.\n')
+})
+
+test('on a tracked backlog a new sub-item does not reuse the ID of a sub-item closed on the branch', async ($: any, on: any) => {
+  const w = tracked(on)
+  // R1.1 predates the reservation refs, as a migrated sub-item does.
+  w.files[`${WT}/BACKLOG.md`] = TRACKED.replace('## R1: One\n', '## R1: One\n\n### R1.1: Old sub\n')
+  await text($, 'close_item', { id: 'R1.1', path: `${WT}/BACKLOG.md` })
+  expect(await text($, 'write_item', { parent: 'R1', title: 'New sub', path: `${WT}/BACKLOG.md` })).toContain('id: R1.2\n')
+})
+
+test('a record_progress retry after the record was written writes no second record', async ($: any, on: any) => {
+  const w = local(on, { [CHANGELOG]: '# Changelog\n' })
+  failOnce(w, LOCAL)
+  const input = { id: 'R2', status: 'PR-READY', branch: '`claude/r2-two`', record: 'PR 4.' }
+  await failed($, 'record_progress', input)
+  await text($, 'record_progress', input)
+  expect(w.files[CHANGELOG]).toBe('# Changelog\n\n## R2: Two (PR-READY, 2026-11-14)\n\nPR 4.\n')
+  expect(w.files[LOCAL]).toContain('- Branch: `claude/r2-two`')
+})
+
+test('a lock released between the refused create and the read-back is waited for, not an error', async ($: any, on: any) => {
+  const w = local(on)
+  let raced = false
+  w.before = (_line, a) => {
+    // git refused because another session held the lock, which it released before the read-back.
+    if (!raced && a[0] === 'update-ref' && a[1] === 'refs/backlog/lock' && /^0+$/.test(a[3] ?? '')) {
+      raced = true
+      return { exitCode: 128, stderr: "fatal: update_ref failed for ref 'refs/backlog/lock': cannot lock ref 'refs/backlog/lock': reference already exists" }
+    }
+  }
+  expect(await text($, 'set_field', { id: 'R1', key: 'Check', value: 'x' })).toBe('wrote /repo/BACKLOG.local.md')
+})
+
+test('a backlog file that is a symbolic link is refused, and nothing is written through it', async ($: any, on: any) => {
+  const w = tracked(on)
+  w.files[`${MAIN}/BACKLOG-PARKED.md`] = '# Notes\n'
+  w.links.add(`${MAIN}/BACKLOG-PARKED.md`)
+  expect(await failed($, 'park_item', { id: 'R1' })).toContain('symbolic link')
+  expect(w.files[`${MAIN}/BACKLOG-PARKED.md`]).toBe('# Notes\n')
+  expect(w.files[`${MAIN}/BACKLOG.md`]).toBe(TRACKED)
+})

@@ -21,12 +21,16 @@ export async function blob($: any, main: string, lines: string[]): Promise<strin
 }
 
 // Creates `ref` at `oid` only where it does not exist. False when git refused
-// because the ref is there; any other failure throws.
+// because the ref is there; any other failure throws. A refusal with the ref
+// gone by the read-back is most likely a holder that deleted it in between, so
+// the create is tried again, three times in all.
 export async function create($: any, repo: Repo, ref: string, oid: string): Promise<boolean> {
-  const r = await run($, repo.main, ['update-ref', ref, oid, repo.zero])
-  if (r.exitCode === 0) return true
-  if ((await current($, repo.main, ref)) === undefined) throw new Error(`git update-ref ${ref} in ${repo.main}: ${why(r)}`)
-  return false
+  for (let tries = 1; ; tries++) {
+    const r = await run($, repo.main, ['update-ref', ref, oid, repo.zero])
+    if (r.exitCode === 0) return true
+    if ((await current($, repo.main, ref)) !== undefined) return false
+    if (tries === 3) throw new Error(`git update-ref ${ref} in ${repo.main}: ${why(r)}`)
+  }
 }
 
 async function current($: any, main: string, ref: string): Promise<string | undefined> {

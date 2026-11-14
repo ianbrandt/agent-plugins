@@ -1,6 +1,6 @@
 // Facts about the repo read from git and the primary checkout, and the backlog
 // files parsed into the context the gates and the claimable check take.
-import { type Ctx, type FileName, type Files, GROUP, branchId, idsGrouped, idsIn, parseBacklog, parseHeadings } from './format'
+import { type Ctx, type FileName, type Files, GROUP, branchId, idsGrouped, idsIn, parseBacklog, parseHeadings, scan } from './format'
 import { type Kind, type Paths, kindOf } from './kind'
 
 export type Run = { exitCode: number; stdout: string; stderr: string; isStdoutTruncated?: boolean }
@@ -40,6 +40,18 @@ const lines = (s: string) => s.split(/\r?\n/).filter(Boolean)
 const base = (p: string) => p.replace(/\\/g, '/').replace(/\/$/, '').split('/').pop() ?? ''
 function read($: any, path: string): Promise<string | undefined> {
   return $.fs.read(path).catch(() => undefined)
+}
+
+// Refuses a write to `path` when the file, or a directory between `base` and
+// it, is a symbolic link: a committed link would send the write outside the repo.
+export async function noLink($: any, base: string, path: string): Promise<void> {
+  // For a path outside `base`, such as an old marker's backup, only the file is checked.
+  let dir = path.startsWith(`${base}/`) ? base : path.replace(/\/[^/]*$/, '')
+  for (const part of path.slice(dir.length + 1).split('/')) {
+    const listed: any[] = await $.fs.list(dir).catch(() => [])
+    if (listed.some(f => f.name === part && f.isLink)) throw new Error(`${dir}/${part} is a symbolic link, so nothing was written through it`)
+    dir = `${dir}/${part}`
+  }
 }
 
 // With -z each field ends in NUL, so a newline in a path stays in it.
@@ -197,6 +209,7 @@ export async function deletedOnDefault($: any, repo: Repo): Promise<Set<string>>
   // Old roadmaps also have headings such as `### R12—Title`, so the heading's leading IDs count, whatever follows them.
   const led = new RegExp(`^-#{2,3}[ \\t]+(${GROUP})`)
   const ids = new Set(lines(out).flatMap(l => led.exec(l)?.[1] ?? []).flatMap(idsGrouped))
+  await noLink($, repo.common, cache)
   await $.fs.write(cache, JSON.stringify({ tip: repo.tip, ids: [...ids] }))
   return ids
 }
@@ -221,6 +234,11 @@ export const filesOf = (t: Texts): Files => ({
   parked: t.parked === undefined ? undefined : parseHeadings(t.parked),
   declined: t.declined === undefined ? undefined : parseHeadings(t.declined),
   changelog: t.changelog === undefined ? undefined : parseHeadings(t.changelog),
+  // D4: a fence left open is a file-level problem in every backlog file. parseBacklog reports the backlog's.
+  unclosed: Object.fromEntries((['parked', 'declined', 'changelog'] as const).flatMap(k => {
+    const at = t[k] === undefined ? undefined : scan(t[k]!).unclosed
+    return at ? [[k, at]] : []
+  })),
 })
 
 export type Loaded = { texts: Texts; ctx: Ctx }

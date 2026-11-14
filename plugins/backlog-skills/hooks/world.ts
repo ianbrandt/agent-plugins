@@ -23,6 +23,8 @@ export function world(on: any, files: Record<string, string> = { [`${MAIN}/BACKL
     writes: [] as string[], tear: undefined as undefined | ((path: string, text: string) => string | void),
     onSleep: undefined as undefined | (() => void),
     cwd: MAIN,
+    // Paths that fs.list reports as symbolic links.
+    links: new Set<string>(),
     // The index and HEAD, by path from a checkout's root, for migrate_backlog's commit.
     head: new Set<string>(), staged: new Set<string>(), commits: [] as { message: string; paths: string[] }[], status: '',
   }
@@ -52,7 +54,7 @@ export function world(on: any, files: Record<string, string> = { [`${MAIN}/BACKL
       names.set(rest.split('/')[0], rest.includes('/') ? 'directory' : 'file')
     }
     if (!names.size) throw new Error(`ENOENT: ${e.path}`)
-    return { value: [...names].map(([name, kind]) => ({ name, kind, size: 0, mtimeMs: 0, isLink: false })) }
+    return { value: [...names].map(([name, kind]) => ({ name, kind, size: 0, mtimeMs: 0, isLink: w.links.has(`${e.path}/${name}`) })) }
   })
   on('process.run', (_$: any, e: any) => {
     const argv = e.argv as string[]

@@ -4,7 +4,7 @@
 // overwritten with a tombstone, and saved files are numbered.
 import { type Files, type Problem, type FileName, validateFiles } from './format'
 import { type Lock, held, mustHold, withLock } from './lock'
-import { type Repo, NAMES, filesOf, readTexts } from './repo'
+import { type Repo, NAMES, filesOf, noLink, readTexts } from './repo'
 
 const DONE = '{"state":"done"}'
 type Entry = { state: 'preparing' | 'ready'; path: string; existed: boolean; new: string }
@@ -23,6 +23,7 @@ async function save($: any, repo: Repo, path: string, kind: 'found' | 'prev', te
   const stem = `${dirOf(repo)}/${name(path)}.${kind}`
   let to = stem
   for (let n = 2; await $.fs.exists(to); n++) to = `${stem}.${n}`
+  await noLink($, repo.common, to)
   await $.fs.write(to, text)
   return to
 }
@@ -52,13 +53,28 @@ async function settleOne($: any, repo: Repo, file: string): Promise<string | und
   if (now === e.new) return done('the file has the new content, so it was kept')
   if (now !== undefined && now === copy) return done('the file has the content from before the write, so it was kept')
   if (now !== undefined && e.new.startsWith(now)) {
+    await noLink($, parent(e.path), e.path)
     const found = await save($, repo, e.path, 'found', now)
     await $.fs.write(e.path, e.new)
     if ((await read($, e.path)) !== e.new) throw new Error(`journal: ${e.path} was cut short and saved as ${found}, and writing the new content again did not read back`)
-    return done(`the write was cut short, so the partial file was saved as ${found} and the new content was written again`)
+    // A torn write and a hand edit that deleted the end of the file look the same here.
+    return done(`the file is the start of the new content: the write was cut short, or a person deleted the end of the file after an interrupted write. The new content was written again, and the file as it was, the person's version if they edited it, was saved as ${found}. Tell the user, so they can compare the two.`)
   }
   const prev = copy === undefined ? 'the copy from before the write is missing' : `the content from before the write was saved as ${await save($, repo, e.path, 'prev', copy)}`
   return done(`the file ${now === undefined ? 'is missing' : 'has neither the old nor the new content'} after an interrupted write, most likely from a hand edit. It was kept, ${prev}. Tell the user, so they can compare the two.`)
+}
+
+// Runs `fn` after a settle, with the settle's steps added to any error it
+// throws, so a step is reported even when the call then fails.
+export async function reporting<T>(steps: string[], fn: () => Promise<T>): Promise<T> {
+  // A copy, since `fn` may push lines of its own to the same list.
+  const settled = [...steps]
+  try {
+    return await fn()
+  } catch (err) {
+    if (settled.length) (err as Error).message += `\n${settled.join('\n')}`
+    throw err
+  }
 }
 
 // Settles every entry. The caller holds the lock.
@@ -158,6 +174,7 @@ export async function writeFiles($: any, repo: Repo, lock: Lock, writes: Write[]
     const added = addedFileProblems(problemsOf(filesOf(before)), problemsOf(filesOf(after)))
     if (added.length) throw new Error(`nothing was written, since the new text has file-level problems the files did not have:\n${added.map(p => `  ${p.file} line ${p.line}: ${p.message}`).join('\n')}`)
   }
+  for (const w of placed) for (const [base, path] of [[w.root, w.path], [repo.common, `${entryOf(repo, w.path)}.json`], [repo.common, `${entryOf(repo, w.path)}.copy`]]) await noLink($, base, path)
   const done: string[] = []
   for (const w of placed) {
     await writeOne($, repo, lock, w.path, w.text)

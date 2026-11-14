@@ -131,6 +131,12 @@ test('IDs that differ between the old roadmap and the new backlog refuse the run
   expect(w.writes).toEqual([])
 })
 
+test('a copied changelog with a fenced block that is not closed refuses the run, with the file and the line, and nothing written', async ($: any, on: any) => {
+  const w = local(on, { [`${MAIN}/ROADMAP-CHANGELOG.local.md`]: CHANGELOG + '\n```sh\nmake check\n' })
+  expect(await failed($, { backlog: ITEMS, plan: '' })).toContain('nothing was written, since the new files have file-level problems:\n  BACKLOG-CHANGELOG.local.md line 7 (file level): a fenced block is not closed')
+  expect(w.writes).toEqual([])
+})
+
 // Reruns
 
 test('a run interrupted after the first destination is continued: the backlog is kept, and the rest is written', async ($: any, on: any) => {
@@ -174,6 +180,15 @@ test('a destination started with no hash, or changed after its write, is saved a
   await text($, 'migrate_backlog', { backlog: ITEMS, plan: '' })
   expect(w.files[`${BACKUP}/BACKLOG.local.md.found.3`]).toBe(NEW + 'edited\n')
   expect(w.files[`${MAIN}/BACKLOG.local.md`]).toBe(NEW)
+})
+
+test('a destination that is a symbolic link on a rerun is refused, and nothing is written through it', async ($: any, on: any) => {
+  const w = local(on)
+  w.files[MARKER] = JSON.stringify({ complete: false, tracked: false, backup: BACKUP, old: ['ROADMAP.local.md', 'ROADMAP-PARKED.local.md', 'ROADMAP-CHANGELOG.local.md'], dests: { 'BACKLOG.local.md': { started: true } } })
+  w.files[`${MAIN}/BACKLOG.local.md`] = 'outside the repo\n'
+  w.links.add(`${MAIN}/BACKLOG.local.md`)
+  expect(await failed($, { backlog: ITEMS, plan: '' })).toContain('/repo/BACKLOG.local.md is a symbolic link')
+  expect(w.files[`${MAIN}/BACKLOG.local.md`]).toBe('outside the repo\n')
 })
 
 test('a marker that does not parse is refused', async ($: any, on: any) => {

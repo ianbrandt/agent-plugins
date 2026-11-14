@@ -204,18 +204,23 @@ export function parseHeadings(text: string): Heading[] {
 export const idsGrouped = (text: string): string[] =>
   [...text.matchAll(new RegExp(GROUP, 'g'))].flatMap(m => idList(m[0]) ?? idsIn(m[0]))
 
-export type Files = { backlog: Backlog; parked?: Heading[]; declined?: Heading[]; changelog?: Heading[] }
+export type Files = { backlog: Backlog; parked?: Heading[]; declined?: Heading[]; changelog?: Heading[]; unclosed?: Partial<Record<FileName, number>> }
 
-// The problems that take more than one file to find. The changelog is left out
-// of the duplicate check, since an ID there may also be open, parked, or declined.
+// An item's text in two files, the heading's indent and level aside: reactivate_item sets the level.
+const sameText = (a: string, b: string) => a.trimEnd().replace(/^ {0,3}#+/, '#') === b.trimEnd().replace(/^ {0,3}#+/, '#')
+
+// The problems that take more than one file to find, and a fence left open in
+// a file parseBacklog does not read. The changelog is left out of the duplicate
+// check, since an ID there may also be open, parked, or declined.
 export function validateFiles(f: Files): Problem[] {
   const problems: Problem[] = []
+  for (const [file, line] of Object.entries(f.unclosed ?? {})) problems.push({ level: 'file', file: file as FileName, line: line!, message: 'a fenced block is not closed' })
   const live: [FileName, Heading[]][] = [['parked', f.parked ?? []], ['declined', f.declined ?? []]]
   for (const item of f.backlog.items) {
     for (const [name, hs] of live) {
       const h = hs.find(x => x.ids.includes(item.id))
       if (!h) continue
-      const moved = h.ids.length === 1 && h.text.trimEnd() === item.text.trimEnd()
+      const moved = h.ids.length === 1 && sameText(h.text, item.text)
       problems.push(moved
         ? { level: 'item', file: 'backlog', id: item.id, line: item.line, message: `${item.id} is in the backlog and the ${name} file with the same text: a move was interrupted` }
         : { level: 'file', file: 'backlog', id: item.id, line: item.line, message: `${item.id} is in the backlog and the ${name} file (line ${h.line})` })

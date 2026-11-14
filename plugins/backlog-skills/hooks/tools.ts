@@ -1,6 +1,6 @@
 // The tools that find and read the backlog, and reserve_id (design D3, D5, D6).
 import { ID, type Item, type Problem, claimable, idsIn, nextId, parseHeadings, scan } from './format'
-import { problemsOf, settle, settleLocked, writeFiles } from './journal'
+import { problemsOf, reporting, settle, settleLocked, writeFiles } from './journal'
 import { blob, create, withLock } from './lock'
 import { type Loaded, type Repo, NAMES, facts, load } from './repo'
 
@@ -75,7 +75,7 @@ async function open($: any): Promise<{ repo: Repo; loaded: Loaded; out: string[]
   if (!repo) throw new Error('not inside a git repository')
   if (!repo.paths) throw new Error(`this repo has no backlog to read: its kind is ${repo.kind}${MIGRATION[repo.kind] ? `. ${MIGRATION[repo.kind]}` : ''}`)
   const out = await settle($, repo)
-  const loaded = await load($, repo)
+  const loaded = await reporting(out, () => load($, repo))
   const file = problemsOf(loaded.ctx).filter(p => p.level === 'file')
   if (file.length) out.push('file-level problems, so every write tool refuses until they are fixed:', ...problemLines(repo, file))
   return { repo, loaded, out }
@@ -113,7 +113,7 @@ async function readItem($: any, input: any): Promise<string> {
   for (const k of ['parked', 'declined', 'changelog'] as const) {
     for (const h of ctx[k]?.filter(h => h.ids.includes(id)) ?? []) hits.push(`${at(k)} line ${h.line}:`, h.text.trimEnd())
   }
-  if (!hits.length) throw new Error(`${id} is in none of the backlog files`)
+  if (!hits.length) throw new Error([`${id} is in none of the backlog files`, ...out].join('\n'))
   return [...out, ...hits].join('\n')
 }
 
@@ -154,24 +154,26 @@ async function reserveId($: any): Promise<string> {
   if (repo.kind !== 'local-only' && repo.kind !== 'tracked') throw new Error(`no ID can be reserved while the kind is ${repo.kind}${MIGRATION[repo.kind] ? `. ${MIGRATION[repo.kind]}` : ''}`)
   return withLock($, repo, async lock => {
     const out = await settleLocked($, repo, lock)
-    const { ctx, texts } = await load($, repo)
-    const file = problemsOf(ctx).filter(p => p.level === 'file')
-    if (file.length) throw new Error(`the backlog files have file-level problems, so no ID was reserved:\n${problemLines(repo, file).join('\n')}`)
-    const headings = [ctx.parked, ctx.declined, ctx.changelog].flatMap(hs => hs?.flatMap(h => h.ids) ?? [])
-    let n = Number(nextId({
-      highest: ctx.backlog.highest,
-      ids: [...ctx.backlog.items.map(i => i.id), ...headings, ...repo.reserved, ...repo.closed, ...repo.claimIds],
-      branches: [...repo.branches, ...repo.worktrees.slice(1).map(w => w.path.split('/').pop()!)],
-    }).slice(1))
-    const { id, lines } = await reserve($, repo, 'R', n)
-    out.push(...lines)
-    n = Number(id.slice(1))
-    if (repo.kind === 'local-only') {
-      const path = `${repo.main}/${repo.paths!.backlog}`
-      const text = texts.backlog!.replace(/(Highest ID used:\s*`?[A-Z]+)\d+/, `$1${n}`)
-      out.push(...(await writeFiles($, repo, lock, [{ path, text }])), `Highest ID used: R${n}`)
-    }
-    return out.join('\n')
+    return reporting(out, async () => {
+      const { ctx, texts } = await load($, repo)
+      const file = problemsOf(ctx).filter(p => p.level === 'file')
+      if (file.length) throw new Error(`the backlog files have file-level problems, so no ID was reserved:\n${problemLines(repo, file).join('\n')}`)
+      const headings = [ctx.parked, ctx.declined, ctx.changelog].flatMap(hs => hs?.flatMap(h => h.ids) ?? [])
+      let n = Number(nextId({
+        highest: ctx.backlog.highest,
+        ids: [...ctx.backlog.items.map(i => i.id), ...headings, ...repo.reserved, ...repo.closed, ...repo.claimIds],
+        branches: [...repo.branches, ...repo.worktrees.slice(1).map(w => w.path.split('/').pop()!)],
+      }).slice(1))
+      const { id, lines } = await reserve($, repo, 'R', n)
+      out.push(...lines)
+      n = Number(id.slice(1))
+      if (repo.kind === 'local-only') {
+        const path = `${repo.main}/${repo.paths!.backlog}`
+        const text = texts.backlog!.replace(/(Highest ID used:\s*`?[A-Z]+)\d+/, `$1${n}`)
+        out.push(...(await writeFiles($, repo, lock, [{ path, text }])), `Highest ID used: R${n}`)
+      }
+      return out.join('\n')
+    })
   })
 }
 
