@@ -9,7 +9,9 @@ export const idsIn = (text: string): string[] => text.match(new RegExp(BOUNDED, 
 const top = (id: string) => Number(/\d+/.exec(id)![0])
 
 export type Line = { text: string; at: number; n: number; code: boolean }
-export type Problem = { level: 'file' | 'item' | 'warning'; id?: string; line: number; message: string }
+export type FileName = 'backlog' | 'parked' | 'declined' | 'changelog'
+// `line` is a line of `file`.
+export type Problem = { level: 'file' | 'item' | 'warning'; file?: FileName; id?: string; line: number; message: string }
 export type Item = {
   id: string; title: string; level: 2 | 3; parent?: string; fields: Record<string, string>
   line: number; start: number; end: number; ownEnd: number; text: string
@@ -66,7 +68,7 @@ const NEEDS = /needs the user/i
 export function parseBacklog(text: string): Backlog {
   const { lines, unclosed } = scan(text)
   const problems: Problem[] = []
-  const add = (level: Problem['level'], line: number, message: string, id?: string) => problems.push({ level, id, line, message })
+  const add = (level: Problem['level'], line: number, message: string, id?: string) => problems.push({ level, file: 'backlog', id, line, message })
   if (unclosed) add('file', unclosed, 'a fenced block is not closed')
   for (const l of lines) if (!l.code && /^(?:<{7}|>{7}|\|{7})(?: |$)|^={7}$/.test(l.text)) add('file', l.n, 'a merge conflict marker')
 
@@ -175,30 +177,30 @@ export type Files = { backlog: Backlog; parked?: Heading[]; declined?: Heading[]
 // of the duplicate check, since an ID there may also be open, parked, or declined.
 export function validateFiles(f: Files): Problem[] {
   const problems: Problem[] = []
-  const live: [string, Heading[]][] = [['parked', f.parked ?? []], ['declined', f.declined ?? []]]
+  const live: [FileName, Heading[]][] = [['parked', f.parked ?? []], ['declined', f.declined ?? []]]
   for (const item of f.backlog.items) {
     for (const [name, hs] of live) {
       const h = hs.find(x => x.ids.includes(item.id))
       if (!h) continue
       const moved = h.ids.length === 1 && h.text.trimEnd() === item.text.trimEnd()
       problems.push(moved
-        ? { level: 'item', id: item.id, line: item.line, message: `${item.id} is in the backlog and the ${name} file with the same text: a move was interrupted` }
-        : { level: 'file', id: item.id, line: item.line, message: `${item.id} is in the backlog and the ${name} file (line ${h.line})` })
+        ? { level: 'item', file: 'backlog', id: item.id, line: item.line, message: `${item.id} is in the backlog and the ${name} file with the same text: a move was interrupted` }
+        : { level: 'file', file: 'backlog', id: item.id, line: item.line, message: `${item.id} is in the backlog and the ${name} file (line ${h.line})` })
     }
   }
   for (const h of f.declined ?? []) {
     for (const id of h.ids) {
-      if (f.parked?.some(p => p.ids.includes(id))) problems.push({ level: 'file', id, line: h.line, message: `${id} is in the parked and the declined file (declined line ${h.line})` })
+      if (f.parked?.some(p => p.ids.includes(id))) problems.push({ level: 'file', file: 'declined', id, line: h.line, message: `${id} is in the parked and the declined file (declined line ${h.line})` })
     }
   }
-  const all: [string, string, number][] = [
-    ...f.backlog.items.map(i => ['backlog', i.id, i.line] as [string, string, number]),
-    ...[...live, ['changelog', f.changelog ?? []] as [string, Heading[]]].flatMap(([name, hs]) => hs.flatMap(h => h.ids.map(id => [name, id, h.line] as [string, string, number]))),
+  const all: [FileName, string, number][] = [
+    ...f.backlog.items.map(i => ['backlog', i.id, i.line] as [FileName, string, number]),
+    ...[...live, ['changelog', f.changelog ?? []] as [FileName, Heading[]]].flatMap(([name, hs]) => hs.flatMap(h => h.ids.map(id => [name, id, h.line] as [FileName, string, number]))),
   ]
-  if (f.backlog.highest === undefined) problems.push({ level: 'file', line: 1, message: 'no Highest ID used line' })
+  if (f.backlog.highest === undefined) problems.push({ level: 'file', file: 'backlog', line: 1, message: 'no Highest ID used line' })
   else {
     const over = all.filter(([, id]) => top(id) > f.backlog.highest!)
-    for (const [name, id, line] of over) problems.push({ level: 'file', id, line, message: `Highest ID used is R${f.backlog.highest}, below ${id} in the ${name} file (line ${line})` })
+    for (const [name, id, line] of over) problems.push({ level: 'file', file: name, id, line, message: `Highest ID used is R${f.backlog.highest}, below ${id} in the ${name} file (line ${line})` })
   }
   return problems
 }

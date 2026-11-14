@@ -1,8 +1,9 @@
 // The plugin's hooks module: the roadmap rule a session starts with, and the
-// tools a session calls to find the plan of record and to delete a landed item.
+// tools a session calls to find and read the backlog and to delete a landed item.
 import type { Register } from 'claude-code'
 import { deleteItem } from './item'
 import { type Plan, planOf, rule } from './plan'
+import { TOOLS, tools } from './tools'
 
 const DELETE = 'mcp__backlog-skills__delete_item'
 const FIND = 'mcp__backlog-skills__find_roadmap'
@@ -56,12 +57,7 @@ function isRead(messages: any[], text: string): boolean {
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    await $.tool.register({
-      name: 'find_roadmap',
-      description: "Find this repo's plan of record from any worktree. Returns the primary checkout, the kind (local-only, tracked, fork-without-roadmap, or none), and the absolute paths of the roadmap and of its changelog where it has one.",
-      inputSchema: { type: 'object', properties: {} },
-      isDeferred: false,
-    })
+    for (const t of TOOLS) await $.tool.register({ ...t, isDeferred: false })
     await $.tool.register({
       name: 'delete_item',
       description: 'Delete one landed item from a roadmap file: from its heading to the next heading of the same or a higher level, sub-items included. Returns the headings removed. Nothing is written when the ID matches no heading or more than one, or when the file changes during the call. Two calls at the same moment can both succeed with one edit lost, so read the file afterward where that matters.',
@@ -110,6 +106,9 @@ export const register: Register = on => {
     return { ...ran, context: [...(ran.context ?? []), text] }
   })
 
+  tools(on)
+
+  // shortcut: find_roadmap is no longer registered, and its handler stays only for plan.test.ts; remove both when plan.ts is replaced.
   on('tool.call', { tool: FIND }, async $ => {
     try {
       const found = await find($)
