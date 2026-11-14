@@ -36,25 +36,30 @@ export function world(on: any, files: Record<string, string> = { [`${MAIN}/BACKL
   on('clock.now', () => ({ value: w.t }))
   on('clock.sleep', (_$: any, e: any) => { w.t += e.ms; w.slept.push(e.ms); w.onSleep?.(); return { value: undefined } })
   const dirOf = (p: string) => p.replace(/\/[^/]*$/, '')
-  on('fs.exists', (_$: any, e: any) => ({ value: e.path in w.files || Object.keys(w.files).some(f => f.startsWith(`${e.path}/`)) }))
+  // On Windows a handler receives the path with a drive letter and backslashes.
+  const posix = (p: string) => p.replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
+  on('fs.exists', (_$: any, { path }: any) => ({ value: posix(path) in w.files || Object.keys(w.files).some(f => f.startsWith(`${posix(path)}/`)) }))
   on('fs.read', (_$: any, e: any) => {
-    if (!(e.path in w.files)) throw new Error(`ENOENT: ${e.path}`)
-    return { value: w.files[e.path] }
+    const path = posix(e.path)
+    if (!(path in w.files)) throw new Error(`ENOENT: ${path}`)
+    return { value: w.files[path] }
   })
   on('fs.write', (_$: any, e: any) => {
-    w.writes.push(e.path)
-    w.files[e.path] = w.tear?.(e.path, e.text) ?? e.text
+    const path = posix(e.path)
+    w.writes.push(path)
+    w.files[path] = w.tear?.(path, e.text) ?? e.text
     return { value: undefined }
   })
   on('fs.list', (_$: any, e: any) => {
+    const path = posix(e.path)
     const names = new Map<string, string>()
     for (const f of Object.keys(w.files)) {
-      if (!f.startsWith(`${e.path}/`)) continue
-      const rest = f.slice(e.path.length + 1)
+      if (!f.startsWith(`${path}/`)) continue
+      const rest = f.slice(path.length + 1)
       names.set(rest.split('/')[0], rest.includes('/') ? 'directory' : 'file')
     }
-    if (!names.size) throw new Error(`ENOENT: ${e.path}`)
-    return { value: [...names].map(([name, kind]) => ({ name, kind, size: 0, mtimeMs: 0, isLink: w.links.has(`${e.path}/${name}`) })) }
+    if (!names.size) throw new Error(`ENOENT: ${path}`)
+    return { value: [...names].map(([name, kind]) => ({ name, kind, size: 0, mtimeMs: 0, isLink: w.links.has(`${path}/${name}`) })) }
   })
   on('process.run', (_$: any, e: any) => {
     const argv = e.argv as string[]
