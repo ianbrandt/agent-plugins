@@ -252,17 +252,22 @@ still working the repo on the old roadmap rule.
 ledger, no `BACKLOG*` or `PLAN*` file yet, and on a tracked roadmap no item branches with
 unmerged commits), the exclusions, the marker, the backup, each write with its hash, validation,
 the check that the new files hold the same IDs as the old ones, and the deletion of the old files.
-Call it first with no text to get the old files and their IDs. Then supply, per destination, the
-converted text:
+Call it first with no text. Nothing is written; the result lists each precondition as met or not,
+each destination, the `Highest ID used` the tool will write, and each old file's IDs and numbered
+header. Then call it again with:
 
-- **The backlog**: each item as `## ID: Title` (sub-items `### ID: Title`) followed by its field
-  lines. Convert touches, gate, pin, and check prose, and "(needs the user)" in a heading, into
-  fields where the text is unambiguous, and list each conversion you could not make. Drop section
-  and band headings and list them.
-- **The parked, declined, and changelog files** are copied by the tool with their names changed.
-- **The plan**: the old header, leaving out every rule this plugin already states. List each
-  passage you left out or could not place, with its line range in the old file, for the user.
+- **`backlog`**: the items only, each as `## ID: Title` (sub-items `### ID: Title`) followed by its
+  field lines. The tool writes the title and the `Highest ID used` line. Convert touches, gate, pin,
+  and check prose, and "(needs the user)" in a heading, into fields where the text is
+  unambiguous, and list each conversion you could not make. Drop section and band headings and
+  list them.
+- **`plan`**: the old header, leaving out every rule this plugin already states, or `""` for no
+  plan. List each passage you left out or could not place, with its line range in the old file,
+  for the user.
+- On a tracked roadmap, **`branch`** and **`message`**: open the migration's branch first through
+  `work-on-a-branch`. The tool commits the migration there, and the branch lands through
+  `land-and-wrap`; until it is on the default branch, `find_backlog` returns `migration-pending`.
 
-On a tracked roadmap the migration is one commit on its own branch, landed through
-`land-and-wrap`; until it is on the default branch, `find_backlog` returns `migration-pending`.
-An interrupted migration is continued by calling `migrate_backlog` again.
+The parked, declined, and changelog files are copied by the tool with their names changed. An
+interrupted migration is continued by calling `migrate_backlog` again, with `run: true` when every
+destination was already written.
