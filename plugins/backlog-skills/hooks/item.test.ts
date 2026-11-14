@@ -75,6 +75,16 @@ test('a fence closes in a file with CRLF line ends, and with a tab after it', ()
   expect(deleteItem('## R1: one\n```\ncode\n```\t\n## R2: two\n', 'R1').text).toBe('## R2: two\n')
 })
 
+test('a heading inside a tilde fence does not end the item, with CRLF line ends', () => {
+  expect(deleteItem('## R1: one\r\n~~~\r\n## R9: quoted\r\n~~~\r\n## R2: two\r\n', 'R1').text).toBe('## R2: two\r\n')
+})
+
+test('a heading with leading spaces, or a tab after the hashes, ends the item as it does in the backlog parser', () => {
+  for (const h of [' ## R2: two', '##\tR2: two']) {
+    expect(deleteItem(`## R1: one\n\n${h}\n`, 'R1').text).toBe(`${h}\n`)
+  }
+})
+
 const TOOL = 'mcp__backlog-skills__delete_item'
 const PATH = '/repo/ROADMAP.local.md'
 

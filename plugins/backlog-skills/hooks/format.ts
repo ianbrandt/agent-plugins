@@ -4,7 +4,10 @@
 export const KEYS = ['Touches', 'Gated by', 'Needs', 'Branch', 'Check']
 export const ID = '[A-Z]+\\d+(?:\\.\\d+)?'
 // On a word boundary, so R12 matches neither inside R120 nor as the start of R12.3.
-const BOUNDED = `(?<!\\w)${ID}(?!\\w|\\.\\d)`
+// The boundary is a letter or digit, not \\w, so _R12_ is found.
+export const BOUNDED = `(?<![A-Za-z0-9])${ID}(?![A-Za-z0-9]|\\.\\d)`
+// One ID, or a range or list of them, as in `R144 to R149` or `R3, R7, and R9`.
+export const GROUP = `${BOUNDED}(?:(?:,? and |, | to )${BOUNDED})*`
 export const idsIn = (text: string): string[] => text.match(new RegExp(BOUNDED, 'g')) ?? []
 const top = (id: string) => Number(/\d+/.exec(id)![0])
 
@@ -20,7 +23,7 @@ export type Backlog = { title?: string; banner?: string; highest?: number; items
 export type Heading = { ids: string[]; level: 2 | 3; line: number; title: string; status?: string; text: string }
 
 // Splits text into lines and marks each line of a fenced block, its fences
-// included, as code. The fence rules are deleteItem's in item.ts.
+// included, as code. deleteItem in item.ts uses it too.
 export function scan(text: string): { lines: Line[]; unclosed?: number } {
   const lines: Line[] = []
   let fence = ''
@@ -28,30 +31,31 @@ export function scan(text: string): { lines: Line[]; unclosed?: number } {
   let at = 0
   let n = 0
   for (const raw of text.split('\n')) {
+    const line = raw.replace(/\r$/, '')
     n++
     let code = !!fence
     if (fence) {
       const close = /^ {0,3}(`{3,}|~{3,})[ \t\r]*$/.exec(raw)?.[1]
       if (close && close[0] === fence[0] && close.length >= fence.length) fence = ''
     } else {
-      const open = /^ {0,3}(?:(`{3,})[^`]*|(~{3,}.*))$/.exec(raw)
+      const open = /^ {0,3}(?:(`{3,})[^`]*|(~{3,}.*))$/.exec(line)
       if (open) {
         fence = open[1] ?? open[2].match(/^~+/)![0]
         opened = n
         code = true
       }
     }
-    lines.push({ text: raw.replace(/\r$/, ''), at, n, code })
+    lines.push({ text: line, at, n, code })
     at += raw.length + 1
   }
   return { lines, unclosed: fence ? opened : undefined }
 }
 
-// Every `#` to `###` heading outside a fenced block, with the end of its section:
-// the next heading of the same or a higher level.
-function headings(text: string, lines: Line[]) {
+// Every heading from `#` to `max` hashes outside a fenced block, with the end of
+// its section: the next heading of the same or a higher level.
+export function headings(text: string, lines: Line[], max = 3) {
   const heads = lines.flatMap(line => {
-    const h = line.code ? null : /^ {0,3}(#{1,3})(?:[ \t]+(.*?))?[ \t]*$/.exec(line.text)
+    const h = line.code ? null : new RegExp(`^ {0,3}(#{1,${max}})(?:[ \\t]+(.*?))?[ \\t]*$`).exec(line.text)
     return h ? [{ line, level: h[1].length, rest: h[2] ?? '' }] : []
   })
   return heads.map((h, i) => ({
@@ -62,8 +66,12 @@ function headings(text: string, lines: Line[]) {
 }
 
 const FIELD = /^- ([A-Za-z][A-Za-z ]*?):(?:[ \t]+(.*?))?[ \t]*$/
-const SHAPED = new RegExp(`^\\s*[-*+] (?:${KEYS.join('|')}):`)
+// A field line as markdown renders it: any space after the dash, a bold key, a space before the colon.
+const LOOSE = /^-[ \t]+(\*\*|__)?([A-Za-z][A-Za-z \t]*?)[ \t]*\1?:\1?(?:[ \t]+(.*?))?[ \t]*$/
+const known = (key: string) => KEYS.find(k => k.toLowerCase() === key.replace(/[ \t]+/g, ' ').toLowerCase())
+const SHAPED = new RegExp(`^\\s*[-*+][ \\t]+(\\*\\*|__)?(?:${KEYS.map(k => k.replace(' ', '[ \\t]+')).join('|')})[ \\t]*\\1?:`, 'i')
 const NEEDS = /needs the user/i
+const needsUser = (value?: string) => /^user\b/i.test(value?.trim() ?? '')
 
 export function parseBacklog(text: string): Backlog {
   const { lines, unclosed } = scan(text)
@@ -119,20 +127,26 @@ export function parseBacklog(text: string): Backlog {
     let j = k
     while (j < body.length && body[j].text.trim()) j++
     const block = body.slice(k, j)
-    const isList = block.length > 0 && block.every(l => !l.code && FIELD.test(l.text))
+    // A known key in another spelling or case is read as that key.
+    const fields = block.map(l => { const m = l.code ? null : LOOSE.exec(l.text); return m && (FIELD.test(l.text) || known(m[2])) ? m : null })
+    const isList = block.length > 0 && fields.every(Boolean)
     if (isList) {
-      for (const l of block) {
-        const [, key, value = ''] = FIELD.exec(l.text)!
-        if (!KEYS.includes(key)) add('warning', l.n, `an unknown field key: ${key}`, id)
+      block.forEach((l, i) => {
+        const [, , raw, value = ''] = fields[i]!
+        const key = known(raw)
+        if (!key) add('warning', l.n, `an unknown field key: ${raw}`, id)
         else if (key in item.fields) add('item', l.n, `${key} is set twice`, id)
-        else item.fields[key] = value
-      }
+        else {
+          item.fields[key] = value
+          if (!l.text.startsWith(`- ${key}:`)) add('warning', l.n, `a field line not written as "- ${key}: value"`, id)
+        }
+      })
     }
     const rest = isList ? body.slice(j) : body.slice(k)
     const shaped = rest.find(l => !l.code && SHAPED.test(l.text))
     if (shaped) add('item', shaped.n, 'a field list that is not the first block after the heading', id)
     const prose = rest.find(l => !l.code && l.text.trim())
-    if ((NEEDS.test(item.title) || (prose && NEEDS.test(prose.text))) && item.fields.Needs?.trim().toLowerCase() !== 'user') {
+    if ((NEEDS.test(item.title) || (prose && NEEDS.test(prose.text))) && !needsUser(item.fields.Needs)) {
       add('item', h.line.n, '"needs the user" with no Needs: user field', id)
     }
   }
@@ -140,11 +154,15 @@ export function parseBacklog(text: string): Backlog {
   return out
 }
 
-const STATUS = /\((BUILT-LOCAL|DRAFTED|FILED|PR-READY|MERGED-UPSTREAM|DONE)[,)]/
+const STATUS = /(?<![\w-])(BUILT-LOCAL|DRAFTED|FILED|PR-READY|MERGED-UPSTREAM|DONE)(?![\w-])/
+// A record's status: the first status keyword in the last parenthesized group
+// that has one, so `(PR-READY 2026-11-01)` and `(2026-11-01, PR-READY)` both read PR-READY.
+const statusOf = (title: string) =>
+  [...title.replace(/`[^`]*`/g, '').matchAll(/\(([^()]*)\)/g)].map(g => STATUS.exec(g[1])?.[1]).filter(Boolean).at(-1)
 
 // The IDs in `R3`, `R3 to R5`, `R3 and R7`, or `R3, R7, and R9`, or none when
 // the text is none of these.
-function idList(s: string): string[] | undefined {
+export function idList(s: string): string[] | undefined {
   const out: string[] = []
   for (const part of s.split(/, and |, | and /)) {
     const [a, b, ...more] = part.split(' to ')
@@ -161,15 +179,24 @@ function idList(s: string): string[] | undefined {
 
 // For the parked, declined, and changelog files: every `##` or `###` heading
 // that starts with an ID, a range, or a list of IDs. Any other heading is skipped.
+// A `###` record with no status of its own has its parent's.
 export function parseHeadings(text: string): Heading[] {
+  let parent: string | undefined
   return headings(text, scan(text).lines).flatMap(h => {
+    if (h.level < 3) parent = undefined
     const m = /^([^:]+):(?:[ \t]+(.*))?$/.exec(h.rest)
     const ids = h.level > 1 && m ? idList(m[1]) : undefined
     if (!ids) return []
     const title = (m![2] ?? '').trim()
-    return [{ ids, level: h.level as 2 | 3, line: h.line.n, title, status: STATUS.exec(title)?.[1], text: text.slice(h.line.at, h.end) }]
+    const status = statusOf(title) ?? (h.level === 3 ? parent : undefined)
+    if (h.level === 2) parent = status
+    return [{ ids, level: h.level as 2 | 3, line: h.line.n, title, status, text: text.slice(h.line.at, h.end) }]
   })
 }
+
+// Each ID in `text`, with each range and list expanded: `R11 to R13` gives R11, R12, and R13.
+export const idsGrouped = (text: string): string[] =>
+  [...text.matchAll(new RegExp(GROUP, 'g'))].flatMap(m => idList(m[0]) ?? idsIn(m[0]))
 
 export type Files = { backlog: Backlog; parked?: Heading[]; declined?: Heading[]; changelog?: Heading[] }
 
@@ -217,9 +244,10 @@ export function gate(id: string, ctx: Ctx): Gate {
   const listed = (hs?: Heading[]) => !!hs?.some(h => h.ids.includes(id))
   if (ctx.backlog.items.some(i => i.id === id) || listed(ctx.parked) || listed(ctx.declined)) return 'shut'
   if (ctx.kind === 'local-only') {
-    // Records are appended, so the last one is the latest: a final record after a PR-READY one opens the gate.
-    const last = ctx.changelog?.filter(h => h.ids.includes(id)).at(-1)
-    if (last) return ['PR-READY', 'FILED', 'DRAFTED'].includes(last.status ?? '') ? 'shut' : 'open'
+    // A PR-READY, FILED, or DRAFTED record shuts the gate only while the item is open, which
+    // step 1 covers: the old skills deleted a merged item after its PR-READY record with no
+    // further record, and close_item appends the final record before it deletes the item.
+    if (ctx.changelog?.some(h => h.ids.includes(id))) return 'open'
   } else {
     if (ctx.deletedOnDefault?.has(id) || ctx.closedRefs?.has(id)) return 'open'
     if (ctx.reservedRefs?.has(id) || ctx.branchIds?.has(id) || ctx.claimIds?.has(id)) return 'shut'
@@ -235,7 +263,7 @@ export function claimable(item: Item, ctx: Ctx, { unattended = false } = {}): { 
   let worst: Gate = 'open'
   const gatedBy = item.fields['Gated by']
   if (gatedBy !== undefined) {
-    const ids = idsIn(gatedBy)
+    const ids = [...new Set(idsGrouped(gatedBy))]
     if (!ids.length) { worst = 'unknown'; reasons.push('Gated by names no ID') }
     for (const id of ids) {
       const g = gate(id, ctx)
@@ -248,7 +276,7 @@ export function claimable(item: Item, ctx: Ctx, { unattended = false } = {}): { 
   for (const p of problems) if (p.level === 'item' && p.id === item.id) reasons.push(p.message)
   if (item.fields.Branch !== undefined) reasons.push('a Branch field')
   if (ctx.inFlightIds?.has(item.id)) reasons.push('a branch or worktree with commits the default branch lacks')
-  if (unattended && item.fields.Needs?.trim().toLowerCase() === 'user') reasons.push('Needs: user, in an unattended run')
+  if (unattended && needsUser(item.fields.Needs)) reasons.push('Needs: user, in an unattended run')
   return { gate: worst, claimable: reasons.length === 0, reasons }
 }
 

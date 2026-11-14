@@ -45,3 +45,21 @@ test('a later mention of an ID cited earlier is exempt, and an earlier one is no
 test('a bare ID is listed once', () => {
   expect(bareIds('R7, then R7 again.', known)).toEqual(['R7'])
 })
+
+// Regressions from an adversarial review of the parser.
+
+test('an ID in a tilde fence is exempt in a message with CRLF line ends', () => {
+  expect(bareIds('Fix the parser\r\n\r\n~~~\r\ngit log R12\r\n~~~\r\n', known)).toEqual([])
+})
+
+test('a lone backtick does not hide an ID in a later paragraph', () => {
+  expect(bareIds('A backtick ` starts a substitution in bash.\n\nR12 is next.\n\nThen run `make`.', known)).toEqual(['R12'])
+})
+
+test('an ID in underscore emphasis counts', () => {
+  expect(bareIds('_R12_ is next, and __R7__ after.', known)).toEqual(['R12', 'R7'])
+})
+
+test('an ID inside a cited range is cited', () => {
+  expect(bareIds('R3 to R9: Ledger cleanup. Then R7 is done.', known)).toEqual([])
+})

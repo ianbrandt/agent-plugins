@@ -170,7 +170,7 @@ test('changelog headings are read with their IDs, ranges, lists, and status', ()
     [['R19'], 2, 'BUILT-LOCAL'],
     [['R123.1', 'R123.2'], 2, 'BUILT-LOCAL'],
     [['R556', 'R557', 'R558'], 2, undefined],
-    [['R574'], 2, undefined],
+    [['R574'], 2, 'BUILT-LOCAL'],
     [['R3', 'R7', 'R9'], 2, 'PR-READY'],
   ])
   expect(parseHeadings(CHANGELOG)[1].line).toBe(9)
@@ -227,15 +227,15 @@ test('a gate on an item open in the backlog, parked, or declined is shut', () =>
   for (const id of ['R1', 'R3', 'R4']) expect(gate(id, ctx())).toBe('shut')
 })
 
-test('on a local-only backlog, a changelog record opens the gate unless its status is PR-READY, FILED, or DRAFTED', () => {
-  expect(gate('R10', ctx())).toBe('shut')
+test('on a local-only backlog, a changelog record opens the gate when the ID is in none of the backlog, parked, and declined files', () => {
+  expect(gate('R10', ctx())).toBe('open')
   expect(gate('R11', ctx())).toBe('open')
   expect(gate('R12', ctx())).toBe('open')
   expect(gate('R14', ctx())).toBe('unknown')
 })
 
 // close_item after record_progress appends the final record below the PR-READY one.
-test('the last changelog record for an ID decides the gate', () => {
+test('a changelog record opens the gate of an ID no file has open', () => {
   expect(gate('R13', ctx())).toBe('open')
 })
 
@@ -251,7 +251,7 @@ test('an item is claimable when its gate is open and nothing else holds it', () 
   const c = ctx()
   const [r1, r2] = c.backlog.items
   expect(claimable(r1, c)).toEqual({ gate: 'open', claimable: true, reasons: [] })
-  expect(claimable(r2, c)).toEqual({ gate: 'shut', claimable: false, reasons: ['Gated by R10: shut'] })
+  expect(claimable(r2, ctx({ declined: parseHeadings('# D\n\n## R10: declined\n') }))).toEqual({ gate: 'shut', claimable: false, reasons: ['Gated by R10: shut'] })
   expect(claimable(r2, ctx({ changelog: [] })).gate).toBe('unknown')
 })
 
@@ -294,4 +294,67 @@ test('the next ID is one more than the highest in any source', () => {
 test('the next sub-item ID is one more than the highest under its parent', () => {
   expect(nextSubId('R12', { ids: ['R12.1', 'R12.3', 'R120.9', 'R1.7', 'refs/backlog/ids/R12.4'] })).toBe('R12.5')
   expect(nextSubId('R12', {})).toBe('R12.1')
+})
+
+// Regressions from an adversarial review of the parser.
+
+test('a tilde fence hides a heading in a file with CRLF line ends', () => {
+  expect(scan('a\r\n~~~md\r\nb\r\n~~~\r\nc').lines.map(l => l.code)).toEqual([false, true, true, true, false])
+  const text = '# B\r\n\r\nHighest ID used: R9\r\n\r\n## R5: document the format\r\n\r\n~~~markdown\r\n## R6: an example item\r\n\r\nIts prose.\r\n~~~\r\n\r\nMore about R5.\r\n'
+  expect(parseBacklog(text).items.map(i => [i.id, i.end])).toEqual([['R5', text.length]])
+  const c = '# C\r\n\r\n## R5: x (PR-READY, 2026-11-01)\r\n\r\n## R7: the record format (DONE, 2026-11-02)\r\n\r\n~~~markdown\r\n## R5: x (DONE, 2026-11-03)\r\n~~~\r\n'
+  expect(parseHeadings(c).map(h => [h.ids, h.status])).toEqual([[['R5'], 'PR-READY'], [['R7'], 'DONE']])
+})
+
+test('a field line written another way is read as the field it renders as, with a warning, and is out of place after prose', () => {
+  for (const line of ['-  Gated by: R4', '-\tGated by: R4', '- **Gated by:** R4', '- **Gated by**: R4', '- gated by: R4', '- Gated by : R4', '- Gated  by: R4']) {
+    const b = parseBacklog(`# B\n\nHighest ID used: R9\n\n## R9: gated\n${line}\n\nProse.\n`)
+    expect(b.items[0].fields).toEqual({ 'Gated by': 'R4' })
+    expect(problems(`# B\n\nHighest ID used: R9\n\n## R9: gated\n${line}\n\nProse.\n`)).toEqual([['warning', 'R9', 'a field line not written as "- Gated by: value"']])
+    expect(problems(`# B\n\nHighest ID used: R9\n\n## R9: gated\n\nProse.\n\n${line}\n`)).toEqual([['item', 'R9', 'a field list that is not the first block after the heading']])
+  }
+})
+
+test('the status of a record is read from its last parenthesized group that has a status keyword, anywhere in the group', () => {
+  const cases = [
+    ['x (PR-READY 2026-11-01)', 'PR-READY'],
+    ['stop writing (DONE) on open items (PR-READY, 2026-11-01)', 'PR-READY'],
+    ['x (FILED #123, 2026-11-01)', 'FILED'],
+    ['x (2026-11-01, PR-READY)', 'PR-READY'],
+    ['x (PR-READY, 2026-11-01) (see the notes)', 'PR-READY'],
+    ['x (PR-READY, `f(x)`, 2026-11-01)', 'PR-READY'],
+    ['UNDONE work (2026-11-01)', undefined],
+  ]
+  for (const [title, status] of cases) expect(parseHeadings(`# C\n\n## R5: ${title}\n`)[0].status).toBe(status)
+})
+
+test('a sub-item record has its parent record status', () => {
+  const c = parseHeadings('# C\n\n## R12: parent (PR-READY, 2026-11-01)\n\n### R12.3: sub\n')
+  expect(c.map(h => [h.ids, h.status])).toEqual([[['R12'], 'PR-READY'], [['R12.3'], 'PR-READY']])
+  expect(parseHeadings('# C\n\n## Notes\n\n### R12.3: sub\n')[0].status).toBeUndefined()
+})
+
+test('every ID in a Gated by range or list is checked', () => {
+  for (const value of ['R11 to R13', 'R11, R12, and R13', 'R11 and R12']) {
+    const c = ctx({ backlog: parseBacklog(`# B\n\nHighest ID used: R20\n\n## R9: gated\n\n- Gated by: ${value}\n\n## R12: open\n`) })
+    expect(claimable(c.backlog.items[0], c).reasons).toEqual(['Gated by R12: shut'])
+  }
+})
+
+test('an item is held in an unattended run when its Needs value starts with user', () => {
+  const c = ctx({ backlog: parseBacklog('# B\n\nHighest ID used: R20\n\n## R5: one\n\n- Needs: user, to approve the push\n') })
+  expect(claimable(c.backlog.items[0], c, { unattended: true }).claimable).toBe(false)
+  expect(problems('# B\n\nHighest ID used: R1\n\n## R1: one (needs the user)\n\n- Needs: User, to approve the push\n')).toEqual([])
+  const users = ctx({ backlog: parseBacklog('# B\n\nHighest ID used: R20\n\n## R5: one\n\n- Needs: username\n') })
+  expect(claimable(users.backlog.items[0], users, { unattended: true }).claimable).toBe(true)
+})
+
+test('a PR-READY, FILED, or DRAFTED record shuts the gate only while the ID is open', () => {
+  const c = ctx({ changelog: parseHeadings('# C\n\n## R1: open (PR-READY, 2026-11-01)\n\n## R15: merged under the old skills (PR-READY, 2026-11-01)\n\n## R16: drafted (DRAFTED, 2026-11-01)\n') })
+  expect(['R1', 'R15', 'R16'].map(id => gate(id, c))).toEqual(['shut', 'open', 'open'])
+})
+
+test('an ID in underscore emphasis is found in a Gated by value', () => {
+  const c = ctx({ backlog: parseBacklog('# B\n\nHighest ID used: R20\n\n## R9: gated\n\n- Gated by: _R3_\n') })
+  expect(claimable(c.backlog.items[0], c).reasons).toEqual(['Gated by R3: shut'])
 })
