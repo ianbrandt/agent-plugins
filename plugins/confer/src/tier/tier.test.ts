@@ -207,23 +207,14 @@ test('Confer never picks escalation itself', async ($) => {
   expect(await choose($, { pick: 'escalation' })).toBe('Error: Escalation runs only when the user asks for it.')
 })
 
-test('an ANTHROPIC_DEFAULT_*_MODEL env var pins the alias to the id the main session uses', async ($, on) => {
-  serve(on)
-  on('env.get', (_, e) => ({ value: e.name === 'ANTHROPIC_DEFAULT_SONNET_MODEL' ? 'bedrock-claude-sonnet-5-5[1m]' : undefined }))
-
-  const choice = (await choose($, { pick: 'routine' })) as TierChoice
-
-  expect(choice.claude).toEqual({ model: 'bedrock-claude-sonnet-5-5[1m]', effort: 'high' })
-})
-
-test('an alias passed as --claude-model is pinned through the env var too', async ($, on) => {
+test('an alias reaches the reviewer as is, for the harness to resolve through its ANTHROPIC_DEFAULT_*_MODEL pin', async ($, on) => {
   const checked = serve(on)
-  on('env.get', (_, e) => ({ value: e.name === 'ANTHROPIC_DEFAULT_OPUS_MODEL' ? 'bedrock-claude-opus-5-5' : undefined }))
+  on('env.get', (_, e) => ({ value: e.name.startsWith('ANTHROPIC_DEFAULT_') ? 'bedrock-claude-pinned' : undefined }))
 
-  const choice = (await choose($, { args: '--tier critical --claude-model opus' })) as TierChoice
-
-  expect(choice.claude).toEqual({ model: 'bedrock-claude-opus-5-5', effort: 'high' })
-  expect(checked).toEqual([])
+  expect(((await choose($, { pick: 'routine' })) as TierChoice).claude).toEqual({ model: 'sonnet', effort: 'high' })
+  expect(((await choose($, { args: '--tier critical --claude-model opus' })) as TierChoice).claude).toEqual({ model: 'opus', effort: 'high' })
+  expect(((await choose($, { pick: 'critical' })) as TierChoice).claude).toEqual({ model: 'fable', effort: 'high' })
+  expect(checked).toEqual(['fable'])
 })
 
 test('a bad argument fails the choice', async ($) => {

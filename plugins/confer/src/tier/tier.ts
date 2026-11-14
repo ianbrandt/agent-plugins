@@ -29,16 +29,6 @@ const table: Record<Tier, { claude: Side; codexEffort: ModelEffort }> = {
 const aliases = ['sonnet', 'opus', 'haiku', 'fable']
 // Usage at which a Fable tier other than escalation runs on Opus instead, as in the tier-model-and-effort skill.
 const fableLimit = 80
-// The env var that pins an alias to a specific provider id, as Claude Code reads for the main session.
-// A subagent spawn does not go through that resolution, so the pin is applied here for the reviewer.
-// `$.env.get` takes string literals, so each name is spelled out in `readPin` below.
-async function readPin($: EngineInterface, model: string): Promise<string | undefined> {
-  if (model === 'sonnet') return $.env.get('ANTHROPIC_DEFAULT_SONNET_MODEL')
-  if (model === 'opus') return $.env.get('ANTHROPIC_DEFAULT_OPUS_MODEL')
-  if (model === 'haiku') return $.env.get('ANTHROPIC_DEFAULT_HAIKU_MODEL')
-  if (model === 'fable') return $.env.get('ANTHROPIC_DEFAULT_FABLE_MODEL')
-  return undefined
-}
 const tiers = Object.keys(table) as Tier[]
 const efforts: readonly ModelEffort[] = ['low', 'medium', 'high', 'xhigh', 'max']
 const flags = ['--tier', '--claude-model', '--claude-effort', '--codex-model', '--codex-effort']
@@ -95,19 +85,17 @@ async function claudeSide($: EngineInterface, tier: Tier, set: Record<string, st
   const effort = efforts.includes(effortSetting as ModelEffort) ? (effortSetting as ModelEffort) : table[tier].claude.effort
   const effortFlag = set['--claude-effort'] as ModelEffort | undefined
   const override = set['--claude-model']
-  if (override !== undefined) return { claude: { model: (await readPin($, override)) ?? override, effort: effortFlag ?? effort } }
+  if (override !== undefined) return { claude: { model: override, effort: effortFlag ?? effort } }
   const setting = String(options[`${name}Model`] ?? table[tier].claude.model).trim()
   if (setting === '') throw new Error(`The ${name}Model setting is empty: set a model, such as opus.`)
   const model = aliases.includes(setting.toLowerCase()) ? setting.toLowerCase() : setting
-  const pinned = (await readPin($, model)) ?? model
   let fallback: Fallback | undefined
   if (model === 'fable') {
     if (tier !== 'escalation' && percent !== undefined && percent >= fableLimit) fallback = { reason: 'usage', percent }
-    else if (!(await isServed($, pinned))) fallback = { reason: 'not-served' }
+    else if (!(await isServed($, model))) fallback = { reason: 'not-served' }
   }
-  if (fallback === undefined) return { claude: { model: pinned, effort: effortFlag ?? effort } }
-  const opus = (await readPin($, 'opus')) ?? 'opus'
-  return { claude: { model: opus, effort: effortFlag ?? efforts[Math.min(efforts.indexOf(effort) + 1, efforts.length - 1)]! }, fallback }
+  if (fallback === undefined) return { claude: { model, effort: effortFlag ?? effort } }
+  return { claude: { model: 'opus', effort: effortFlag ?? efforts[Math.min(efforts.indexOf(effort) + 1, efforts.length - 1)]! }, fallback }
 }
 
 function parse(args: string): { set: Record<string, string>; rest: string[] } {
