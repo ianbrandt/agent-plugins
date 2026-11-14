@@ -66,10 +66,10 @@
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/writing-skills",
-        "ref": "writing-skills-v0.57.0",
-        "sha": "d16b4af9a0393e7638c01404d145c8ae206b89ee"
+        "ref": "writing-skills-v0.58.0",
+        "sha": "8ba8c35e2abd85db518ccb72f2b81d2b179bb18b"
       },
-      "version": "0.57.0",
+      "version": "0.58.0",
       "description": "Always-on rules for plain prose without AI tells—in chat, in repo docs, and in anything published under your name—with a lint that reports each miss in the next turn.",
       "keywords": ["register", "summary", "prose", "style", "lint"]
     },
