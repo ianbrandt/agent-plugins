@@ -22,11 +22,13 @@ export function world(on: any, files: Record<string, string> = { [`${MAIN}/BACKL
     before: undefined as undefined | ((line: string, argv: string[]) => Failed | string | void),
     writes: [] as string[], tear: undefined as undefined | ((path: string, text: string) => string | void),
     onSleep: undefined as undefined | (() => void),
+    cwd: MAIN,
   }
   let n = 0
   const zero = () => '0'.repeat(w.format === 'sha256' ? 64 : 40)
   on('session.repo', () => ({ value: { root: MAIN, remote: null, internal: false } }))
   on('session.id', () => ({ value: 's1' }))
+  on('session.cwd', () => ({ value: w.cwd }))
   on('clock.now', () => ({ value: w.t }))
   on('clock.sleep', (_$: any, e: any) => { w.t += e.ms; w.slept.push(e.ms); w.onSleep?.(); return { value: undefined } })
   const dirOf = (p: string) => p.replace(/\/[^/]*$/, '')

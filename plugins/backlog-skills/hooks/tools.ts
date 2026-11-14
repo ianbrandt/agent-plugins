@@ -35,9 +35,9 @@ export const TOOLS = [
 
 // What to do in each migration kind, as stated in the session-start rule (D3).
 export const MIGRATION: Record<string, string> = {
-  'partial-migration': 'A migration of this repo\'s roadmap was started and did not finish. Continue it with migrate_backlog before any other backlog work. Until then the write tools refuse.',
-  'migration-pending': 'The migration is committed on its branch, and BACKLOG.md is not on the default branch yet. Land that branch first. Until then the write tools refuse.',
-  'needs-migration': 'This repo still has an old roadmap. Offer the migration to the user, and run it with migrate_backlog if they agree. Until then the write tools refuse.',
+  'partial-migration': 'A migration of this repo\'s roadmap was started and did not finish. Continue it with `migrate_backlog`, as described in `next-backlog-item` §8, before any other backlog work. Until then the write tools refuse.',
+  'migration-pending': 'The migration is committed on its branch, and BACKLOG.md is not on the default branch yet. Land that branch through `land-and-wrap` first. Until then the write tools refuse.',
+  'needs-migration': 'This repo still has an old roadmap. Offer the migration to the user, as described in `next-backlog-item` §8, and run it with `migrate_backlog` only if they agree. Until then the write tools refuse.',
 }
 
 const relOf = (repo: Repo, p: Problem) => (p.file && repo.paths?.[p.file]) || 'backlog'
