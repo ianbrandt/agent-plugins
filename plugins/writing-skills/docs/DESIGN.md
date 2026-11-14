@@ -285,6 +285,11 @@ kind and HTTP status, a call that was cut off or went 60 seconds without a reply
 text, or the message of an error thrown in the check. Each later check is still tried. A reply from
 a call that was answered is not such a failure, whatever its form.
 
+A toast can close before the user reads it, and neither the transcript nor the desktop app's log
+includes its text. So each toast the module shows is also added to `writing-skills/toasts.log` in
+the config directory, beside the classifier caches, as one line with the time, the session ID, and
+the text.
+
 The cost is one call per `git commit` and per `gh pr`, `gh issue`, or `gh release` command, read-only
 ones included. One hook covers all four command families, because the command text is
 matched in the module rather than through a hook `if` pattern. `git -C <path> commit` is gated that

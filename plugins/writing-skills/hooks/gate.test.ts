@@ -177,6 +177,15 @@ test('a commit is not stopped when the model call fails, and the user is told on
   expect(seen.toasts[0]).not.toContain('writing-skills:')
 })
 
+test('each toast is also kept in a log, with its time and session', async ($: any, on: any) => {
+  const seen = world(on, { down: true, files: { '/cfg/writing-skills/toasts.log': 'earlier\n' } })
+  await bash($, SAYS)
+  const [old, line, ...rest] = seen.files['/cfg/writing-skills/toasts.log'].split('\n')
+  expect(old).toBe('earlier')
+  expect(line).toMatch(/^\d{4}-\d\d-\d\dT[\d:.]+Z\ts1\tA model review did not run: API error overloaded, HTTP 529\./)
+  expect(rest).toEqual([''])
+})
+
 test('a check that cannot read the session lets the command through, and the user is told', async ($: any, on: any) => {
   const seen = world(on, { verdict: FINDING, noSession: true })
   expect((await bash($, SAYS)).result).toEqual({ stdout: 'ran' })

@@ -44,7 +44,9 @@ Claude Code 2.1.308 or later is required.
 
 Each review is one model call, Sonnet by default, and usually takes a few seconds. When no model can
 be called, the command goes through and you are told once per session, in a toast, that a review
-did not run and why. Each later review is still tried.
+did not run and why. Each later review is still tried. Each toast is also added to
+`~/.claude/writing-skills/toasts.log` (under `CLAUDE_CONFIG_DIR` where that is set), with its time
+and session ID.
 
 ## Settings
 

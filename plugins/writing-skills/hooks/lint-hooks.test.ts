@@ -189,7 +189,8 @@ test('a Workflow agent gets the rules with its first tool result only, and an Ag
   native(on)
   session.read = ['<rules.md>']
   session.agents = { a1: ['<rules.md>\n\nlook'] }
-  expect(await Promise.all([bash($, 'w1'), bash($, 'w1')])).toEqual([['<rules.md>'], []])
+  // The first call is the first to fail a review here, so it also writes the toast log and can finish second.
+  expect((await Promise.all([bash($, 'w1'), bash($, 'w1')])).flat()).toEqual(['<rules.md>'])
   expect(await bash($, 'w1')).toEqual([])
   expect(await bash($, 'a1')).toEqual([])
   session.agents.a1 = ['a summary']

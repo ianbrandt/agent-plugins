@@ -39,7 +39,7 @@ async function isChecked($: any): Promise<boolean> {
   const ok = atLeast((await $.session.version()).base)
   if (!ok && !warned) {
     warned = true
-    $.ui.toast(`The gate and the reply lint are off. They need Claude Code ${CHECKED.join('.')} or later.`, { timeoutMs: 15000 })
+    await tell($, `The gate and the reply lint are off. They need Claude Code ${CHECKED.join('.')} or later.`)
   }
   return ok
 }
@@ -100,13 +100,22 @@ async function ask($: any, system: string[], prompt: string): Promise<string> {
 // the debug log is written only in a session started with --debug.
 let told = false
 
-function off($: any, e: unknown): Verdict {
+async function off($: any, e: unknown): Promise<Verdict> {
   if (!told) {
     told = true
     const reason = (e instanceof Error ? e.message : String(e)).slice(0, 200)
-    $.ui.toast(`A model review did not run: ${reason}. That commit, PR, MCP, file, or draft text was not read. Each later check is still tried, but a later failure is not reported. The reply lint still runs.`, { timeoutMs: 15000 })
+    await tell($, `A model review did not run: ${reason}. That commit, PR, MCP, file, or draft text was not read. Each later check is still tried, but a later failure is not reported. The reply lint still runs.`)
   }
   return {}
+}
+
+// A toast closes before it can always be read, and the host keeps no copy, so
+// each one is also added to toasts.log beside the classifier caches.
+async function tell($: any, text: string): Promise<void> {
+  $.ui.toast(text, { timeoutMs: 15000 })
+  const session = await $.session.id().catch(() => '')
+  const path = await configDir($).catch(() => '')
+  if (path) await keep($, `${path}/writing-skills/toasts.log`, [`${new Date().toISOString()}\t${session}\t${text}`])
 }
 
 // The classifiers' answers are kept per user, outside the plugin's directory,
@@ -118,9 +127,13 @@ function hash(text: string): string {
   return (h >>> 0).toString(16)
 }
 
+async function configDir($: any): Promise<string | undefined> {
+  const home = (await $.env.get('HOME')) || (await $.env.get('USERPROFILE'))
+  return (await $.env.get('CLAUDE_CONFIG_DIR')) || (home && `${home}/.claude`)
+}
+
 async function cachePath($: any, name: string, prompt: string): Promise<string> {
-  const config = (await $.env.get('CLAUDE_CONFIG_DIR')) || `${(await $.env.get('HOME')) || (await $.env.get('USERPROFILE'))}/.claude`
-  return `${config}/writing-skills/${name}-${hash(await $.fs.read(`${$.plugin.root}/hooks/${prompt}`))}.txt`
+  return `${await configDir($)}/writing-skills/${name}-${hash(await $.fs.read(`${$.plugin.root}/hooks/${prompt}`))}.txt`
 }
 
 // A cache the user saved from an editor may have CRLF line ends.
@@ -422,7 +435,7 @@ async function stop($: any, turnId: string, answer: string): Promise<Verdict> {
   if (found === '') return {}
   fixups.from = from
   if (fixups.count >= 2) {
-    $.ui.toast('The draft in this reply still reads as a violation after two rewrites. Review is unresolved and the reply stands.', { timeoutMs: 15000 })
+    await tell($, 'The draft in this reply still reads as a violation after two rewrites. Review is unresolved and the reply stands.')
     return {}
   }
   fixups.count++
