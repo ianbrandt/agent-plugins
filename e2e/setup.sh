@@ -1,6 +1,6 @@
 #!/bin/bash
 # usage: setup.sh <dir> [resume]
-# Builds <dir>/repo, a scratch repo with a bare <dir>/origin.git and a two-item local-only roadmap.
+# Builds <dir>/repo, a scratch repo with a bare <dir>/origin.git and a two-item local-only backlog.
 # With `resume`, also adds a worktree for R2 with half of the item committed.
 set -euo pipefail
 rm -rf "$1"; mkdir -p "$1/repo" "$1/voice"
@@ -15,7 +15,7 @@ A scratch project for an end-to-end test. Run `sh check.sh` to check it.
 R
 cat > check.sh <<'R'
 #!/bin/sh
-# Runs every check in this repo. Each roadmap item adds its own line.
+# Runs every check in this repo. One line is added here for each backlog item.
 set -e
 echo ok
 R
@@ -29,33 +29,34 @@ git remote set-head origin main
 git branch -q --set-upstream-to=origin/main main
 git config session-skills.landing merge
 mkdir notes.local
-: > ROADMAP-CHANGELOG.local.md
-cat > ROADMAP.local.md <<'R'
-# Roadmap (local-only)
+: > BACKLOG-CHANGELOG.local.md
+cat > BACKLOG.local.md <<'R'
+# Backlog (local only)
 
-Local-only: excluded via `.git/info/exclude`, never committed or pushed. Forward-only: a landed item
-is deleted here and its done-record is appended to `ROADMAP-CHANGELOG.local.md`.
+Never commit or push this file. Highest ID used: R2
 
-Items have stable `Rn` IDs, in priority order. No item requires the user present. Commit messages
-are one imperative sentence. The mechanical gate is `sh check.sh`.
+## R1: A greeting file
 
-## R1: a greeting file
+- Touches: `greeting.txt`, `check.sh`
+- Check: `sh check.sh` exits 0, and `cat greeting.txt` prints `hello, lap`
 
 Add `greeting.txt` at the repo root with the single line `hello, lap`. Add a line to `check.sh`
 that fails when the file's content is anything else.
 
-- Touches: `greeting.txt`, `check.sh`.
-- Check: `sh check.sh` exits 0, and `cat greeting.txt` prints `hello, lap`.
+## R2: A farewell file
 
-## R2: a farewell file
+- Touches: `farewell.txt`, `README.md`
+- Check: `cat farewell.txt` prints `goodbye, lap`, and `grep -c farewell README.md` prints `1`
 
 Add `farewell.txt` at the repo root with the single line `goodbye, lap`, and mention the file in
 one sentence in `README.md`.
-
-- Touches: `farewell.txt`, `README.md`.
-- Check: `cat farewell.txt` prints `goodbye, lap`, and `grep -c farewell README.md` prints `1`.
 R
-printf '%s\n' '/ROADMAP*.local.md' '/notes.local' '.claude/' >> .git/info/exclude
+cat > PLAN.local.md <<'R'
+# Plan (local only)
+
+Commit messages are one imperative sentence. The build is `sh check.sh`.
+R
+printf '%s\n' '/BACKLOG*.local.md' '/PLAN*.local.md' '/notes.local' '.claude/' >> .git/info/exclude
 
 if [ "${2:-}" = resume ]; then
   WT=$D/repo/.claude/worktrees/r2-plum-wren

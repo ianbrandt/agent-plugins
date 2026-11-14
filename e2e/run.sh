@@ -10,9 +10,9 @@ S=$(cd "$(dirname "$0")" && pwd)
 P=${E2E_PLUGINS:-$(cd "$S/../plugins" && pwd)}
 mkdir -p "$2"; D=$(cd "$2" && pwd)
 case $1 in
-  first) "$S/setup.sh" "$D" > /dev/null; cwd=$D/repo; prompt='/roadmap-skills:next-roadmap-item R1' ;;
+  first) "$S/setup.sh" "$D" > /dev/null; cwd=$D/repo; prompt='/backlog-skills:next-backlog-item R1' ;;
   resume) "$S/setup.sh" "$D" resume > /dev/null; cwd=$D/repo/.claude/worktrees/r2-plum-wren
-    prompt='/roadmap-skills:next-roadmap-item R2' ;;
+    prompt='/backlog-skills:next-backlog-item R2' ;;
   *) echo "usage: run.sh first|resume <dir>" >&2; exit 2 ;;
 esac
 
@@ -27,7 +27,7 @@ settings="{\"enabledPlugins\":{$(IFS=,; echo "${off[*]}")}}"
   --model "${E2E_MODEL:-opus}" "${dirs[@]}" --settings "$settings" --strict-mcp-config \
   --permission-mode acceptEdits \
   --allowedTools Bash Read Edit Write Glob Grep Skill Agent \
-    mcp__roadmap-skills mcp__session-skills mcp__parallel-session-skills mcp__writing-skills \
+    mcp__backlog-skills mcp__session-skills mcp__parallel-session-skills mcp__writing-skills \
   --output-format stream-json --verbose > "$D/session.jsonl" 2> "$D/session.err" < /dev/null)
 echo "exit $?" > "$D/state.txt"
 
@@ -35,8 +35,8 @@ R=$D/repo
 { git -C "$R" worktree list; git -C "$R" branch -a; git -C "$R" log --oneline -5 main
   git -C "$R" status --short
   echo '--- origin'; git -C "$D/origin.git" log --oneline main
-  echo '--- roadmap'; grep '^## ' "$R/ROADMAP.local.md"
-  echo '--- changelog'; cat "$R/ROADMAP-CHANGELOG.local.md"
+  echo '--- backlog'; grep '^## ' "$R/BACKLOG.local.md"
+  echo '--- changelog'; cat "$R/BACKLOG-CHANGELOG.local.md"
   echo '--- claims'; ls -A "$R/.claude/claims" 2>&1
   echo '--- worktrees dir'; ls -A "$R/.claude/worktrees" 2>&1
   echo '--- check'; (cd "$R" && sh check.sh; cat ./*.txt)

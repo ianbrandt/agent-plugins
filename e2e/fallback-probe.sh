@@ -60,7 +60,7 @@ a=$(ls "${t%.jsonl}"/subagents/agent-*.jsonl 2>/dev/null)
 w=$(ls "${t%.jsonl}"/subagents/workflows/*/agent-*.jsonl 2>/dev/null)
 echo "cc-plugin-sec-default seated: $(has 'sec-default@builtin seated' debug.log)"
 echo "main loop rules: writing-skills $(has "$rules" "$t")  session-skills $(has 'SESSION RULES ACTIVE' "$t")  orchestration-skills $(has 'ORCHESTRATION MODE ACTIVE' "$t")"
-mine='ghostwriting-skills|orchestration-skills|parallel-session-skills|roadmap-skills|session-skills|writing-skills|gradle-skills'
+mine='ghostwriting-skills|orchestration-skills|parallel-session-skills|backlog-skills|session-skills|writing-skills|gradle-skills'
 echo "skip notices for these plugins: $(grep -E "\[($mine)\].*was skipped" debug.log 2>/dev/null | wc -l | tr -d ' ')"
 echo "agent    transcripts: $(echo $a | wc -w)  rules: $(has "$rules" $a)  subagent rule: $(has "$sub" $a)"
 echo "workflow transcripts: $(echo $w | wc -w)  rules: $(has "$rules" $w)  subagent rule: $(has "$sub" $w)"
