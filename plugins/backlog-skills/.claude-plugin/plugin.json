@@ -1,14 +1,14 @@
 {
   "name": "backlog-skills",
-  "description": "Skills for driving a repo's roadmap: claim the next item and build it, for repos you own or upstream OSS projects you contribute to via a fork.",
+  "description": "Skills for working through a repo's backlog of markdown items: claim the next item and build it, or work through the backlog unattended, for repos you own or upstream OSS projects you contribute to via a fork.",
   "author": {
     "name": "Ian Brandt"
   },
   "repository": "https://github.com/ianbrandt/agent-plugins",
   "license": "MIT",
   "keywords": [
-    "roadmap",
     "backlog",
+    "roadmap",
     "worktree",
     "oss",
     "contribution"

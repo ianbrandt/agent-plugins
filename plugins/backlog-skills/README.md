@@ -1,88 +1,80 @@
-# roadmap-skills
+# backlog-skills
 
-A [Claude Code](https://claude.ai/code) plugin for driving a repo's roadmap when
-you track work as a roadmap file rather than GitHub issues.
+A [Claude Code](https://claude.ai/code) plugin for working through a repo's backlog when you track
+work in markdown files rather than GitHub issues. It replaces `roadmap-skills`.
+
+## Files
+
+A repo has a backlog of claimable items and, optionally, a plan: scope, audiences, triage policy,
+and standing instructions. Build and test notes belong in `AGENTS.md` or the contributor docs.
+
+| File | Tracked | Local-only |
+|---|---|---|
+| open items | `BACKLOG.md` | `BACKLOG.local.md` |
+| parked items | `BACKLOG-PARKED.md` | `BACKLOG-PARKED.local.md` |
+| declined items | `BACKLOG-DECLINED.md` | `BACKLOG-DECLINED.local.md` |
+| done-records | git history | `BACKLOG-CHANGELOG.local.md` |
+| plan | `PLAN.md` | `PLAN.local.md` |
+
+The tracked files are for a repo you own. The local-only files are for an upstream OSS project you
+contribute to through a fork, and are excluded in `.git/info/exclude`.
+
+Each item is a `##` heading (sub-items `###`) with its ID and title, a short list of fields, then
+prose:
+
+```markdown
+# Backlog
+
+Highest ID used: R13
+
+## R12: Parser cache
+
+- Touches: `src/parser/**`
+- Gated by: R9
+- Needs: user
+- Branch: `claude/r12-parser-cache`
+- Check: `./gradlew :parser:test`
+
+The problem in a sentence or two, and anything a session needs to start.
+```
+
+The skills change these files only through the plugin's tools, which take a lock, go through a
+write journal, and refuse a write that would break the format. You can still edit the files by
+hand: each tool checks them first and reports any problem. An item is cited as `ID: Title`
+(`R12: Parser cache`), and a bare ID in a reply, a commit message, or a PR is flagged.
 
 ## Skills
 
-### `next-roadmap-item`
+### `next-backlog-item`
 
-Claims the next unclaimed, file-disjoint item on the repo's roadmap and starts
-building it test-first, coordinating with other concurrent sessions so they don't
-collide.
+Claims the topmost claimable item that touches no file another session is working on, and builds it
+test-first. An item is claimable when the items it is gated by have landed, it has no problem, and
+no branch has it in flight. An optional hint (`/next-backlog-item R12`) prefers that item without
+overriding those rules, and resumes it when it is already in flight. A task you state directly
+("upgrade X") gets an item first.
 
-The plan of record lives in one of two places, and this skill finds it:
+In a repo that still has a `ROADMAP*` file, a one-time migration is offered first. The items are
+converted to the new format, the header is moved into the plan, and rules already stated in the
+plugin are left out. The `migrate_backlog` tool does the mechanical steps and can resume after an
+interruption.
 
-- Tracked at the repo root, in a repo you own. The landing commit that
-  deletes the item is the done-record, so there is no changelog.
-- Local-only, for an upstream OSS project you contribute to via a fork. The
-  roadmap and its companions are untracked, so the done-record is written to
-  `ROADMAP-CHANGELOG.local.md` instead of git history.
+### `work-backlog`
 
-Naming follows that split: tracked repos have `ROADMAP.md` plus
-`ROADMAP-PARKED.md` and `ROADMAP-DECLINED.md` as needed; a local-only plan uses
-the same names with a `.local.md` suffix, which marks the files as never committed
-and keeps a shadow roadmap from colliding with an upstream project's real
-`ROADMAP.md`. (`docs/roadmap.md` is honored as a legacy location.)
-
-An item's probe scripts and run output go in a directory named for its ID, such
-as `notes.local/R12/`. When the item lands, its findings are moved into the
-design doc or the done-record and the directory is deleted, so only notes for
-work still open or parked are left.
-
-Where the plan lives is a separate question from how finished work lands. To
-land it, `land-and-wrap` reads four facts about the clone: whether the repo is a
-fork, its landing mode (a merge into the default branch or a pull request), and
-its push and post modes, which set whether the user confirms each push and each
-post to the host. Work in a repo you own lands the same way whether the roadmap
-is tracked or local-only.
-
-An optional lane hint (`/next-roadmap-item R1`) biases the pick without
-overriding the no-collision rules. Point the hint at an item that's already in
-flight and partially built and the skill resumes it, continuing that item's
-existing branch instead of opening a new one off the default branch. It finds
-the branch from the pin in the roadmap or from the branch's name, not from the
-claim ledger—a session releases its claim at wrap whether
-or not its item finished.
-
-### `execute-roadmap`
-
-The roadmap half of an unattended run. The conductor loop—the in-flight cap,
-the fill loop, retries, the build gate, the stop conditions—is
-`parallel-session-skills`' `conduct-a-pipeline`, which works the same way
-whatever the backlog is. This skill supplies the two inputs that loop takes from
-the roadmap: the ordered candidate list (open, ungated, and on a fork not
-flagged as requiring you present) and, once an item is green, deleting it from
-the roadmap or appending its changelog entry, or, for a PR not yet merged,
-pinning it to its branch.
-
-The loop is kept in `parallel-session-skills` because a conductor with several
-lanes open needs the disjointness check on the claim ledger, and none of that
-work depends on the backlog being a markdown file.
+Works through the backlog unattended. With `parallel-session-skills` installed, several items run
+at once through its conductor. Without it, items run one at a time in the primary checkout, with
+the same build gate, retries, and stop conditions.
 
 ## What It Pairs With
 
-The branch and landing are handled in `session-skills`, and a worktree and the
-claim ledger in `parallel-session-skills`. This plugin is a backlog plugin for both: it
-supplies what is workable, where an item is already in flight, and how a landed
-item gets recorded, from a markdown file rather than an issue tracker. The
-dependency runs one way: these skills call into those, never the reverse, so a
-different backlog (issues, a tracker) plugs into the same seam without touching
-it.
-
-`next-roadmap-item` needs only `session-skills`. When there is no ledger to
-read, it runs uncoordinated and reports that in one line. `execute-roadmap`
-needs `parallel-session-skills` too, since the conductor loop is defined there.
-
-Sequencing is recorded in the roadmap, because a gate between two items is
-known before any session starts and is written only in the backlog. Which files
-a lane touches is a fact about the working tree, so disjointness is checked
-against the claim ledger.
+The branch and the landing are handled in `session-skills`, and the worktrees and the claim ledger
+in `parallel-session-skills`. Both skills need `session-skills`. When there is no claim ledger,
+`next-backlog-item` runs uncoordinated and says so in one line. Disjointness between sessions is
+checked against the claim ledger, since which files a lane touches is a fact about the working
+tree. Sequencing is in the backlog's `Gated by` fields, since it is known before any session starts.
 
 ## How It Is Wired
 
-In a repo with a roadmap, a short rule is added to the first prompt so that a task you state directly
-is given a roadmap item, started through `next-roadmap-item`, and landed through `land-and-wrap`. The skills call
-two tools that the plugin registers, `find_roadmap` and `delete_item`. Claude Code 2.1.308 or
-later is required, and `delete_item` also needs git 2.36 or later. [DESIGN.md](docs/DESIGN.md) covers
-the rule, both tools, and how the roadmap is found.
+In a repo with a backlog, a short rule is added to the first prompt so that a task you state
+directly gets an item, is started through `next-backlog-item`, and is landed through
+`land-and-wrap`. Claude Code 2.1.308 or later and git 2.36 or later are required.
+[DESIGN.md](docs/DESIGN.md) covers the tools, the lock, the journal, and the checks.
