@@ -38,7 +38,7 @@ function world(on: any, first: Repo) {
   return w
 }
 const start = async ($: any) => (await $.prompt.submit({ text: 'hi' })).context ?? []
-const FIND = 'mcp__roadmap-skills__find_roadmap'
+const FIND = 'mcp__backlog-skills__find_roadmap'
 const found = async ($: any) => (await $.tool.call({ tool: FIND })).result
 
 test('the rule is added in a repo with a roadmap, read from the primary checkout', async ($: any, on: any) => {

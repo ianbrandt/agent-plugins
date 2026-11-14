@@ -1,5 +1,5 @@
 {
-  "name": "roadmap-skills",
+  "name": "backlog-skills",
   "description": "Skills for driving a repo's roadmap: claim the next item and build it, for repos you own or upstream OSS projects you contribute to via a fork.",
   "author": {
     "name": "Ian Brandt"

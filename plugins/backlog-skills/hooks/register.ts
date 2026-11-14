@@ -4,8 +4,8 @@ import type { Register } from 'claude-code'
 import { deleteItem } from './item'
 import { type Plan, planOf, rule } from './plan'
 
-const DELETE = 'mcp__roadmap-skills__delete_item'
-const FIND = 'mcp__roadmap-skills__find_roadmap'
+const DELETE = 'mcp__backlog-skills__delete_item'
+const FIND = 'mcp__backlog-skills__find_roadmap'
 
 // The first line git wrote for a command that failed, or its exit code: Claude
 // Code reports a git that crashed as exit 1 with no output.

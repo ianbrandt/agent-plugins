@@ -75,7 +75,7 @@ test('a fence closes in a file with CRLF line ends, and with a tab after it', ()
   expect(deleteItem('## R1: one\n```\ncode\n```\t\n## R2: two\n', 'R1').text).toBe('## R2: two\n')
 })
 
-const TOOL = 'mcp__roadmap-skills__delete_item'
+const TOOL = 'mcp__backlog-skills__delete_item'
 const PATH = '/repo/ROADMAP.local.md'
 
 // The primary checkout is /repo, and the files are the ones in it.

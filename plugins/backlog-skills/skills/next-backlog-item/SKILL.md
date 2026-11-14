@@ -1,5 +1,5 @@
 ---
-name: next-roadmap-item
+name: next-backlog-item
 description: >-
   Claim the next unclaimed, non-colliding item on THIS repo's roadmap and start
   building it. Finds the plan of record in either place it lives—tracked at the

@@ -1,5 +1,5 @@
 ---
-name: execute-roadmap
+name: work-backlog
 description: >-
   Work through THIS repo's roadmap unattended: derive the ordered candidate list
   from the roadmap, hand it to parallel-session-skills' conduct-a-pipeline, and
