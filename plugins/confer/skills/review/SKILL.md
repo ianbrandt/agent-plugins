@@ -69,6 +69,24 @@ From `report`, print:
 
 No emoji. The user decides whether to merge.
 
+Without `--findings`, the confirmed, unresolved, and single-reviewer findings are also listed with
+the `ReportFindings` tool, loaded with `ToolSearch` `select:ReportFindings` when it is deferred:
+
+1. Call `ReportFindings` once, with no `level` and those findings most severe first, or an empty
+   list when there are none:
+   - `verdict: CONFIRMED` for each confirmed finding, and `verdict: PLAUSIBLE` for each unresolved
+     or single-reviewer finding.
+   - `file`, `line`, and `failure_scenario` from the finding's `path`, `line`, and `evidence`.
+   - `summary`: the defect in one sentence, then who found it and who agreed, or both positions
+     for an unresolved finding. Add the other locations of a `same` finding.
+2. Then, in your reply after that call, print the whole report as above, but print only a one-line
+   description for each of those findings, plus the suggested fix labelled `unprobed` for a
+   confirmed one. Everything else is printed in full: the heading and outcome, the refuted,
+   withdrawn, preexisting, and fixed findings, the fix outcomes, and each side's coverage,
+   limitations, models, tokens, and cost. A short summary in place of the report is not enough.
+
+Where the tool is missing, print the whole report.
+
 With `--findings`, no one is present: the mod writes the report to that file when the run ends, so
 end with the report and ask nothing. When the result includes `findingsError`, the file was not
 written: print that error first.
@@ -86,3 +104,6 @@ every fixable finding; otherwise ask the user which to fix, all or none included
 3. Call `review_round { run }` alone. It starts the fix review, in which both models review only
    the fix diff, and its rounds go as above.
 4. When the fix review ends with new `fixable` findings, offer them as in step 1.
+
+After a fix review, the `ReportFindings` call also includes the findings from the review before it,
+each with `outcome: fixed` when the report lists it as fixed, and `outcome: skipped` otherwise.

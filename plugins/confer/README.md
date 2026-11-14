@@ -81,7 +81,8 @@ To review something else, pass it as the target:
 
 The confirmed findings come first in the report, each with a failure scenario or a source
 reference. Then come the findings still disputed, with both positions, and the ones refuted or
-withdrawn. Each side's models, tokens, and cost are listed last.
+withdrawn. Each side's models, tokens, and cost are listed last. The confirmed and disputed
+findings are shown in the same findings list that `/code-review` uses.
 
 To fix the confirmed findings and have both sides review the fix, add `--fix`:
 
