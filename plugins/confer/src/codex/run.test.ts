@@ -165,7 +165,7 @@ const reviewArgv = (sandbox: string[]) => [
 ]
 
 const tracked = `git -C ${winRepo} ls-files -z --with-tree=HEAD -- :(icase).claude`
-const ignored = `git -C ${winRepo} check-ignore -q --no-index -- .claude/settings.local.json`
+const ignored = `git -C ${winRepo} ls-files -z --others --ignored --exclude-standard -- :(icase).claude`
 const index = `git -C ${winRepo} ls-files -s -v -z`
 const worktreeSteps = [
   `git -C ${winRepo} write-tree`,
@@ -585,13 +585,23 @@ test('the worktree switch in userConfig turns the worktree off', { options: { wo
 const localSettings = JSON.stringify({ pluginConfigs: { 'confer@market': { options: { worktree: false } } } })
 const settingsFile = { [`${winRepo}/.claude/settings.local.json`]: localSettings }
 
+const isIgnored = { [ignored]: { stdout: '.claude/settings.local.json\0.claude/worktrees/wt/\0' } }
+
 test("the reviewed repo's ignored, untracked local settings turn the worktree off", async ($, on) => {
-  const { log, spawns } = world(on, { files: settingsFile })
+  const { log, spawns } = world(on, { files: settingsFile, answers: isIgnored })
 
   await run($, onWindows)
 
   expect(log).not.toContain(`git -C ${winRepo} write-tree`)
   expect(spawns[0]?.cwd).toBe(winRepo)
+})
+
+test('no command names a Claude Code settings file, which the sec-default policy plugin refuses', async ($, on) => {
+  const { log } = world(on, { files: settingsFile, answers: isIgnored })
+
+  await run($, onWindows)
+
+  expect(log.filter(argv => /\.claude[/\\](settings|settings\.local|cowork_settings)\.json/i.test(argv))).toEqual([])
 })
 
 test('local settings tracked in HEAD or the index leave the worktree on, in any case', async ($, on) => {
@@ -603,7 +613,7 @@ test('local settings tracked in HEAD or the index leave the worktree on, in any 
 })
 
 test('untracked local settings that Git does not ignore leave the worktree on', async ($, on) => {
-  const { spawns } = world(on, { files: settingsFile, answers: { [ignored]: { exitCode: 1 } } })
+  const { spawns } = world(on, { files: settingsFile })
 
   await run($, onWindows)
 

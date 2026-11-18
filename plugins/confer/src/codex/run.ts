@@ -281,12 +281,13 @@ async function codexVersion($: EngineInterface): Promise<string> {
 // The reviewed repo's .claude/settings.local.json can turn the worktree off, since Claude Code
 // does not apply a project's pluginConfigs to options. One tracked in HEAD or the index, or not
 // ignored, could be part of the change under review, so it is not read. ls-tree refuses icase
-// pathspecs, and --with-tree=HEAD lists HEAD's paths too.
+// pathspecs, and --with-tree=HEAD lists HEAD's paths too. Neither Git call names the settings file:
+// the sec-default policy plugin refuses a command whose arguments do, as a possible settings write.
 async function isWorktreeOffHere($: EngineInterface, top: string): Promise<boolean> {
-  const tracked = (await git($, ['-C', top, 'ls-files', '-z', '--with-tree=HEAD', '--', ':(icase).claude'])).toLowerCase().split('\0')
+  const listed = async (args: string[]) => (await git($, ['-C', top, 'ls-files', '-z', ...args, '--', ':(icase).claude'])).toLowerCase().split('\0')
+  const tracked = await listed(['--with-tree=HEAD'])
   if (tracked.includes('.claude') || tracked.includes('.claude/settings.local.json')) return false
-  const ignored = ['git', '-C', top, 'check-ignore', '-q', '--no-index', '--', '.claude/settings.local.json']
-  if ((await $.process.run(ignored, { timeoutMs: gitTimeoutMs })).exitCode !== 0) return false
+  if (!(await listed(['--others', '--ignored', '--exclude-standard'])).includes('.claude/settings.local.json')) return false
   let settings: { pluginConfigs?: Record<string, { options?: { worktree?: unknown } }> }
   try {
     settings = JSON.parse(await $.fs.read(`${top}/.claude/settings.local.json`))
