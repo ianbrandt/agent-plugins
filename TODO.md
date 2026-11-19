@@ -83,8 +83,8 @@ The prompt read "This command requires approval" instead of the hook's reason. A
 type documentation of `ToolCheckResult.reason`, the dialog shows a hook's reason on an ask, so
 the missing text is a Claude Code defect rather than a session-skills one. A line sent with
 `$.ui.notice` from the hook, before or after the prompt opened, never appeared under it either.
-The prompt and the confirmation are enough, so the defect goes to Claude Code with `/bug` and
-nothing changes in session-skills.
+The prompt and the confirmation are enough, so nothing changes in session-skills. The defect was
+filed with Claude Code's `/bug` on 2026-11-19.
 
 ### What is still open
 
