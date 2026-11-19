@@ -86,9 +86,14 @@ the missing text is a Claude Code defect rather than a session-skills one. A lin
 The prompt and the confirmation are enough, so nothing changes in session-skills. The defect was
 filed with Claude Code's `/bug` on 2026-11-19.
 
+- Headless in auto mode, the debug log for `gh pr create` in a scratch clone has `ask -> deny
+  by plugin session-skills: This clone is in confirm-post mode, so you confirm each post.` from
+  `tool.check`, the same path as the push prompt. With `session-skills.postMode` set to
+  `auto-post`, the same command ran and failed in gh, since the clone has no GitHub remote.
+
 ### What is still open
 
-- The confirm-post prompt, as for `gh pr create`, was not probed.
+- The confirm-post prompt was probed only headless, not in an interactive session.
 
 ## Record a PowerShell stdin trap with the powershell skill
 
