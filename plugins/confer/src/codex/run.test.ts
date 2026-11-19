@@ -468,6 +468,25 @@ test('the worktree is removed when Codex cannot start', async ($, on) => {
   expect(log.at(-1)).toBe(removal)
 })
 
+const policyRefusal = 'a Claude Code settings file is not for plugins outside policy to write; read settings with $.settings.read'
+
+test('a refused start is explained when the prompt quotes a Claude Code settings file', async ($, on) => {
+  world(on, { codex: { fail: new Error(policyRefusal) } })
+
+  const result = await run($, { prompt: 'F1: run.ts reads .CLAUDE\\Settings.Local.json twice.' })
+
+  expect(result.status).toBe('failed')
+  expect(result.error).toMatch(/^Codex was not started\. Under managed settings, .* Claude Code said: confer: \$\.process\.spawn: a Claude Code settings file is not/)
+})
+
+test('a refused start is reported as is when the prompt quotes no settings file', async ($, on) => {
+  world(on, { codex: { fail: new Error(policyRefusal) } })
+
+  const result = await run($, { prompt: 'F1: run.ts reads settings.local.json twice.' })
+
+  expect(result.error).toBe(`confer: $.process.spawn: ${policyRefusal}`)
+})
+
 test('a timeout kills Codex, keeps what it wrote, and removes the worktree', async ($, on) => {
   const { log, writes, clock } = world(on, { codex: { hang: 'exit' } })
 

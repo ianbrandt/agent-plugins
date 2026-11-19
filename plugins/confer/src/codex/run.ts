@@ -312,6 +312,13 @@ async function enabledMcpServers($: EngineInterface, cwd: string): Promise<strin
   return names
 }
 
+// Under managed settings, Claude Code refuses a spawn when its input contains a Claude Code settings
+// file path, by the same test as this one. Confer explains the refusal and does not work around it.
+const quotesSettingsFile = (text: string) => /\.claude\/(settings|settings\.local|cowork_settings)\.json/.test(text.replace(/[/\\]+/g, '/').toLowerCase())
+
+const guardRefusal =
+  "Codex was not started. Under managed settings, Claude Code refuses to start a process for a plugin outside policy when the process input contains a Claude Code settings file path. This round's prompt contains one, from the change under review or a reviewer's findings. Run this review on a machine without managed settings, or have Confer added to your organization's plugin policy."
+
 async function review(
   $: EngineInterface,
   { prompt, model, effort, onStart }: CodexRunRequest,
@@ -357,13 +364,16 @@ async function review(
     void stream.return({ code: null, signal: null })
   })
   let end: ProcessSpawnResult = { code: null, signal: null }
+  let isStarted = false
   try {
     for (;;) {
       let piece: Awaited<ReturnType<typeof stream.next>>
       try {
         piece = await stream.next()
+        isStarted = true
       } catch (error) {
         if (isTimedOut) break
+        if (!isStarted && quotesSettingsFile(prompt)) throw new Error(`${guardRefusal} Claude Code said: ${error instanceof Error ? error.message : String(error)}`)
         throw error
       }
       if (piece.done) {
