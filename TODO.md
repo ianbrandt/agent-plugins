@@ -59,22 +59,38 @@ on every sweep. On the Windows machine:
 Expected: `0ee7848e` lists no worktrees and has none on disk. Replace this item with the output
 of each step.
 
-## Make session-skills and parallel-session-skills work under managed settings
+## Check the confirm-push prompt of the session-skills hook on the Mac
 
-On a machine with managed settings, Claude Code refuses two kinds of call from these plugins, and
-the confirm-push and confirm-post prompts are lost in worktree sessions as a result. Start a
-session in the repo root at Opus + Extra with this prompt:
+session-skills now raises the confirm-push and confirm-post prompts from a `tool.check` hook, in
+place of `permissions.ask` rules in `.claude/settings.local.json`. It was probed only headless, on
+the Windows machine. Once session-skills is released with the hook, on the Mac:
 
-```
-On managed machines, Claude Code's cc-plugin-sec-default guard blocks two things that session-skills and parallel-session-skills depend on. (1) It refuses a plugin outside the org's policy that writes .claude/settings*.json ($.fs.write), or that passes such a path in a $.process.run/spawn argv or stdin. set_push_policy can't write its permissions.ask rules, and open_worktree can't copy them into a new worktree, so worktree sessions lose the push/post prompts. (2) It refuses a plugin's $.process.run unless the user's permission rules would allow it as a Bash call ("this repeats a Bash call that is not allowed"). remove_worktree's directory delete fails this way. Confirm (2) from the guard's code in claude.exe, find every plugin command it affects, then design how confirm-push and confirm-post keep working and how both plugins report a refusal clearly, without writing settings or working around the guard. Build it with tests. Also: when git worktree remove fails with "Permission denied", have remove_worktree's error give the hint from work-in-worktree SKILL.md:134 (a process, such as the session's shell, is still in the directory).
-```
+1. Update session-skills, and check its version in `claude plugin list`:
 
-## Add a convention for managed-settings refusals to AGENTS.md
+   ```shell
+   claude plugin marketplace update ianbrandt
+   claude plugin update session-skills@ianbrandt
+   ```
 
-When Claude Code refuses a plugin call under managed settings, the plugin reports the refusal with
-an explanation and never reshapes its input to get past the check. Add that to `AGENTS.md`, then
-decide whether the `ls-files` call at `plugins/confer/src/codex/run.ts:281-290` stays. It is a
-read, but it was written to keep the settings file path out of the arguments Claude Code checks.
+2. Make a scratch repo with a bare remote and a worktree, and print its directory:
+
+   ```bash
+   p=$(mktemp -d)
+   git init -q --bare "$p/remote.git"
+   git init -q -b main "$p/repo"
+   git -C "$p/repo" commit -q --allow-empty -m one
+   git -C "$p/repo" remote add origin "$p/remote.git"
+   git -C "$p/repo" worktree add -q "$p/repo/.claude/worktrees/wt" -b wt
+   echo "$p"
+   ```
+
+3. In `$p/repo`, start `claude --permission-mode auto` and send `Run git push origin main`.
+   Expected: a permission prompt with "This clone is in confirm-push mode, so you confirm each
+   push." Answer no. Then `git -C "$p/remote.git" branch` prints nothing.
+4. Repeat step 3 in `$p/repo/.claude/worktrees/wt` with `Run git push origin wt`.
+5. Delete the scratch repo with `rm -rf "$p"`.
+
+Replace this item with what each of steps 3 and 4 showed.
 
 ## Record a PowerShell stdin trap with the powershell skill
 
