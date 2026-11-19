@@ -373,7 +373,8 @@ async function review(
         isStarted = true
       } catch (error) {
         if (isTimedOut) break
-        if (!isStarted && quotesSettingsFile(prompt)) throw new Error(`${guardRefusal} Claude Code said: ${error instanceof Error ? error.message : String(error)}`)
+        const message = error instanceof Error ? error.message : String(error)
+        if (!isStarted && message.includes('not for plugins outside policy') && quotesSettingsFile(prompt)) throw new Error(`${guardRefusal} Claude Code said: ${message}`)
         throw error
       }
       if (piece.done) {

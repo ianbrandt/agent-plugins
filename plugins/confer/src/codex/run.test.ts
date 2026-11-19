@@ -479,6 +479,14 @@ test('a refused start is explained when the prompt quotes a Claude Code settings
   expect(result.error).toMatch(/^Codex was not started\. Under managed settings, .* Claude Code said: confer: \$\.process\.spawn: a Claude Code settings file is not/)
 })
 
+test('another failure to start is reported as is when the prompt quotes a settings file', async ($, on) => {
+  world(on, { codex: { fail: new Error('ENOENT: codex') } })
+
+  const result = await run($, { prompt: 'F1: run.ts reads .claude/settings.json twice.' })
+
+  expect(result.error).toBe('confer: $.process.spawn: ENOENT: codex')
+})
+
 test('a refused start is reported as is when the prompt quotes no settings file', async ($, on) => {
   world(on, { codex: { fail: new Error(policyRefusal) } })
 
