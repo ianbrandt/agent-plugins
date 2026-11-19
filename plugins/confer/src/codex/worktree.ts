@@ -58,15 +58,13 @@ export async function fillWorktree($: EngineInterface, repo: string, path: strin
   return nested.length > 0 ? [`The worktree does not include the untracked nested repositories ${nested.join(', ')}.`] : []
 }
 
-// Resolves with the path when the worktree is still there after a second try. Never rejects.
+// Resolves with the path when the worktree is still there, for a later cleanup to remove. Never rejects.
+// No retry after a wait: a hook's $.clock waits count against its 10-second budget.
+// --force twice removes a worktree that a killed `git worktree add` left locked.
 export async function removeWorktree($: EngineInterface, repo: string, path: string): Promise<string | undefined> {
-  const remove = () =>
-    $.process.run(['git', '-C', repo, 'worktree', 'remove', '--force', path], { timeoutMs: gitTimeoutMs }).then(
-      ({ exitCode }) => exitCode === 0,
-      () => false,
-    )
-  if (await remove()) return undefined
-  // The kill after a timeout reaches Codex's children a few seconds later.
-  await $.clock.sleep(5_000).catch(() => undefined)
-  return (await remove()) ? undefined : path
+  const removed = await $.process.run(['git', '-C', repo, 'worktree', 'remove', '--force', '--force', path], { timeoutMs: gitTimeoutMs }).then(
+    ({ exitCode }) => exitCode === 0,
+    () => false,
+  )
+  return removed ? undefined : path
 }

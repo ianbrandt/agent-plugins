@@ -179,7 +179,8 @@ const worktreeSteps = [
   `git -C ${worktree} read-tree tree1`,
   `git -C ${worktree} update-index -q --refresh`,
 ]
-const removal = `git -C ${winRepo} worktree remove --force ${worktree}`
+// --force twice removes a worktree that a killed `git worktree add` left locked.
+const removal = `git -C ${winRepo} worktree remove --force --force ${worktree}`
 const refs = `git -C ${winRepo} for-each-ref --format=%(refname) %(objectname)`
 const config = `git -C ${winRepo} config --local --list -z`
 
@@ -504,25 +505,26 @@ test('the default timeout is half an hour', async ($, on) => {
   expect(result).toMatchObject({ status: 'timeout', elapsedMs: 1_800_000 })
 })
 
-test('a worktree that cannot be removed is tried again after five seconds, then reported', async ($, on) => {
+// A hook's $.clock waits count against its 10-second budget, so a removal is never retried after a wait.
+test('a worktree that cannot be removed is reported without waiting on the clock', async ($, on) => {
   const { log, clock } = world(on, { answers: { [removal]: { exitCode: 1, stderr: 'Permission denied' } } })
 
-  const pending = run($, onWindows)
-  await clock.advance(5_000)
-  const result = await pending
+  let result: CodexRunResult | undefined
+  void run($, onWindows).then(r => (result = r))
+  await clock.settle()
 
-  expect(log.filter(argv => argv === removal)).toHaveLength(2)
+  expect(log.filter(argv => argv === removal)).toHaveLength(1)
   expect(result).toMatchObject({ status: 'completed', worktreeLeft: worktree })
 })
 
 test('a removal that cannot run is reported without changing the review', async ($, on) => {
   const { log, clock } = world(on, { codex: { stdout: unknownModel, code: 1 }, answers: { [removal]: new Error('EPERM: git') } })
 
-  const pending = run($, onWindows)
-  await clock.advance(5_000)
-  const result = await pending
+  let result: CodexRunResult | undefined
+  void run($, onWindows).then(r => (result = r))
+  await clock.settle()
 
-  expect(log.filter(argv => argv === removal)).toHaveLength(2)
+  expect(log.filter(argv => argv === removal)).toHaveLength(1)
   expect(result).toMatchObject({
     status: 'failed',
     error: "The 'confer-no-such-model' model is not supported when using Codex with a ChatGPT account.",

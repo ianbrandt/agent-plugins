@@ -16,14 +16,16 @@ function retryTime(text: string | undefined): number | undefined {
   return Number.isNaN(time) ? undefined : time
 }
 
-// git refuses to remove a directory it no longer lists as a worktree, which a removal on Windows can leave behind.
-// Confer made the directory inside its run folder, so it is deleted directly.
+// git refuses to remove a directory it no longer lists as a worktree, or lists as prunable once only its .git file is gone,
+// and a removal on Windows can leave either behind. Confer made the directory inside its run folder, so it is deleted directly.
 async function removeUnlisted($: EngineInterface, top: string, path: string): Promise<boolean> {
   const listed = await git($, ['-C', top, 'worktree', 'list', '--porcelain', '-z']).catch(() => undefined)
   if (listed === undefined) return false
   const isWindows = isWindowsPath(top)
   const key = (p: string) => (isWindows ? p.replace(/\\/g, '/').toLowerCase() : p)
-  if (listed.split('\0').some(line => line.startsWith('worktree ') && key(line.slice('worktree '.length)) === key(path))) return false
+  const entries = listed.split('\0\0').map(entry => entry.split('\0'))
+  const isUsable = (lines: string[]) => lines.some(line => line.startsWith('worktree ') && key(line.slice('worktree '.length)) === key(path)) && !lines.some(line => line.startsWith('prunable'))
+  if (entries.some(isUsable)) return false
   const argv = isWindows
     ? ['powershell', '-NoProfile', '-NonInteractive', '-Command', 'Remove-Item -LiteralPath $env:CONFER_WORKTREE -Recurse -Force']
     : ['rm', '-rf', '--', path]

@@ -1042,7 +1042,7 @@ test('a PR is fetched into refs of the run and read in a worktree, which every e
 
   expect(runs.map(r => r.key)).toEqual(
     expect.arrayContaining([
-      `git -C ${top} worktree remove --force ${dir}/checkout`,
+      `git -C ${top} worktree remove --force --force ${dir}/checkout`,
       `git -C ${top} update-ref -d refs/confer/${round1.run}/head`,
       `git -C ${top} update-ref -d refs/confer/${round1.run}/base`,
     ]),
@@ -1154,6 +1154,39 @@ test('review_start deletes a leftover worktree directory that git no longer list
   expect(state(files, 'abcdef01').resources.worktrees).toEqual([])
   expect(state(files, 'abcdef02').resources.worktrees).toEqual([])
   expect(state(files, 'abcdef03').resources.worktrees).toEqual([windows('abcdef03')])
+})
+
+// A hook's $.clock waits count against its 10-second budget, and past it the engine answers the call with no result.
+// A killed `git worktree add` leaves its worktree locked, and a partial removal on Windows can delete only the .git file.
+test('review_start clears a locked and a prunable leftover worktree without waiting on the clock', async ($, on) => {
+  const windowsTop = 'C:\\repo'
+  const locked = 'C:\\confer\\abcdef01\\checkout'
+  const prunable = 'C:\\confer\\abcdef02\\checkout'
+  const { runs, files, clock } = world(on, {
+    answers: {
+      [`git -C ${windowsTop} worktree list --porcelain -z`]: {
+        stdout: 'worktree C:/repo\0HEAD head1\0branch refs/heads/main\0\0worktree c:/confer/abcdef02/checkout\0HEAD head1\0detached\0prunable gitdir file points to non-existent location\0\0',
+      },
+      [`git -C ${windowsTop} worktree remove --force ${locked}`]: { exitCode: 128, stderr: "fatal: cannot remove a locked working tree, lock reason: initializing\nuse 'remove -f -f' to override or unlock first" },
+    },
+    match: key => (key.includes(` worktree remove `) && key.endsWith(prunable) ? { exitCode: 128, stderr: "fatal: validation failed, cannot remove working tree: '.git' does not exist" } : undefined),
+  })
+
+  const old = await begin($)
+  await call($, 'review_cancel', { run: old.run })
+  const ended = state(files, old.run)
+  for (const [id, worktree] of [['abcdef01', locked], ['abcdef02', prunable]]) {
+    files[`${root}/${id}/state.json`] = JSON.stringify({ ...ended, id, dir: `${root}/${id}`, top: windowsTop, resources: { worktrees: [worktree], refs: [] } })
+  }
+  let isAnswered = false
+  void anotherStart($).then(() => (isAnswered = true))
+  await clock.settle()
+
+  expect(isAnswered).toBe(true)
+  expect(runs.map(r => r.key)).toContain(`git -C ${windowsTop} worktree remove --force --force ${locked}`)
+  expect(runs.filter(r => r.key.startsWith('powershell ')).map(r => r.init?.env)).toEqual([{ CONFER_WORKTREE: prunable }])
+  expect(state(files, 'abcdef01').resources.worktrees).toEqual([])
+  expect(state(files, 'abcdef02').resources.worktrees).toEqual([])
 })
 
 test('a target that is no commit and no path fails the start', async ($, on) => {
@@ -1374,7 +1407,7 @@ test('a commit is read in a worktree at its head, with no drift check, and the w
   expect(runs.filter(r => r.key.includes('write-tree'))).toEqual([])
   expect(done).toMatchObject({ status: 'complete', report: { summary: 'No issues found', phases: [{ tree: 'tree7' }] } })
   expect(done.fixable).toBeUndefined()
-  expect(runs.map(r => r.key)).toContain(`git -C ${top} worktree remove --force ${checkout}`)
+  expect(runs.map(r => r.key)).toContain(`git -C ${top} worktree remove --force --force ${checkout}`)
 })
 
 const rangeBase = 'b'.repeat(40)
@@ -1776,7 +1809,7 @@ test('session.end expires a run started with --findings, writes its file, and re
 
   await call($, 'review_start', { args: '', pick: 'complex', isSure: true })
 
-  expect(runs.map(r => r.key)).toContain(`git -C ${top} worktree remove --force ${root}/${unattended.run}/checkout`)
+  expect(runs.map(r => r.key)).toContain(`git -C ${top} worktree remove --force --force ${root}/${unattended.run}/checkout`)
 })
 
 test('session.end expires a paused run with the Codex error in its note', async ($, on) => {
