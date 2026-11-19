@@ -59,38 +59,36 @@ on every sweep. On the Windows machine:
 Expected: `0ee7848e` lists no worktrees and has none on disk. Replace this item with the output
 of each step.
 
-## Check the confirm-push prompt of the session-skills hook on the Mac
+## Analyze the Mac results of the session-skills confirm-push prompt
 
-session-skills now raises the confirm-push and confirm-post prompts from a `tool.check` hook, in
-place of `permissions.ask` rules in `.claude/settings.local.json`. It was probed only headless, on
-the Windows machine. Once session-skills is released with the hook, on the Mac:
+Probed on 2026-11-19 with Claude Code 2.1.328 in auto mode. The latest release, session-skills
+0.35.2, predates `b8bdcf8`, so each session loaded the hook from this checkout with
+`--plugin-dir plugins/session-skills`, which overrides the installed copy.
 
-1. Update session-skills, and check its version in `claude plugin list`:
+### What matched
 
-   ```shell
-   claude plugin marketplace update ianbrandt
-   claude plugin update session-skills@ianbrandt
-   ```
+- In the primary checkout, `git push origin main` raised a permission prompt. After the answer
+  no, the bare remote had no branches.
+- In the worktree, `git push origin wt` raised a prompt too, and `wt` never reached the remote.
+- In the debug log, the hook reads the clone's git config and settles `tool.check` before the
+  prompt, with no auto-mode classifier call. Headless, the same push logged `ask -> deny by
+  plugin session-skills: This clone is in confirm-push mode, so you confirm each push.`, and the
+  model got that reason.
+- With `session-skills.pushMode` set to `auto-push`, the same push ran headless with no prompt.
+  The classifier allows this push, so the confirm-push prompts came from the hook.
 
-2. Make a scratch repo with a bare remote and a worktree, and print its directory:
+### What differed
 
-   ```bash
-   p=$(mktemp -d)
-   git init -q --bare "$p/remote.git"
-   git init -q -b main "$p/repo"
-   git -C "$p/repo" commit -q --allow-empty -m one
-   git -C "$p/repo" remote add origin "$p/remote.git"
-   git -C "$p/repo" worktree add -q "$p/repo/.claude/worktrees/wt" -b wt
-   echo "$p"
-   ```
+The prompt read "This command requires approval" instead of the hook's reason. According to the
+type documentation of `ToolCheckResult.reason`, the dialog shows a hook's reason on an ask, so
+the missing text is a Claude Code defect rather than a session-skills one. A line sent with
+`$.ui.notice` from the hook, before or after the prompt opened, never appeared under it either.
+The prompt and the confirmation are enough, so the defect goes to Claude Code with `/bug` and
+nothing changes in session-skills.
 
-3. In `$p/repo`, start `claude --permission-mode auto` and send `Run git push origin main`.
-   Expected: a permission prompt with "This clone is in confirm-push mode, so you confirm each
-   push." Answer no. Then `git -C "$p/remote.git" branch` prints nothing.
-4. Repeat step 3 in `$p/repo/.claude/worktrees/wt` with `Run git push origin wt`.
-5. Delete the scratch repo with `rm -rf "$p"`.
+### What is still open
 
-Replace this item with what each of steps 3 and 4 showed.
+- The confirm-post prompt, as for `gh pr create`, was not probed.
 
 ## Record a PowerShell stdin trap with the powershell skill
 
