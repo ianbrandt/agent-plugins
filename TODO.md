@@ -95,9 +95,3 @@ filed with Claude Code's `/bug` on 2026-11-19.
 In PowerShell 7.6 on Windows, a string piped into a native command arrives with a CRLF line
 ending. `git check-ignore --stdin` keeps the `\r` as part of the path and exits 1 for an ignored
 path, while the same path read from an LF file matches. Run `/powershell:powershell` to record it.
-
-## Decide whether to release Confer with the refusal explanation
-
-`main` has `fd693f8` and `5556b3e`, which explain a managed-settings refusal of the Codex start.
-The installed Confer 0.17.2 does not have them, so a refused round still shows only Claude Code's
-raw message.
