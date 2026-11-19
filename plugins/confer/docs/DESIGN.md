@@ -53,6 +53,19 @@ uses native events only. Under some managed settings, a user plugin's `classic.*
   both on its framing. `/confer:plan` starts from the session's draft, since only that session can
   interview the user.
 
+## Robustness
+
+- A run is built to survive timeouts, interrupts, errors, and the runs of other sessions on the
+  same machine, which share `~/.claude/tmp/confer` and a repo's worktree list. After any failure,
+  the next run can still start.
+- Each hook call is limited to 10 s of the hook's own time. `$.clock` waits count toward it, but
+  process and file calls do not. Past it, the engine answers the call with no result. No hook
+  waits on the clock: a worktree that cannot be removed is left for a later cleanup instead of
+  being retried after a wait.
+- Each start first cleans up after runs that ended in any session. A worktree locked by a killed
+  `git worktree add` is removed with `--force` twice, and a directory that Git lists as prunable is
+  deleted.
+
 ## Isolation
 
 - Run files are kept under `~/.claude/tmp/confer/<run>/`, outside the checkout, and never

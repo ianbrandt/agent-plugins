@@ -14,6 +14,12 @@ the results. A results item: an analysis-form title ("Analyze the …
 results") and sections for what matched, what differed, and what is
 still open.
 
+## Project facts go in the repo
+
+Project goals, conventions, and design decisions go in this file,
+`CONTRIBUTING.md`, or a plugin's `docs/DESIGN.md`. An agent's memory is
+kept for facts specific to one machine.
+
 ## Clean up scratch probe directories
 
 Scratch directories written under `$env:TEMP` (`backstopprobe`,
