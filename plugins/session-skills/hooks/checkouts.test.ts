@@ -1,10 +1,10 @@
-// claude plugin test: where a new branch starts, the tools, the push and post
-// modes, and the permission rules written for them, against a faked git. The
-// costly errors are a branch opened without commits held on the local default
-// branch, an unmerged branch deleted by the prune, and a clone in a confirm
-// mode with no rule in its settings file.
+// claude plugin test: where a new branch starts, the tools, and the push and
+// post modes, against a faked git. The costly errors are a branch opened
+// without commits held on the local default branch, an unmerged branch deleted
+// by the prune, and a settings file written, which Claude Code refuses under
+// managed settings.
 import { expect, test } from 'claude-code/testing'
-import { askRules, outward, pickBase, POST_RULES, PUSH_RULES, refLine } from './checkouts'
+import { explained, outward, pickBase, POST_RULES, PUSH_RULES, refLine } from './checkouts'
 
 test('a new branch starts from origin, except where the local default branch has everything origin has', () => {
   expect(pickBase('main', false, true, false, false)).toEqual({ base: 'main' })
@@ -486,29 +486,27 @@ test('prune_branches leaves a branch that a worktree has checked out under anoth
   expect(deleted(calls)).toEqual(['branch -D claude/r1-a'])
 })
 
-test('the rules are written for both shells, with a push under -C and a gh api write told by its flags', () => {
+test('the rules of earlier versions are known for both shells, with a push under -C and a gh api write told by its flags', () => {
   for (const rule of ['Bash(git push *)', 'PowerShell(git push *)', 'Bash(git -C * push *)']) expect(PUSH_RULES).toContain(rule)
   for (const rule of ['Bash(gh pr create *)', 'PowerShell(glab mr note *)', 'Bash(gh release create *)', 'Bash(gh api -X *)', 'Bash(gh api * --field *)']) expect(POST_RULES).toContain(rule)
   for (const rule of ['Bash(gh pr view *)', 'Bash(gh api *)', 'Bash(glab mr list *)']) expect(POST_RULES).not.toContain(rule)
 })
 
-test('rules are added to a settings file beside what it has, and taken out without another key or rule', () => {
-  expect(JSON.parse(askRules('', ['a', 'b'])!)).toEqual({ permissions: { ask: ['a', 'b'] } })
-  const had = JSON.stringify({ model: 'x', permissions: { allow: ['Read'], ask: ['mine', 'a'] } })
-  expect(JSON.parse(askRules(had, ['a', 'b'])!)).toEqual({ model: 'x', permissions: { allow: ['Read'], ask: ['mine', 'a', 'b'] } })
-  expect(JSON.parse(askRules(had, [], ['a', 'b'])!)).toEqual({ model: 'x', permissions: { allow: ['Read'], ask: ['mine'] } })
-  expect(askRules('{"permissions":{"ask":["a"]}}', [], ['a'])).toBe('{}\n')
-  expect(askRules(had, ['a'])).toBeNull()
-  expect(askRules('', [])).toBeNull()
-  for (const text of ['[]', '{"permissions":{"ask":"a"}}']) expect(() => askRules(text, ['a']), text).toThrow()
-  expect(() => askRules('{ not json', ['a'])).toThrow()
+// The messages of Claude Code 2.1.328, as a plugin's call rejects with them.
+const SETTINGS_REFUSAL = 'session-skills: $.fs.write: a Claude Code settings file is not for plugins outside policy to write; read settings with $.settings.read'
+const REPEAT_REFUSAL = 'session-skills: $.process.run: this repeats a Bash call that is not allowed; serve an allowed call at tool.run'
+
+test('a refusal under managed settings is explained before Claude Code\'s message, and another error is left as it is', () => {
+  expect(explained(SETTINGS_REFUSAL)).toBe(`Under managed settings, Claude Code refuses a plugin outside your organization's policy that writes a Claude Code settings file or passes the path of one to a command. Claude Code said: ${SETTINGS_REFUSAL}`)
+  expect(explained(`${REPEAT_REFUSAL}\n`)).toMatch(/^Under managed settings, Claude Code refuses a plugin's command when one of its arguments is a string from a tool call in this turn .* Claude Code said: session-skills: \$\.process\.run: this repeats a Bash call that is not allowed; serve an allowed call at tool\.run$/)
+  expect(explained('ENOENT: git')).toBe('ENOENT: git')
 })
 
 // A clone at /repo with a worktree, a git config, and a file system that is written to.
 const LOCAL = '/repo/.claude/settings.local.json'
 const WT_LOCAL = '/repo/.claude/worktrees/r1-a/.claude/settings.local.json'
-function clone(on: any, config: Record<string, string>, files: Record<string, string> = {}, upstream = false, ignored = false) {
-  const w = { files, asked: [] as string[], answer: 'Switch' as string | null, toasts: [] as string[], gone: '' }
+function clone(on: any, config: Record<string, string>, files: Record<string, string> = {}, upstream = false) {
+  const w = { files, asked: [] as string[], answer: 'Switch' as string | null, toasts: [] as string[], gone: '', argv: [] as string[] }
   const posix = (p: string) => given(p).replace(/^[A-Za-z]:/, '')
   on('fs.exists', (_$: any, e: any) => ({ value: posix(e.path) in files || (!e.path.endsWith('.json') && posix(e.path) !== w.gone) }))
   on('fs.read', (_$: any, e: any) => {
@@ -531,6 +529,7 @@ function clone(on: any, config: Record<string, string>, files: Record<string, st
   on('session.cwd', () => ({ value: '/repo/.claude/worktrees/r1-a/src' }))
   on('process.run', (_$: any, e: any) => {
     const line = (e.argv as string[]).slice(3).join(' ')
+    w.argv.push(...e.argv)
     const said = (stdout: string, exitCode = 0) => ({ value: { exitCode, stdout, stderr: '' } })
     if (e.argv[0] !== 'git') throw new Error('ENOENT')
     if (line === 'remote get-url upstream') return upstream ? said('https://example.com/up/b.git\n') : said('', 2)
@@ -543,13 +542,10 @@ function clone(on: any, config: Record<string, string>, files: Record<string, st
     }
     if (line === 'rev-parse --show-toplevel') return said('/repo/.claude/worktrees/r1-a\n')
     if (line === 'worktree list --porcelain -z') return said(LIST)
-    if (line.startsWith('check-ignore')) return said('', ignored ? 0 : 1)
-    if (line === 'rev-parse --path-format=absolute --git-common-dir') return said('/repo/.git\n')
     return said('', 1)
   })
   return w
 }
-const asks = (text: string | undefined): string[] => (text ? JSON.parse(text).permissions?.ask ?? [] : [])
 
 test('landing_facts reports the modes with where each was read, and a confirm mode where none is set', async ($: any, on: any) => {
   const config: Record<string, string> = {}
@@ -591,53 +587,36 @@ test('landing_facts reads a protected default branch, or a pull-request ruleset,
   }
 })
 
-test('a session start writes the rules of each confirm mode for the primary checkout and the directory it starts in', async ($: any, on: any) => {
-  const w = clone(on, {}, { [LOCAL]: JSON.stringify({ permissions: { allow: ['Read'], ask: ['mine'] } }), '/repo/.git/info/exclude': '# local\n' })
+test('a session start writes no file, and runs no command with the path of a settings file', async ($: any, on: any) => {
+  const files = { [LOCAL]: JSON.stringify({ permissions: { allow: ['Read'] } }) }
+  const w = clone(on, {}, { ...files })
   await $.session.start({ cwd: '/repo' })
-  expect(asks(w.files[LOCAL])).toEqual(['mine', ...PUSH_RULES, ...POST_RULES])
-  expect(JSON.parse(w.files[LOCAL]!).permissions.allow).toEqual(['Read'])
-  expect(asks(w.files[WT_LOCAL])).toEqual([...PUSH_RULES, ...POST_RULES])
-  expect(w.files['/repo/.git/info/exclude']).toBe('# local\n**/.claude/settings.local.json\n')
+  expect(w.files).toEqual(files)
+  expect(w.argv.filter(a => a.includes('settings'))).toEqual([])
   expect(w.toasts).toEqual([])
 })
 
-test('a session start writes no rule for an auto mode, takes none out, and leaves an ignored file out of the exclude file', async ($: any, on: any) => {
-  const before = JSON.stringify({ permissions: { ask: PUSH_RULES } })
-  const w = clone(on, { pushMode: 'auto-push', postMode: 'auto-post' }, { [LOCAL]: before }, false, true)
-  await $.session.start({ cwd: '/repo' })
-  expect(w.files).toEqual({ [LOCAL]: before })
-  delete w.files[LOCAL]
-  await $.session.start({ cwd: '/repo' })
-  expect(w.files).toEqual({})
-})
+const leftFor = (path: string, what: string) => `warning: ${path} still has the permissions.ask rules for ${what} that session-skills 0.35.2 and earlier wrote, so a session started there still prompts for ${what}. Delete those rules from the file to finish the switch.`
 
-test('a settings file that is not JSON is left as it is, and the user is told', async ($: any, on: any) => {
-  const w = clone(on, {}, { [LOCAL]: '{ not json' })
-  await $.session.start({ cwd: '/repo' })
-  expect(w.files[LOCAL]).toBe('{ not json')
-  expect(w.toasts.join()).toContain(LOCAL)
-})
-
-test('set_push_policy asks before a switch to an auto mode, then takes its rules out of every worktree', async ($: any, on: any) => {
+test('set_push_policy asks before a switch to an auto mode, writes only git config, and reports the rules an earlier version left for it', async ($: any, on: any) => {
   const config: Record<string, string> = {}
-  const w = clone(on, config)
-  await $.session.start({ cwd: '/repo' })
+  const old = JSON.stringify({ permissions: { ask: ['mine', ...PUSH_RULES, ...POST_RULES] } })
+  const w = clone(on, config, { [LOCAL]: old, [WT_LOCAL]: '{ not json' })
   const ran = await call($, 'set_push_policy', { push: 'auto-push' })
   expect(w.asked).toHaveLength(1)
   expect(w.asked[0]).toContain('auto-push')
   expect(config).toEqual({ pushMode: 'auto-push' })
-  expect(asks(w.files[LOCAL])).toEqual(POST_RULES)
-  expect(asks(w.files[WT_LOCAL])).toEqual(POST_RULES)
-  expect(ran.result).toContain(`push: auto-push (git config session-skills.pushMode)\npost: confirm-post (the default)\nrules written: ${LOCAL}`)
-  // Back to a confirm mode with no question, and the rules are written again.
-  await call($, 'set_push_policy', { push: 'confirm-push' })
+  expect(ran.result).toBe(`push: auto-push (git config session-skills.pushMode)\npost: confirm-post (the default)\n${leftFor(LOCAL, 'a push')}`)
+  expect(w.files).toEqual({ [LOCAL]: old, [WT_LOCAL]: '{ not json' })
+  // Back to a confirm mode with no question, where the rules left prompt as the mode does.
+  expect((await call($, 'set_push_policy', { push: 'confirm-push' })).result).toBe('push: confirm-push (git config session-skills.pushMode)\npost: confirm-post (the default)')
   expect(w.asked).toHaveLength(1)
-  expect(asks(w.files[WT_LOCAL])).toEqual([...POST_RULES, ...PUSH_RULES])
-  // Nothing is written into a worktree with no directory on disk.
-  delete w.files[WT_LOCAL]
+  w.files[WT_LOCAL] = JSON.stringify({ permissions: { ask: POST_RULES.slice(0, 1) } })
+  expect((await call($, 'set_push_policy', { push: 'auto-push', post: 'auto-post' })).result).toContain(`${leftFor(LOCAL, 'a push and a post')}\n${leftFor(WT_LOCAL, 'a post')}`)
+  // No file is read in a worktree with no directory on disk.
   w.gone = '/repo/.claude/worktrees/r1-a'
-  await call($, 'set_push_policy', { post: 'confirm-post' })
-  expect(w.files[WT_LOCAL]).toBeUndefined()
+  expect((await call($, 'set_push_policy', { post: 'auto-post' })).result).not.toContain(WT_LOCAL)
+  expect(w.files[LOCAL]).toBe(old)
 })
 
 test('set_push_policy changes nothing when the user keeps the mode, when nobody can be asked, or for a value that is no mode', async ($: any, on: any) => {

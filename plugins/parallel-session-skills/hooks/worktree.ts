@@ -5,7 +5,7 @@ import type { Register } from 'claude-code'
 
 export const WORKTREE_TOOLS = {
   open_worktree: {
-    description: "Open a new worktree for a lane under the primary checkout's .claude/worktrees, on a new branch that starts from the given base, or on an existing branch that is in no worktree, pull its Git LFS files, copy the primary checkout's ask rules to it, and link the repo's local notes directory into it. A name already taken gets a numeric suffix. Returns the worktree path and branch.",
+    description: "Open a new worktree for a lane under the primary checkout's .claude/worktrees, on a new branch that starts from the given base, or on an existing branch that is in no worktree, pull its Git LFS files, and link the repo's local notes directory into it. A name already taken gets a numeric suffix. Returns the worktree path and branch.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -30,6 +30,21 @@ export const WORKTREE_TOOLS = {
   },
 } as const
 
+// Under managed settings Claude Code refuses two kinds of call from a plugin
+// outside the organization's policy, with these messages. The refusal is
+// explained, and the call is never reshaped to get past the check.
+const REFUSALS: [string, string][] = [
+  ['is not for plugins outside policy to write', "Under managed settings, Claude Code refuses a plugin outside your organization's policy that writes a Claude Code settings file or passes the path of one to a command."],
+  ['call that is not allowed; serve an allowed call', "Under managed settings, Claude Code refuses a plugin's command when one of its arguments is a string from a tool call in this turn that your permission rules would not allow as a Bash command."],
+]
+// The explanation of a refusal in an error message, or nothing for another error.
+const refusal = (message: string) => REFUSALS.find(([text]) => message.includes(text))?.[1]
+// An error message with the explanation of a refusal before it, on one line.
+export const explained = (message: string) => {
+  const why = refusal(message)
+  return why ? `${why} Claude Code said: ${message.trim().replace(/\s*\n\s*/g, ' ')}` : message
+}
+
 // Every command is run by argument vector, in the primary checkout: the
 // session's directory is the default, and nothing starts there once a session
 // has removed the worktree it had changed into. A command that cannot start is
@@ -39,7 +54,7 @@ async function run($: any, argv: string[], timeoutMs = 30_000): Promise<Ran> {
   try {
     return await $.process.run(argv, { cwd: await primary($), timeoutMs })
   } catch (err) {
-    return { exitCode: 127, stdout: '', stderr: (err as Error).message }
+    return { exitCode: 127, stdout: '', stderr: explained((err as Error).message) }
   }
 }
 const git = ($: any, cwd: string, ...argv: string[]) => run($, ['git', '-C', cwd, ...argv], argv.includes('lfs') ? 120_000 : 30_000)
@@ -101,18 +116,6 @@ async function openWorktree($: any, e: any): Promise<string> {
     const pulled = await git($, path, 'lfs', 'pull')
     if (pulled.exitCode !== 0) warnings.push(`LFS files were left as pointers, so run \`git lfs pull\` in the worktree: ${firstLine(pulled.stderr) || `exit ${pulled.exitCode}`}`)
   }
-  // A session started in the worktree reads its own settings file on Windows,
-  // so the primary checkout's ask rules are copied to it. The push and post
-  // rules of session-skills are among them.
-  const settings = '.claude/settings.local.json'
-  try {
-    const asks = (await $.fs.exists(`${main}/${settings}`)) ? JSON.parse(await $.fs.read(`${main}/${settings}`))?.permissions?.ask : []
-    if (Array.isArray(asks) && asks.length && !(await $.fs.exists(`${path}/${settings}`))) {
-      await $.fs.write(`${path}/${settings}`, `${JSON.stringify({ permissions: { ask: asks } }, null, 2)}\n`)
-    }
-  } catch (err) {
-    warnings.push(`the ask rules in ${main}/${settings} were not copied to the worktree: ${(err as Error).message}`)
-  }
   const lines = [`worktree: ${path}`, `branch: ${branch}`, ...(existing ? [] : [`opened from: ${base}`]), `primary checkout: ${main}`]
   if (await $.fs.exists(`${main}/${notes}`)) {
     // `ln -s` into a directory that is there links inside it, and reports success.
@@ -146,13 +149,19 @@ async function removeWorktree($: any, e: any): Promise<string> {
   const removed = await git($, main, 'worktree', 'remove', path)
   if (removed.exitCode === 0) lines.push(`unregistered: ${path}`)
   else if (removed.exitCode === 128 && /not a working tree/i.test(removed.stderr)) lines.push(`already unregistered: ${path}`)
-  else throw new Error(`git worktree remove: ${firstLine(removed.stderr) || `exit ${removed.exitCode}`}`)
+  else {
+    const said = firstLine(removed.stderr) || `exit ${removed.exitCode}`
+    if (/permission denied/i.test(removed.stderr)) throw new Error(`git worktree remove: a process is still in the directory, such as this session's shell after a cd into it. Move the shell out or close that process, then call the tool again. git said: ${said}`)
+    throw new Error(`git worktree remove: ${said}`)
+  }
   if (await $.fs.exists(path)) {
     if (win && /[&|<>^%()"]/.test(path)) throw new Error(`cannot delete ${path}: a character in the path is an operator in cmd`)
     const argv = win ? ['cmd', '/c', 'rd', '/s', '/q', path.replace(/\//g, '\\')] : ['rm', '-rf', path]
     const del = await run($, argv)
     if (del.exitCode !== 0 && (await $.fs.exists(path))) {
-      throw new Error(`deleting ${path}: ${firstLine(del.stderr) || `exit ${del.exitCode}`}`)
+      // The same command from the model's shell tool is checked against the user's permission rules.
+      const yours = refusal(del.stderr) ? `the worktree is unregistered, but its directory is left. Delete it with your shell tool: ${win ? `cmd /c rd /s /q "${argv[5]}" in PowerShell` : `rm -rf '${path}'`}. ` : ''
+      throw new Error(`deleting ${path}: ${yours}${firstLine(del.stderr) || `exit ${del.exitCode}`}`)
     }
     lines.push(`deleted: ${path}`)
   } else {

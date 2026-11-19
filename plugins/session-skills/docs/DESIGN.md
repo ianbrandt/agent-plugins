@@ -121,56 +121,56 @@ is refused too. Where the modes cannot be read, the command runs.
 
 In a `claude -p` session, where `CLAUDE_CODE_ENTRYPOINT` is `sdk-cli`, the same hook refuses every
 push or post in a confirm mode, chained or not. Nobody answers a prompt there. On 2026-11-11 a
-first `-p` session in a `confirm-push` clone pushed its merge. Whether that session applies the rules
-file written at its start is not settled. On 2.1.322 the rules were applied only from the next
-session in one probe, but in three later `e2e/run.sh first` runs the push was stopped by the rule in
-the same session. A push is refused as well in a `-p` run with
-`--permission-prompt-tool`, where a tool could answer the prompt.
+first `-p` session in a `confirm-push` clone pushed its merge. A push is refused as well in a `-p`
+run with `--permission-prompt-tool`, where a tool could answer the prompt.
 
-In a confirm mode the prompt is raised by `permissions.ask` rules in `.claude/settings.local.json`,
-which Claude Code applies in every permission mode. The rules are `git push *` and
-`git -C * push *`, one for each post subcommand, such as `gh pr create *`, and `gh api` with each
-flag that makes a write. Each rule is written for `Bash` and for `PowerShell`, beside whatever else
-the file has, in three places:
+In a confirm mode the prompt is raised by a `tool.check` hook on `Bash` and `PowerShell`. For a
+push or a post, read as the chained refusal reads it, the hook reads the modes from git config and
+answers `ask`, unless the verdict beneath is a deny. Claude Code puts a plugin's ask to a person in
+every permission mode: no auto mode classifier settles it, and where nobody can be asked it is a
+deny with the hook's reason. The modes are read at each call, so a switch applies at once in every
+session and worktree of the clone. Where the modes cannot be read, the command is put to the user
+too. Before a switch to an auto mode in `set_push_policy`, the user is asked with `$.ui.ask`, which
+is rejected in a `-p` run, and the modes then stay as they are.
 
-- A `session.start` hook adds the rules for the primary checkout and for the directory the session
-  starts in. It never takes a rule out.
-- `open_worktree` of `parallel-session-skills` copies the primary checkout's ask rules to a new
-  worktree.
-- `set_push_policy` writes the two git config keys, then adds and removes rules in the primary
-  checkout and every worktree in `git worktree list`. Before a switch to an auto mode the user is
-  asked with `$.ui.ask`, which is rejected in a `-p` run, and the modes then stay as they are.
+Nothing is written to a settings file. Under managed settings Claude Code refuses a plugin outside
+the organization's policy that writes `.claude/settings*.json`, or that passes the path of one in a
+command's arguments or input. From 0.30.0 through 0.35.2 the prompt was raised by
+`permissions.ask` rules that the plugin wrote to `.claude/settings.local.json` at session start, in
+`set_push_policy`, and through `open_worktree` in each new worktree, and on the managed Windows
+machine those writes were refused. `set_push_policy` does not take such rules out either. After a
+switch to an auto mode it prints a warning for each file in the primary checkout or a worktree that
+still has the rules for that mode, since they still prompt there.
 
-`**/.claude/settings.local.json` is appended to `.git/info/exclude` where nothing ignores the file.
+Each of these was measured on 2.1.328 on the managed Windows machine, in one headless auto mode run
+per case, with a probe plugin with a `tool.check` hook that answered `ask` for `git push`:
 
-Each of these was measured on 2.1.322, in one run per case:
+- With an allow rule for `git push`, the push did not run, and the plugin's name and reason were in
+  the refusal message. Without the rule it did not run either. Without the plugin and with the rule, it ran.
+- Without the rule, `cc-plugin-sec-default` printed that the plugin's `tool.check` hook was
+  skipped, but the plugin's verdict was the one applied. The notice comes from the guard's second
+  check of the call without the plugins a person installs, which it runs when a plugin's answer
+  differs from the verdict beneath without tightening it.
+- A `$.tool.check` query from a `tool.call` hook returned the plugin's ask, with the plugin's name
+  in it.
 
-- In a headless auto mode session, `git push origin <branch>` ran with no rule, and did not run
-  with the rules, in the plain form and under `git -C`. The results of the same five cases were the
-  same on the Windows machine under managed settings, with no notice about a hook in the logs.
-- On macOS a session started in a worktree applied the rules in the primary checkout's file. On
-  Windows it applied only the file in the worktree, which is why the rules are written to each
-  worktree.
-- A ` *` at the end of a pattern also matched the command with nothing after it. A `* ` inside a
-  pattern needed at least one word, so `git push *` and `git -C * push *` are two rules. A command
-  after `cd . &&` was matched.
-- An interactive session applied a file written by the `session.start` hook at once: the prompt
-  was raised in the first session of a fresh clone. A `-p` session did not apply it until its next
-  start.
-- An edit of `.claude/settings.local.json` that was requested only in a file was blocked by the
-  auto mode classifier as Self-Modification. The tool writes the file itself, after the user's
-  answer.
-
-No rule matches `git -c key=value push`, a push in a script or an alias, a write through `gh api`
-with none of the flags, or a command sent through `Monitor` or a terminal tool, since a rule cannot
-match an MCP tool's input. A push to the default branch of a `pr` clone has no prompt of its own in
-`auto-push`. Whether a subagent's prompt is shown is not in the docs, a cloud session reads no local
-settings, and bypass mode was not probed. For these, the paragraph in `hooks/rules.md` is the only
-check.
+An interactive session, a session on macOS, and bypass mode were not probed. The hook does not read
+a push in a script or an alias, a write through `gh api` with none of the flags, or a command sent
+through `Monitor` or a terminal tool. A push to the default branch of a `pr` clone has no prompt of
+its own in `auto-push`, and whether a subagent's prompt is shown is not in the docs. For these, the
+paragraph in `hooks/rules.md` is the only check.
 
 Through 0.29.0 a `tool.check` hook read each shell command and answered `ask` for a push to a
-remote not known to be private. Under managed settings `cc-plugin-sec-default` returns the
-organization's verdict on `tool.check` in place of a user plugin's, so the hook had to be turned
-off there with an option, and the push then ran unasked. Before that, the module added a git
-`pre-push` hook through `GIT_CONFIG_PARAMETERS` and read commands with a 1,700-line lexer. The auto
-mode classifier denied its bypass on both machines.
+remote not known to be private. On the managed machine `cc-plugin-sec-default` reported that hook
+as skipped, so it was turned off there with an option, and the push then ran unasked. Before that,
+the module added a git `pre-push` hook through `GIT_CONFIG_PARAMETERS` and read commands with a
+1,700-line lexer. The auto mode classifier denied its bypass on both machines.
+
+### Refusals Under Managed Settings
+
+Claude Code refuses a second kind of command from a plugin outside policy: one whose argument is a
+string from a tool call of the model in the current turn, an MCP tool's input included, where the
+command runs a shell or an interpreter such as `cmd`, `bash`, `pwsh`, or `node`. The command is
+refused unless the user's permission rules would allow that string as a Bash command. When a tool of
+this plugin is refused either way, an explanation is added before Claude Code's message in the
+tool's error, and no command is reshaped to get past the check. No command here runs a shell.

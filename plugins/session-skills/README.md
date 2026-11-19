@@ -88,9 +88,10 @@ How the wrap-up reads once these actions are done is covered by `writing-skills`
 The skills call five tools that the plugin registers as `mcp__session-skills__<tool>`, and the session
 rules in [`hooks/rules.md`](hooks/rules.md) are added to the first prompt, and again after
 `/clear` and compaction. The push and post modes are kept in per-clone `git config`, as
-`session-skills.pushMode` and `session-skills.postMode`. For a confirm mode the plugin writes
-`permissions.ask` rules to `.claude/settings.local.json` in the primary checkout and each worktree,
-which also works under managed settings. A push inside a script or an alias matches no rule. In a
+`session-skills.pushMode` and `session-skills.postMode`. In a confirm mode a permission hook puts
+each push and post to the user in every permission mode. Nothing is written to a settings file,
+since Claude Code refuses that write from a plugin under managed settings. A push inside a script
+or an alias is not read. In a
 confirm mode a push or a post chained with another command is refused, so that the prompt shows
 the push alone, and every push and post in a `claude -p` session is refused, since nobody can
 answer the prompt there. The result of a `git push` includes a request for the next step, so the

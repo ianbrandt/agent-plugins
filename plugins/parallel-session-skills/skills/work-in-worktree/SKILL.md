@@ -81,15 +81,12 @@ upstream. Those are the directory and the branch prefix Claude Code uses. A name
 took gets a numeric suffix. `$WT` and `$BRANCH` are the `worktree:` and `branch:` lines returned,
 which may differ from the name passed.
 
-Three more things are set up in the new worktree, and each failure is returned as a `warning:` line
+Two more things are set up in the new worktree, and each failure is returned as a `warning:` line
 to repeat in the reply:
 
 - **LFS files are pulled where `filter=lfs` is set in the root `.gitattributes`.** Claude Code runs
   git with `GIT_LFS_SKIP_SMUDGE=1`, so `git worktree add` leaves pointer files, and the tool then
   runs `git lfs pull` in the new worktree.
-- **The primary checkout's `permissions.ask` rules are copied** to the worktree's
-  `.claude/settings.local.json`. On Windows a session started in a worktree reads only that file,
-  and the rules `session-skills` writes for a push or a post are among them.
 - **The local-only notes directory is linked into the worktree**, as a junction on Windows and a
   symbolic link elsewhere, so existing write paths land in `$MAIN`. Nothing is linked where that
   directory is absent. Where the link could not be made, write notes to the directory in `$MAIN` by
@@ -131,8 +128,7 @@ Then call `mcp__parallel-session-skills__remove_worktree`, passing `$WT` as `pat
 `git worktree remove` from the primary checkout and, on Windows where the directory is left on
 disk with the notes junction inside, deletes the directory. The delete does not follow the
 junction, so the notes in `$MAIN` are untouched. A retry on a path already unregistered is a
-no-op. Where `git worktree remove` exits 255 with `Permission denied`, a process is still sitting
-in the directory; close that process and call the tool again. A session started inside the worktree
+no-op, and the next step after a failure is in the tool's error. A session started inside the worktree
 removes it the same way, but a shell left sitting in a removed directory fails on its next call and
 restarts in the home directory.
 

@@ -1,6 +1,6 @@
 // The rules behind the checkout and landing tools, apart from git: where a new
-// branch starts, the permission rules that put a push or a post to the user,
-// and the pushes a shell command makes.
+// branch starts, the pushes and posts a shell command makes, and what Claude
+// Code's refusal of a plugin's call under managed settings means.
 
 
 // Where a new branch starts. `origin/<default>` after a fetch, except that a
@@ -44,38 +44,28 @@ const POSTS: Record<string, Record<string, string>> = {
 }
 const API_WRITE = ['-X', '--method', '-f', '-F', '--field', '--raw-field', '--input']
 
-// A permission rule for each shell tool. A ` *` at the end of a pattern also
-// matches the command with nothing after it, and a `* ` inside one matches at
-// least one word, so `git -C * push *` and `git push *` are two rules. Both
-// were measured on Claude Code 2.1.322.
+// The `permissions.ask` rules that session-skills 0.30.0 through 0.35.2 wrote to
+// `.claude/settings.local.json` for a confirm mode, one for each shell tool.
+// They are read now only to report the ones left in a file after a switch to an
+// auto mode, since they still prompt there.
 const both = (patterns: string[]) => patterns.flatMap(p => [`Bash(${p})`, `PowerShell(${p})`])
-// shortcut: `git -c key=value push`, a push in a script or an alias, and a tool that takes a command as an MCP input match no rule; add a pattern if an agent is seen pushing that way.
 export const PUSH_RULES = both(['git push *', 'git -C * push *'])
 export const POST_RULES = both([
   ...Object.entries(POSTS).flatMap(([cli, nouns]) => Object.entries(nouns).flatMap(([noun, verbs]) => verbs.split(' ').map(verb => `${cli} ${noun} ${verb} *`))),
   ...API_WRITE.flatMap(flag => [`gh api ${flag} *`, `gh api * ${flag} *`]),
 ])
 
-// The text of a settings file with the rules in `add` in `permissions.ask` and
-// the ones in `drop` out of it, or null where the file already reads that way.
-// Every other key and rule is kept. Text that is not a JSON object throws, and
-// the file is then left as it is.
-export function askRules(text: string, add: string[], drop: string[] = []): string | null {
-  const settings = text.trim() ? JSON.parse(text) : {}
-  if (typeof settings !== 'object' || settings === null || Array.isArray(settings)) throw new Error('it is not a JSON object')
-  const permissions = settings.permissions ?? {}
-  const had: unknown[] = permissions.ask ?? []
-  if (typeof permissions !== 'object' || Array.isArray(permissions) || !Array.isArray(had)) throw new Error('its permissions.ask is not a list')
-  const kept = had.filter(rule => !drop.includes(rule as string))
-  const ask = [...kept, ...add.filter(rule => !kept.includes(rule))]
-  if (ask.length === had.length && ask.every((rule, i) => rule === had[i])) return null
-  if (ask.length) settings.permissions = { ...permissions, ask }
-  else {
-    delete permissions.ask
-    if (Object.keys(permissions).length) settings.permissions = permissions
-    else delete settings.permissions
-  }
-  return `${JSON.stringify(settings, null, 2)}\n`
+// Under managed settings Claude Code refuses two kinds of call from a plugin
+// outside the organization's policy, with these messages. The refusal is
+// explained, and the call is never reshaped to get past the check.
+const REFUSALS: [string, string][] = [
+  ['is not for plugins outside policy to write', "Under managed settings, Claude Code refuses a plugin outside your organization's policy that writes a Claude Code settings file or passes the path of one to a command."],
+  ['call that is not allowed; serve an allowed call', "Under managed settings, Claude Code refuses a plugin's command when one of its arguments is a string from a tool call in this turn that your permission rules would not allow as a Bash command."],
+]
+// An error message with the explanation of a refusal before it, on one line.
+export const explained = (message: string) => {
+  const why = REFUSALS.find(([text]) => message.includes(text))?.[1]
+  return why ? `${why} Claude Code said: ${message.trim().replace(/\s*\n\s*/g, ' ')}` : message
 }
 
 // The directory a command runs in: a path, undefined for the tool's own, or

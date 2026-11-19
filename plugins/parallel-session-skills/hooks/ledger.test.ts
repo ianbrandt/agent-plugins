@@ -52,7 +52,7 @@ test('an empty session id matches no claim', () => {
 function world(on: any, worktrees: Record<string, string>, files: Record<string, string>, session = 'MINE', other: Record<string, string> = {}) {
   const posix = (p: string) => p.replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
   const dir = '/repo/.claude/claims/'
-  const w = { files, worktrees, now: 1_000_000, root: '/repo' as string | null, torn: null as { name: string; text: string } | null, writing: null as string | null, stale: {} as Record<string, string>, sessionId: session, def: 'main' as string | null, mode: null as string | null }
+  const w = { files, worktrees, now: 1_000_000, root: '/repo' as string | null, torn: null as { name: string; text: string } | null, writing: null as string | null, stale: {} as Record<string, string>, sessionId: session, def: 'main' as string | null, mode: null as string | null, refuse: '' }
   on('session.repo', () => ({ value: w.root ? { root: w.root, remote: null, internal: false } : null }))
   on('session.id', () => ({ value: w.sessionId }))
   on('clock.now', () => ({ value: w.now }))
@@ -73,7 +73,11 @@ function world(on: any, worktrees: Record<string, string>, files: Record<string,
     const path = posix(e.path)
     return { value: path.startsWith(dir) ? path.slice(dir.length) in w.files : path === '/repo' || path in w.worktrees || path in other }
   })
-  on('fs.write', (_$: any, e: any) => { w.files[posix(e.path).slice(dir.length)] = e.text; return { value: undefined } })
+  on('fs.write', (_$: any, e: any) => {
+    if (w.refuse) return { deny: w.refuse }
+    w.files[posix(e.path).slice(dir.length)] = e.text
+    return { value: undefined }
+  })
   on('process.run', (_$: any, e: any) => {
     if (e.init?.cwd !== '/repo') throw new Error("ENOENT: no such file or directory, posix_spawn 'git'")
     const [, , cwd, ...argv] = e.argv as string[]
@@ -174,6 +178,12 @@ test('write_claim ends its result with the instruction to read the ledger again 
   world(on, { '/wt/a': 'claude/a' }, {})
   const lines = (await call($, 'write_claim', { worktree: '/wt/a', item: 'x', touches: [] })).result.split('\n')
   expect(lines[lines.length - 1]).toBe('call read_ledger once more before the first edit: a claim written after this one is not listed here')
+})
+
+test('a call refused under managed settings is explained in the error of a ledger tool', async ($: any, on: any) => {
+  const w = world(on, { '/wt/a': 'claude/a' }, {})
+  w.refuse = 'a Claude Code settings file is not for plugins outside policy to write; read settings with $.settings.read'
+  expect((await call($, 'write_claim', { worktree: '/wt/a', item: 'x', touches: [] })).text).toBe(`write_claim: Under managed settings, Claude Code refuses a plugin outside your organization's policy that writes a Claude Code settings file or passes the path of one to a command. Claude Code said: parallel-session-skills: $.fs.write: ${w.refuse}`)
 })
 
 // git prints a path as it is, so a newline in it is a newline in the list.

@@ -56,12 +56,24 @@ than by a tool of its own, since `claim-a-lane` already calls it before any edit
   module cannot call another's, and the rule for where a branch starts is kept in one place. With
   the `branch` input in place of `name`, `id`, and `base`, the worktree is opened on an existing
   branch: work in flight on a branch in no worktree, found while the primary checkout is busy.
-- `open_worktree` also copies the `permissions.ask` list from the primary checkout's
-  `.claude/settings.local.json` to the worktree's, where the worktree has no such file. On Windows a
-  session started in a worktree reads only the worktree's file, and the push and post rules that
-  `session-skills` writes are in that list. No other setting is copied.
 - `remove_worktree` runs `git worktree remove` from the primary checkout, then deletes the
   worktree's directory where it is still on disk, as it is on Windows. A path outside
-  `.claude/worktrees` is refused, and a path already unregistered is a no-op.
+  `.claude/worktrees` is refused, and a path already unregistered is a no-op. Where git exits with
+  `Permission denied`, the tool reports that a process is still in the directory, such as the
+  session's shell after a `cd` into it.
+
+Through 0.6.0 `open_worktree` also copied the `permissions.ask` list of the primary checkout's
+`.claude/settings.local.json` to the worktree, for the push and post rules of `session-skills`.
+Under managed settings Claude Code refuses a plugin outside the organization's policy that writes a
+settings file, and `session-skills` now raises those prompts from a hook, so nothing is copied.
+
+Claude Code also refuses a plugin's command that runs a shell or an interpreter, such as `cmd /c rd`
+or `cmd /c mklink`, when one of its arguments is a string from a tool call of the model in the
+current turn that the user's permission rules would not allow as a Bash command. The `path` input of
+`remove_worktree` is such a string on Windows, where the tool deletes the directory with
+`cmd /c rd /s /q <path>`. Either refusal is reported with an explanation before Claude Code's
+message, and no command is reshaped to get past the check. After a refused delete the worktree is
+unregistered, and the command to delete its directory is in the error, for the model to run with its
+own shell tool, where the user's permission rules apply.
 
 Both are checked by `hooks/worktree.test.ts`.

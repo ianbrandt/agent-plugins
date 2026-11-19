@@ -1,16 +1,17 @@
 // claude plugin test: the two worktree tools, against a faked git. The costly
-// errors are a worktree opened from a ref that is not the base, a worktree with
-// no ask rule for a push, and a directory outside .claude/worktrees deleted.
+// errors are a worktree opened from a ref that is not the base, a settings file
+// written, which Claude Code refuses under managed settings, and a directory
+// outside .claude/worktrees deleted.
 import { expect, test } from 'claude-code/testing'
 
 // A primary checkout at /repo. `git` answers a command, given without its
 // `-C <dir>`, with its stdout, an exit code, a whole result, or nothing for an
 // empty success. A program other than git cannot start unless `other` answers
-// for it. A file reads as empty unless `files` has it. The session's directory
-// is a worktree that was removed, so no program starts unless it is run in
-// /repo.
+// for it, and a `deny` from it is Claude Code's refusal. A file reads as empty
+// unless `files` has it. The session's directory is a worktree that was
+// removed, so no program starts unless it is run in /repo.
 type Said = string | number | void | { exitCode: number; stdout: string; stderr: string }
-function world(on: any, git: (argv: string) => Said, other?: (argv: string) => string | void, paths: string[] = [], files: Record<string, string> = {}, root = '/repo') {
+function world(on: any, git: (argv: string) => Said, other?: (argv: string) => string | void | { deny: string }, paths: string[] = [], files: Record<string, string> = {}, root = '/repo') {
   const calls: string[] = []
   on('session.repo', () => ({ value: { root, remote: null, internal: false } }))
   on('session.cwd', () => ({ value: '/repo/.claude/worktrees/removed' }))
@@ -29,7 +30,7 @@ function world(on: any, git: (argv: string) => Said, other?: (argv: string) => s
     calls.push(line)
     const said = isGit ? git(line) : other?.(line)
     if (!isGit && said === undefined) throw new Error('ENOENT')
-    if (typeof said === 'object') return { value: said }
+    if (typeof said === 'object') return 'deny' in said ? said : { value: said }
     return { value: typeof said === 'number' ? { exitCode: said, stdout: '', stderr: 'fatal: no' } : { exitCode: 0, stdout: said ? `${said}\n` : '', stderr: '' } }
   })
   return calls
@@ -143,16 +144,20 @@ test('open_worktree checks out an existing branch in place of opening a new one,
   expect(ran.text).toBe('open_worktree: branch "claude/gone" is not a branch here')
 })
 
-// A session started in the worktree reads its own settings file on Windows.
-test("open_worktree copies the primary checkout's ask rules to the worktree, and no other setting", async ($: any, on: any) => {
+test('open_worktree writes no settings file', async ($: any, on: any) => {
   const primary = '/repo/.claude/settings.local.json'
-  const files: Record<string, string> = { [primary]: JSON.stringify({ permissions: { ask: ['Bash(git push *)'], allow: ['Bash(ls *)'] }, model: 'x' }) }
+  const files: Record<string, string> = { [primary]: JSON.stringify({ permissions: { ask: ['Bash(git push *)'] } }) }
   world(on, held, undefined, [primary], files)
-  await call($, 'open_worktree', { name: 'a-b', base: 'main' })
-  expect(JSON.parse(files['/repo/.claude/worktrees/a-b/.claude/settings.local.json'])).toEqual({ permissions: { ask: ['Bash(git push *)'] } })
-  files[primary] = 'not json'
-  expect((await call($, 'open_worktree', { name: 'c-d', base: 'main' })).result).toContain('warning: the ask rules in /repo/.claude/settings.local.json were not copied')
-  expect(files['/repo/.claude/worktrees/c-d/.claude/settings.local.json']).toBeUndefined()
+  expect((await call($, 'open_worktree', { name: 'a-b', base: 'main' })).result).not.toContain('warning')
+  expect(Object.keys(files)).toEqual([primary])
+})
+
+// The message of Claude Code 2.1.328 for a command with the model's input in its arguments.
+const REPEAT = 'this repeats a Bash call that is not allowed; serve an allowed call at tool.run'
+
+test('a junction refused under managed settings is explained in the warning of open_worktree', async ($: any, on: any) => {
+  world(on, held, line => (line.startsWith('cmd') ? { deny: REPEAT } : undefined), ['C:/repo/notes.local'], {}, 'C:/repo')
+  expect((await call($, 'open_worktree', { base: 'main', name: 'a-b' })).result).toContain(`warning: notes.local was not linked into the worktree, so write notes to C:/repo/notes.local: Under managed settings, Claude Code refuses a plugin's command when one of its arguments is a string from a tool call in this turn that your permission rules would not allow as a Bash command. Claude Code said: parallel-session-skills: $.process.run: ${REPEAT}`)
 })
 
 test('remove_worktree unregisters a worktree and deletes its directory, and refuses a path outside .claude/worktrees', async ($: any, on: any) => {
@@ -169,4 +174,21 @@ test('remove_worktree unregisters a worktree and deletes its directory, and refu
 test('remove_worktree is a no-op for a worktree already unregistered and with its directory gone', async ($: any, on: any) => {
   world(on, line => (line.startsWith('worktree remove') ? { exitCode: 128, stdout: '', stderr: "fatal: '/repo/.claude/worktrees/a-b' is not a working tree\n" } : held(line)))
   expect((await call($, 'remove_worktree', { path: '/repo/.claude/worktrees/a-b' })).result).toBe('already unregistered: /repo/.claude/worktrees/a-b\ndirectory already gone: /repo/.claude/worktrees/a-b')
+})
+
+// On Windows a directory a process is in cannot be deleted.
+test('a permission denied from git worktree remove is explained as a process in the directory, and another failure is left as git reported it', async ($: any, on: any) => {
+  let stderr = "error: failed to delete 'C:/repo/.claude/worktrees/a-b': Permission denied\n"
+  world(on, line => (line.startsWith('worktree remove') ? { exitCode: 255, stdout: '', stderr } : held(line)), undefined, ['C:/repo/.claude/worktrees/a-b'], {}, 'C:/repo')
+  expect((await call($, 'remove_worktree', { path: 'C:/repo/.claude/worktrees/a-b' })).text).toBe("remove_worktree: git worktree remove: a process is still in the directory, such as this session's shell after a cd into it. Move the shell out or close that process, then call the tool again. git said: error: failed to delete 'C:/repo/.claude/worktrees/a-b': Permission denied")
+  stderr = "fatal: 'C:/repo/.claude/worktrees/a-b' contains modified or untracked files, use --force to delete it\n"
+  expect((await call($, 'remove_worktree', { path: 'C:/repo/.claude/worktrees/a-b' })).text).toBe(`remove_worktree: git worktree remove: ${stderr.trim()}`)
+})
+
+test('a delete refused under managed settings is explained in the error of remove_worktree, with the command to finish it', async ($: any, on: any) => {
+  const at = 'C:/repo/.claude/worktrees/a-b'
+  world(on, held, line => (line.startsWith('cmd') ? { deny: REPEAT } : undefined), [at], {}, 'C:/repo')
+  const ran = await call($, 'remove_worktree', { path: 'C:\\repo\\.claude\\worktrees\\a-b' })
+  expect(ran.isError).toBe(true)
+  expect(ran.text).toBe(`remove_worktree: deleting ${at}: the worktree is unregistered, but its directory is left. Delete it with your shell tool: cmd /c rd /s /q "C:\\repo\\.claude\\worktrees\\a-b" in PowerShell. Under managed settings, Claude Code refuses a plugin's command when one of its arguments is a string from a tool call in this turn that your permission rules would not allow as a Bash command. Claude Code said: parallel-session-skills: $.process.run: ${REPEAT}`)
 })

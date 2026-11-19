@@ -193,13 +193,18 @@ test('the user is told when the rename is refused', async ($: any, on: any) => {
 })
 
 // The context added to a command's result, with the command's own result
-// beneath.
+// beneath. The user answers yes to a permission prompt unless `approve` is
+// false, and every mode reads as `mode`.
 function pushes(on: any) {
-  const w = { result: { result: {} } as any, mode: 'private' }
+  const w = { result: { result: {} } as any, mode: 'private', approve: true, prompts: 0 }
   on('session.repo', () => ({ value: { root: '/repo', remote: null, internal: false } }))
   on('process.run', (_$: any, e: any) => ({ value: e.argv.includes('upstream') ? { exitCode: 2, stdout: '', stderr: '' } : { exitCode: 0, stdout: `${w.mode}\n`, stderr: '' } }))
   on('tool.call', { tool: 'Bash' }, () => w.result)
   on('tool.call', { tool: 'PowerShell' }, () => w.result)
+  on('classic.PermissionRequest', () => {
+    w.prompts++
+    return { decision: w.approve ? { behavior: 'allow' } : { behavior: 'deny', message: 'no' } }
+  })
   return w
 }
 const bash = async ($: any, command: string, more: any = {}, tool = 'Bash') => {
@@ -254,6 +259,52 @@ test('in a -p session every push or post is refused in a confirm mode, and runs 
   expect(await deny('gh pr create')).toContain('nobody')
   w.mode = 'auto-post'
   expect(await deny('gh pr create')).toBeUndefined()
+})
+
+test('in a confirm mode a push runs after the user answers its prompt, and in an auto mode with no prompt', async ($: any, on: any) => {
+  const w = pushes(on)
+  expect(await bash($, 'git push')).toHaveLength(1)
+  expect(w.prompts).toBe(1)
+  w.approve = false
+  expect((await $.tool.call({ tool: 'Bash', command: 'git push' })).isError).toBe(true)
+  w.mode = 'auto-push'
+  expect(await bash($, 'git push')).toHaveLength(1)
+  expect(w.prompts).toBe(2)
+})
+
+// The permission check of a command, with `beneath` as the engine's verdict.
+function checks(on: any) {
+  const w = Object.assign(pushes(on), { beneath: { decision: 'allow' } as any })
+  on('tool.check', () => w.beneath)
+  return w
+}
+const check = ($: any, command: string, tool = 'Bash') => $.tool.check({ tool, input: { command } })
+
+test('in a confirm mode a push or a post is put to the user over an allow beneath, in either shell', async ($: any, on: any) => {
+  checks(on)
+  for (const command of ['git push origin main', 'git -C /repo push', 'cd /repo && git push 2>&1 | tail -3', 'gh pr create --fill', 'gh api -X POST repos/a/b/issues']) expect((await check($, command)).decision, command).toBe('ask')
+  expect((await check($, 'git push', 'PowerShell')).reason).toBe('This clone is in confirm-push mode, so you confirm each push.')
+  expect((await check($, 'gh issue comment 3 --body x')).reason).toBe('This clone is in confirm-post mode, so you confirm each post.')
+  expect((await check($, 'git push && gh pr create')).reason).toBe('This clone is in confirm-push and confirm-post mode, so you confirm each push and post.')
+})
+
+test('the verdict beneath stands for a command that publishes nothing, in an auto mode, and where it is a deny', async ($: any, on: any) => {
+  const w = checks(on)
+  for (const command of ['git push --dry-run', 'git log', 'gh pr view 3', 'claude -p "run git push"']) expect((await check($, command)).decision, command).toBe('allow')
+  w.mode = 'auto-push'
+  expect((await check($, 'git push')).decision).toBe('allow')
+  expect((await check($, 'gh pr create')).decision).toBe('ask')
+  w.mode = 'auto-post'
+  expect((await check($, 'gh pr create')).decision).toBe('allow')
+  w.mode = 'confirm-push'
+  w.beneath = { decision: 'deny', reason: 'no' }
+  expect(await check($, 'git push')).toMatchObject({ decision: 'deny', reason: 'no' })
+})
+
+test('a push is put to the user where the modes cannot be read', async ($: any, on: any) => {
+  on('session.repo', () => ({ value: null }))
+  on('tool.check', () => ({ decision: 'allow' }))
+  expect(await check($, 'git push')).toMatchObject({ decision: 'ask', reason: 'The push and post modes of this clone could not be read, so you confirm this command.' })
 })
 
 test('no prompt is submitted at the end of a turn that pushed', async ($: any, on: any) => {

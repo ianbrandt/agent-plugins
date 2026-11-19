@@ -24,8 +24,8 @@ lane, or the primary checkout is already on another unit's branch or has changed
 files. `read_ledger` prints the mode on its last line.
 
 The `open_worktree` tool opens `.claude/worktrees/<id>-<name>` on a new branch, or on the branch
-that work is already in flight on. It pulls Git LFS files, copies the primary checkout's
-`permissions.ask` rules, and links the repo's local-only notes directory into the worktree.
+that work is already in flight on. It pulls Git LFS files and links the repo's local-only notes
+directory into the worktree.
 `remove_worktree` removes the worktree the session's work was in, after its untracked files are
 checked for anything worth keeping.
 

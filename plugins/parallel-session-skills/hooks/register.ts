@@ -3,7 +3,7 @@
 // session that never wrapped, and the two worktree tools of worktree.ts.
 import type { Register } from 'claude-code'
 import { type Entry, dead, fileOf, ownedBy, parse } from './ledger'
-import { WORKTREE_TOOLS, worktreeTools } from './worktree'
+import { explained, WORKTREE_TOOLS, worktreeTools } from './worktree'
 
 const TOOLS = {
   read_ledger: {
@@ -202,7 +202,7 @@ async function answer($: any, name: string, run: (main: string) => Promise<strin
   try {
     return { result: await run(await primary($)) }
   } catch (err) {
-    const text = `${name}: ${(err as Error).message}`
+    const text = `${name}: ${explained((err as Error).message)}`
     return { result: text, text, isError: true }
   }
 }

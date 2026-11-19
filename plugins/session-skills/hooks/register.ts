@@ -1,10 +1,10 @@
 // The plugin's hooks module: the rules a session starts with, the tools that
-// run the git work of both skills, the permission rules that put a push or a
+// run the git work of both skills, the permission check that puts a push or a
 // post to the user, and the tool a session in a worktree calls to edit a file
 // that is only in the primary checkout. A worktree is opened and removed by
 // parallel-session-skills.
 import type { Register } from 'claude-code'
-import { askRules, outward, pickBase, POST_RULES, PUSH_RULES, refLine } from './checkouts'
+import { explained, outward, pickBase, POST_RULES, PUSH_RULES, refLine } from './checkouts'
 import { splice } from './splice'
 
 const NONE = { type: 'object', properties: {} } as const
@@ -22,7 +22,7 @@ const TOOLS = {
     inputSchema: NONE,
   },
   set_push_policy: {
-    description: "Set this clone's push mode, its post mode, or both, in per-clone git config, and write the matching permission rules to .claude/settings.local.json in the primary checkout and every worktree. In a confirm mode a push, or a post to the host with gh or glab, raises a permission prompt in every permission mode. The user is asked before a switch to an auto mode. Call it only when the user asks for a mode in this conversation.",
+    description: "Set this clone's push mode, its post mode, or both, in per-clone git config, which every session and worktree of the clone reads at once. In a confirm mode a push, or a post to the host with gh or glab, raises a permission prompt in every permission mode. The user is asked before a switch to an auto mode. Call it only when the user asks for a mode in this conversation.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -45,7 +45,7 @@ async function run($: any, argv: string[], timeoutMs = 30_000): Promise<Ran> {
   try {
     return await $.process.run(argv, { cwd: await primary($), timeoutMs })
   } catch (err) {
-    return { exitCode: 127, stdout: '', stderr: (err as Error).message }
+    return { exitCode: 127, stdout: '', stderr: explained((err as Error).message) }
   }
 }
 const gitArgv = (cwd: string, argv: string[]) => ['git', '-C', cwd, ...argv]
@@ -335,48 +335,25 @@ async function readModes($: any, main: string): Promise<Modes> {
 }
 const modeLines = (m: Modes) => [`push: ${m.push} (${m.pushFrom})`, `post: ${m.post} (${m.postFrom})`]
 
-// Writes the ask rules of each confirm mode to `.claude/settings.local.json` in
-// each directory, and with `lift` takes out the rules of an auto mode. Returns
-// the files written. A rule there is read by a session started in that
-// directory, prompts in every permission mode, and is applied by a running
-// interactive session at once. A session run with -p applies it from its next
-// start. The file is excluded from git where nothing ignores it yet.
-async function writeRules($: any, main: string, dirs: string[], lift = false): Promise<string[]> {
-  const m = await readModes($, main)
-  const add = [...(m.push === 'confirm-push' ? PUSH_RULES : []), ...(m.post === 'confirm-post' ? POST_RULES : [])]
-  const drop = lift ? [...PUSH_RULES, ...POST_RULES].filter(rule => !add.includes(rule)) : []
-  const written: string[] = []
+// A warning for each settings file in `dirs` that still has the rules of an
+// earlier version for a mode that is now an auto mode, since Claude Code still
+// prompts for them. They are not taken out: under managed settings Claude Code
+// refuses a plugin's write of a settings file.
+async function leftRules($: any, m: Modes, dirs: string[]): Promise<string[]> {
+  const lines: string[] = []
   for (const dir of new Set(dirs)) {
     const path = `${dir.replace(/[\\/]+$/, '')}/.claude/settings.local.json`
-    const had: string = (await $.fs.exists(path)) ? await $.fs.read(path) : ''
-    let next: string | null
+    let ask: unknown
     try {
-      next = askRules(had, add, drop)
-    } catch (err) {
-      throw new Error(`${path} was left as it is: ${(err as Error).message}`)
+      ask = JSON.parse(await $.fs.read(path)).permissions?.ask
+    } catch {
+      continue
     }
-    if (next === null) continue
-    await $.fs.write(path, next)
-    written.push(path)
+    const has = (rules: string[]) => Array.isArray(ask) && ask.some(rule => rules.includes(rule))
+    const what = [m.push === 'auto-push' && has(PUSH_RULES) ? 'a push' : '', m.post === 'auto-post' && has(POST_RULES) ? 'a post' : ''].filter(Boolean).join(' and ')
+    if (what) lines.push(`warning: ${path} still has the permissions.ask rules for ${what} that session-skills 0.35.2 and earlier wrote, so a session started there still prompts for ${what}. Delete those rules from the file to finish the switch.`)
   }
-  // Exit 1 is a path nothing ignores, and any other failure leaves the exclude file alone.
-  if (written.length && (await git($, main, 'check-ignore', '-q', '.claude/settings.local.json')).exitCode === 1) {
-    const dir = await out(git($, main, 'rev-parse', '--path-format=absolute', '--git-common-dir'))
-    const had: string = dir ? await $.fs.read(`${dir}/info/exclude`).catch(() => '') : ''
-    if (dir) await $.fs.write(`${dir}/info/exclude`, `${had}${had && !had.endsWith('\n') ? '\n' : ''}**/.claude/settings.local.json\n`)
-  }
-  return written
-}
-
-// The rules for the directory a session starts in, and for the primary
-// checkout, since a worktree session reads that checkout's file on macOS. Rules
-// are only added here: taking one out is the user's decision, made in
-// set_push_policy.
-async function startRules($: any): Promise<void> {
-  const repo = await $.session.repo().catch(() => null)
-  if (!repo?.root) return
-  const top = await git($, await $.session.cwd(), 'rev-parse', '--show-toplevel')
-  await writeRules($, repo.root, [repo.root, ...(top.exitCode === 0 ? [top.stdout.replace(/\n$/, '')] : [])])
+  return lines
 }
 
 async function setPushPolicy($: any, e: any): Promise<string> {
@@ -398,8 +375,8 @@ async function setPushPolicy($: any, e: any): Promise<string> {
   // A worktree is still listed after its directory is deleted, until it is pruned.
   const dirs: string[] = []
   for (const w of await worktrees($, main)) if (await $.fs.exists(w.path)) dirs.push(w.path)
-  const written = await writeRules($, main, dirs, true)
-  return [...modeLines(await readModes($, main)), ...written.map(path => `rules written: ${path}`)].join('\n')
+  const m = await readModes($, main)
+  return [...modeLines(m), ...(await leftRules($, m, dirs))].join('\n')
 }
 
 async function landingFacts($: any): Promise<string> {
@@ -501,10 +478,32 @@ export const register: Register = on => {
         isDeferred: false,
       })
     }
-    // A rule that cannot be written leaves a push unasked in auto mode, so the user is told.
-    await startRules($).catch(err => $.ui.toast(`The push and post rules were not written. ${(err as Error).message}`))
     return next(e)
   })
+
+  // In a confirm mode a push or a post is put to the user in every permission
+  // mode: a plugin's ask goes to a person, no auto mode classifier settles it,
+  // and it is a deny where nobody can be asked. A deny beneath is kept. The
+  // modes are read at each call, so a switch applies at once in every session
+  // and worktree of the clone, and nothing is written to a settings file.
+  for (const tool of ['Bash', 'PowerShell']) {
+    on('tool.check', { tool }, async ($, e: any, next: any) => {
+      const verdict = await next(e)
+      if (verdict.decision === 'deny') return verdict
+      let read = { pushes: [] as { dryRun: boolean }[], posts: 0 }
+      try {
+        read = outward(String(e.input?.command ?? ''), tool)
+      } catch {}
+      const pushed = read.pushes.some(p => !p.dryRun)
+      if (!pushed && !read.posts) return verdict
+      // Where the modes cannot be read, the user is asked.
+      const m = await primary($).then(main => readModes($, main)).catch(() => null)
+      if (!m) return { decision: 'ask', reason: 'The push and post modes of this clone could not be read, so you confirm this command.' }
+      const modes = [pushed && m.push === 'confirm-push' ? 'push' : '', read.posts && m.post === 'confirm-post' ? 'post' : ''].filter(Boolean)
+      if (!modes.length) return verdict
+      return { decision: 'ask', reason: `This clone is in ${modes.map(x => `confirm-${x}`).join(' and ')} mode, so you confirm each ${modes.join(' and ')}.` }
+    })
+  }
 
   // The turn that pushes is the last turn of a landing, and in October 2026 13
   // of 16 such turns ended with no next step. The request for one is added to the
@@ -605,7 +604,7 @@ export const register: Register = on => {
       await $.fs.write(e.path, next)
       return { result: `edited ${e.path}` }
     } catch (err) {
-      const text = `edit_primary_file: ${(err as Error).message}`
+      const text = `edit_primary_file: ${explained((err as Error).message)}`
       return { result: text, text, isError: true }
     }
   })
