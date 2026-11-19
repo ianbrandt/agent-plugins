@@ -14,10 +14,10 @@
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/gradle-skills",
-        "ref": "gradle-skills-v1.12.0",
-        "sha": "f74b469a60dc0f1fe37f7783ae1c1679405b6b15"
+        "ref": "gradle-skills-v1.12.1",
+        "sha": "2b64282ea1d8f63fa14b5dc55088235be3365ff5"
       },
-      "version": "1.12.0",
+      "version": "1.12.1",
       "description": "Skills for working with Gradle projects.",
       "keywords": ["gradle", "dependencies", "version-catalog", "wrapper"]
     },
@@ -40,10 +40,10 @@
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/session-skills",
-        "ref": "session-skills-v0.35.2",
-        "sha": "0ff5b36bbc6fd69432ddab8d6bb36ba50c4ec505"
+        "ref": "session-skills-v0.36.0",
+        "sha": "2b64282ea1d8f63fa14b5dc55088235be3365ff5"
       },
-      "version": "0.35.2",
+      "version": "0.36.0",
       "description": "Puts a unit of work on its own branch and gets it back off again: pick up the branch work is already in flight on or open a new one, and land the work by what the repo is rather than by a declared mode.",
       "keywords": ["branch", "session", "landing", "wrap-up", "resume"]
     },
@@ -53,10 +53,10 @@
         "source": "git-subdir",
         "url": "https://github.com/ianbrandt/agent-plugins.git",
         "path": "plugins/parallel-session-skills",
-        "ref": "parallel-session-skills-v0.6.0",
-        "sha": "0f41d27afbc2bcbc0c6e9da5a776f0f3193efc4d"
+        "ref": "parallel-session-skills-v0.7.0",
+        "sha": "2b64282ea1d8f63fa14b5dc55088235be3365ff5"
       },
-      "version": "0.6.0",
+      "version": "0.7.0",
       "description": "Keeps several sessions working one repo at once off each other's files: open a git worktree for each, claim a lane in a shared ledger before writing code, reap dead claims without killing a live sibling, and conduct 2-5 lanes at once when a run has nobody watching it.",
       "keywords": ["claim-ledger", "parallel", "worktree", "pipeline", "unattended"]
     },
