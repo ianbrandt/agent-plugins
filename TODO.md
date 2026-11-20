@@ -140,28 +140,18 @@ In PowerShell 7.6 on Windows, a string piped into a native command arrives with 
 ending. `git check-ignore --stdin` keeps the `\r` as part of the path and exits 1 for an ignored
 path, while the same path read from an LF file matches. Run `/powershell:powershell` to record it.
 
-## Delete the session-skills 0.35.2 ask rules on the Windows machine
+## Check the push prompt on Windows now that the 0.35.2 ask rules are deleted
 
-The `permissions.ask` rules that session-skills 0.30.0 through 0.35.2 wrote are still in several
-`.claude/settings.local.json` files under `C:\Dev`, this checkout's among them. Under managed
-settings `cc-plugin-sec-default` keeps a rule's ask over session-skills' ask, so the rule's prompt
-is shown and the reword notice is printed on each push. On the Windows machine:
+On 2026-11-20 the `permissions.ask` rules of session-skills 0.30.0 through 0.35.2 were deleted
+from four `.claude/settings.local.json` files under `C:\Dev`: in `ai`,
+`Repos\IanBrandt\agent-plugins`, `Repos\jregw`, and `Temp\confer-review-probe`. Each file had all
+138 rules in `PUSH_RULES` and `POST_RULES` and no other ask rule. Every other setting was kept,
+and a search of `C:\Dev` finds no file with the rules now. On the Windows machine:
 
-1. List the files that still have the rules:
-
-   ```powershell
-   Get-ChildItem C:\Dev -Recurse -Force -Filter settings.local.json -ErrorAction SilentlyContinue |
-     Where-Object { $_.FullName -like '*\.claude\settings.local.json' } |
-     Where-Object { Select-String -Path $_.FullName -SimpleMatch -Quiet -Pattern 'git -C * push *' } |
-     Select-Object -ExpandProperty FullName
-   ```
-
-2. In each file, delete by hand the `ask` entries that are in `PUSH_RULES` and `POST_RULES` in
-   `plugins/session-skills/hooks/checkouts.ts`, and keep every other rule.
-3. In a new interactive auto mode session in this checkout, run
+1. In a new interactive auto mode session in this checkout, run
    `git -C <scratch repo> push origin <branch>` against a local bare remote, and answer No.
 
-Replace this item with the number of files changed, the prompt's text, and the notices printed.
+Replace this item with the prompt's text and the notices printed.
 
 ## Remove the askBeforeOutwardWrites option from the Windows user settings
 
