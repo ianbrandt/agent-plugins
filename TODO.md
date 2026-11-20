@@ -152,21 +152,3 @@ and a search of `C:\Dev` finds no file with the rules now. On the Windows machin
    `git -C <scratch repo> push origin <branch>` against a local bare remote, and answer No.
 
 Replace this item with the prompt's text and the notices printed.
-
-## Run test.sh with Git Bash on Windows
-
-In PowerShell on the Windows machine, `bash` is WSL's `C:\WINDOWS\system32\bash.exe`. There
-`claude` resolves to the npm shim but `node` does not, so `bash ./test.sh` reports the grader and
-tier checks as failing. Under Git Bash every check passes, but no count is printed on the
-`eval regex graders:` line, likely because `.` in `grep -E '^. pass '` matches one byte of the
-multibyte `ℹ` there.
-
-1. In the Checks section of `DEVELOP.md`, add that on Windows the script is run with Git Bash:
-
-   ```powershell
-   & 'C:\Program Files\Git\bin\bash.exe' ./test.sh
-   ```
-
-2. Make the grader count in `test.sh` print under Git Bash, and run the script there to check it.
-
-Clear this item in the commit that makes those changes.

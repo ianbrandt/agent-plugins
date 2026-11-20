@@ -20,7 +20,7 @@ for hooks in plugins/*/hooks/hooks.json; do
 done
 
 if out=$(node --test graders.test.mjs 2>&1); then
-  echo "ok    eval regex graders: $(printf '%s\n' "$out" | grep -E '^. pass ' | tr -d 'ℹ#' | tr -s ' ')"
+  echo "ok    eval regex graders: $(printf '%s\n' "$out" | sed -n 's/^[^ ]* pass \([0-9][0-9]*\)$/\1 pass/p')"
 else
   printf '%s\n' "$out"
   echo "FAIL  eval regex graders"
