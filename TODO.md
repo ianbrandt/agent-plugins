@@ -153,17 +153,6 @@ and a search of `C:\Dev` finds no file with the rules now. On the Windows machin
 
 Replace this item with the prompt's text and the notices printed.
 
-## Remove the askBeforeOutwardWrites option from the Windows user settings
-
-`askBeforeOutwardWrites: false` is still set under `pluginConfigs."session-skills@ianbrandt".options`
-in `C:\Dev\.claude\settings.json`. It is the 0.29.0 option for turning off the push check, and no
-plugin here reads it now. On the Windows machine:
-
-1. Delete the `"session-skills@ianbrandt"` entry from `pluginConfigs` in
-   `C:\Dev\.claude\settings.json` by hand. No other option is set there.
-
-Clear this item in a commit once the entry is deleted.
-
 ## Run test.sh with Git Bash on Windows
 
 In PowerShell on the Windows machine, `bash` is WSL's `C:\WINDOWS\system32\bash.exe`. There
