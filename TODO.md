@@ -99,15 +99,28 @@ remote.
   the call again whenever the plugin's ask differs from the plain ask beneath. That case was not
   probed interactively on this machine.
 
-## Check the push prompt on Windows now that the 0.35.2 ask rules are deleted
+## Analyze the Windows results of the push prompt with the 0.35.2 ask rules deleted
 
-On 2026-11-20 the `permissions.ask` rules of session-skills 0.30.0 through 0.35.2 were deleted
-from four `.claude/settings.local.json` files under `C:\Dev`: in `ai`,
-`Repos\IanBrandt\agent-plugins`, `Repos\jregw`, and `Temp\confer-review-probe`. Each file had all
-138 rules in `PUSH_RULES` and `POST_RULES` and no other ask rule. Every other setting was kept,
-and a search of `C:\Dev` finds no file with the rules now. On the Windows machine:
+Probed on 2026-11-20 with Claude Code 2.1.329 in an interactive session in this checkout, whose
+`.claude/settings.local.json` now has only an allow rule. The clone has no
+`session-skills.pushMode` set, so it is in confirm-push mode. The push was
+`git -C C:\Dev\Temp\pushprobe\repo push origin main` to a local bare remote.
 
-1. In a new interactive auto mode session in this checkout, run
-   `git -C <scratch repo> push origin <branch>` against a local bare remote, and answer No.
+### What matched
 
-Replace this item with the prompt's text and the notices printed.
+- The push raised a permission prompt, and after the answer No the bare remote had no branches.
+- No reword notice was printed. In a first run, answered Yes by mistake, the skip notice was
+  printed, as expected: `session-skills: its tool.check hook was skipped.
+  "cc-plugin-sec-default" runs first and sent the event on past it.` The permission record of
+  that run is `{"decision":"accept","source":"user_temporary","grantScope":"once",
+  "reasonCode":"other"}`, with no `rule:localSettings` reason code, so a settings rule no longer
+  raises the prompt.
+
+### What differed
+
+- The prompt read "This command requires approval" instead of the hook's reason, as on the Mac,
+  so the push mode is still not shown in the prompt.
+
+### What is still open
+
+- Nothing on this machine. The missing reason is the Claude Code defect filed on 2026-11-19.
