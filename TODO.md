@@ -129,11 +129,65 @@ remote.
 
 ### What is still open
 
-- After the old rules are deleted from `.claude/settings.local.json` by hand, the notices stop and
-  the plugin's prompt is shown. That case was not probed interactively on this machine.
+- After the old rules are deleted from `.claude/settings.local.json` by hand, the reword notice
+  stops and the plugin's prompt is shown. The skip notice is still printed, since the guard checks
+  the call again whenever the plugin's ask differs from the plain ask beneath. That case was not
+  probed interactively on this machine.
 
 ## Record a PowerShell stdin trap with the powershell skill
 
 In PowerShell 7.6 on Windows, a string piped into a native command arrives with a CRLF line
 ending. `git check-ignore --stdin` keeps the `\r` as part of the path and exits 1 for an ignored
 path, while the same path read from an LF file matches. Run `/powershell:powershell` to record it.
+
+## Delete the session-skills 0.35.2 ask rules on the Windows machine
+
+The `permissions.ask` rules that session-skills 0.30.0 through 0.35.2 wrote are still in several
+`.claude/settings.local.json` files under `C:\Dev`, this checkout's among them. Under managed
+settings `cc-plugin-sec-default` keeps a rule's ask over session-skills' ask, so the rule's prompt
+is shown and the reword notice is printed on each push. On the Windows machine:
+
+1. List the files that still have the rules:
+
+   ```powershell
+   Get-ChildItem C:\Dev -Recurse -Force -Filter settings.local.json -ErrorAction SilentlyContinue |
+     Where-Object { $_.FullName -like '*\.claude\settings.local.json' } |
+     Where-Object { Select-String -Path $_.FullName -SimpleMatch -Quiet -Pattern 'git -C * push *' } |
+     Select-Object -ExpandProperty FullName
+   ```
+
+2. In each file, delete by hand the `ask` entries that are in `PUSH_RULES` and `POST_RULES` in
+   `plugins/session-skills/hooks/checkouts.ts`, and keep every other rule.
+3. In a new interactive auto mode session in this checkout, run
+   `git -C <scratch repo> push origin <branch>` against a local bare remote, and answer No.
+
+Replace this item with the number of files changed, the prompt's text, and the notices printed.
+
+## Remove the askBeforeOutwardWrites option from the Windows user settings
+
+`askBeforeOutwardWrites: false` is still set under `pluginConfigs."session-skills@ianbrandt".options`
+in `C:\Dev\.claude\settings.json`. It is the 0.29.0 option for turning off the push check, and no
+plugin here reads it now. On the Windows machine:
+
+1. Delete the `"session-skills@ianbrandt"` entry from `pluginConfigs` in
+   `C:\Dev\.claude\settings.json` by hand. No other option is set there.
+
+Clear this item in a commit once the entry is deleted.
+
+## Run test.sh with Git Bash on Windows
+
+In PowerShell on the Windows machine, `bash` is WSL's `C:\WINDOWS\system32\bash.exe`. There
+`claude` resolves to the npm shim but `node` does not, so `bash ./test.sh` reports the grader and
+tier checks as failing. Under Git Bash every check passes, but no count is printed on the
+`eval regex graders:` line, likely because `.` in `grep -E '^. pass '` matches one byte of the
+multibyte `ℹ` there.
+
+1. In the Checks section of `DEVELOP.md`, add that on Windows the script is run with Git Bash:
+
+   ```powershell
+   & 'C:\Program Files\Git\bin\bash.exe' ./test.sh
+   ```
+
+2. Make the grader count in `test.sh` print under Git Bash, and run the script there to check it.
+
+Clear this item in the commit that makes those changes.
