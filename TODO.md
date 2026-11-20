@@ -1,37 +1,28 @@
 # To do
 
-## Check that Confer 0.15.0 removes the leftover worktree under `0ee7848e`
+## Analyze the Windows results of the Confer leftover worktree check
 
-Confer 0.15.0 deletes a leftover worktree directory that git no longer lists, which 0.14.5 kept
-on every sweep. On the Windows machine:
+Checked on 2026-11-20 with Confer 0.17.3 already installed, so step 1 was not needed.
 
-1. Update Confer. `claude plugin list` should show Confer 0.15.0:
+### What matched
 
-   ```shell
-   claude plugin marketplace update ianbrandt
-   claude plugin update confer@ianbrandt
-   ```
+- `0ee7848e`, cancelled, lists no worktrees in `state.json` and has no worktree directory on disk.
+  Its only directories are `codex-p0-r1-a1` and `codex-p0-r1-a2`, from 2026-11-13.
+- `git -C C:\Dev\Temp\confer-review-probe worktree list --porcelain` lists only the probe repo
+  itself, on `main`.
 
-2. For each run directory, print its status, the worktrees listed in its `state.json`, and the
-   worktree directories on disk:
+### What differed
 
-   ```powershell
-   Get-ChildItem C:\Dev\.claude\tmp\confer -Directory | ForEach-Object {
-     $s = Get-Content "$($_.FullName)\state.json" -Raw | ConvertFrom-Json
-     [pscustomobject]@{
-       Run = $_.Name; Status = $s.status
-       Listed = $s.resources.worktrees -join ', '
-       OnDisk = (Get-ChildItem $_.FullName -Directory -Filter '*-worktree').Name -join ', '
-     }
-   } | Format-Table -AutoSize -Wrap
-   ```
+- The leftover worktree was already gone before step 3, so `/confer:review` was not run. Which run
+  deleted it is not known: `state.json` was last written on 2026-11-13, but it lists no worktree.
+- Two runs started on 2026-11-18, `6f6445f0` and `e908e486`, still have the status `running`, and
+  each lists a `checkout` worktree that is on disk. The `*-worktree` filter of the step 2 command
+  misses a directory with that name, so it shows nothing for them in the `OnDisk` column.
 
-3. In a new session in `C:\Dev\Temp\confer-review-probe`, run `/confer:review --tier routine`
-   once. Then repeat step 2, and run
-   `git -C C:\Dev\Temp\confer-review-probe worktree list --porcelain`.
+### What is still open
 
-Expected: `0ee7848e` lists no worktrees and has none on disk. Replace this item with the output
-of each step.
+- Whether a sweep removes the `checkout` worktree of a run left at `running` after its session
+  ended.
 
 ## Analyze the Mac results of the session-skills confirm-push prompt
 
