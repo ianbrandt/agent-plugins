@@ -99,12 +99,6 @@ remote.
   the call again whenever the plugin's ask differs from the plain ask beneath. That case was not
   probed interactively on this machine.
 
-## Record a PowerShell stdin trap with the powershell skill
-
-In PowerShell 7.6 on Windows, a string piped into a native command arrives with a CRLF line
-ending. `git check-ignore --stdin` keeps the `\r` as part of the path and exits 1 for an ignored
-path, while the same path read from an LF file matches. Run `/powershell:powershell` to record it.
-
 ## Check the push prompt on Windows now that the 0.35.2 ask rules are deleted
 
 On 2026-11-20 the `permissions.ask` rules of session-skills 0.30.0 through 0.35.2 were deleted
