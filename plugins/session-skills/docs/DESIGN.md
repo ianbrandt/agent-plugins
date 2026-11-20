@@ -16,8 +16,8 @@ One hooks module, `hooks/register.ts`, which is a Claude Code mod. It was run on
   host squashed on merge, and never removes a worktree (§4).
 - `landing_facts` returns whether the repo is a fork, the push mode, the post mode, and the landing
   mode (`land-and-wrap` §1).
-- `set_push_policy` sets the push mode, the post mode, or both, and writes the permission rules
-  for them (see "Push and post modes").
+- `set_push_policy` sets the push mode, the post mode, or both, in per-clone git config (see
+  "Push and post modes").
 - `edit_primary_file` edits a file that is only in the primary checkout, such as an untracked
   roadmap, from a session in a worktree: one passage is replaced, or text is appended, and nothing
   is written when the passage has drifted.
@@ -133,6 +133,15 @@ session and worktree of the clone. Where the modes cannot be read, the command i
 too. Before a switch to an auto mode in `set_push_policy`, the user is asked with `$.ui.ask`, which
 is rejected in a `-p` run, and the modes then stay as they are.
 
+Under managed settings, `cc-plugin-sec-default` keeps the verdict of a settings rule over a
+plugin's answer that is no stricter, and prints that the plugin's `tool.check` hook was skipped. On
+2.1.329 on the managed Windows machine, the `permissions.ask` rules of 0.35.2 and earlier were still
+in the checkout's `.claude/settings.local.json`. For `git push` and `gh pr create` the guard kept
+the rule's ask over the plugin's, and printed that session-skills tried to reword it. In an
+interactive auto mode session the prompt shown was the rule's, with the rule in its text instead of
+the push mode, and in a `-p` run the push was refused. The push is confirmed either way, and only
+the prompt's text differs.
+
 Nothing is written to a settings file. Under managed settings Claude Code refuses a plugin outside
 the organization's policy that writes `.claude/settings*.json`, or that passes the path of one in a
 command's arguments or input. From 0.30.0 through 0.35.2 the prompt was raised by
@@ -154,7 +163,8 @@ per case, with a probe plugin with a `tool.check` hook that answered `ask` for `
 - A `$.tool.check` query from a `tool.call` hook returned the plugin's ask, with the plugin's name
   in it.
 
-An interactive session, a session on macOS, and bypass mode were not probed. The hook does not read
+An interactive session without those rules and bypass mode were not probed on the managed machine.
+The hook does not read
 a push in a script or an alias, a write through `gh api` with none of the flags, or a command sent
 through `Monitor` or a terminal tool. A push to the default branch of a `pr` clone has no prompt of
 its own in `auto-push`, and whether a subagent's prompt is shown is not in the docs. For these, the

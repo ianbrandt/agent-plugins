@@ -95,6 +95,43 @@ filed with Claude Code's `/bug` on 2026-11-19.
 
 - The confirm-post prompt was probed only headless, not in an interactive session.
 
+## Analyze the Windows results of the session-skills confirm-push prompt under managed settings
+
+Probed on 2026-11-19 and 2026-11-20 with Claude Code 2.1.329 and session-skills 0.36.0, in
+interactive auto mode sessions in this checkout, with a push from a scratch repo to a local bare
+remote.
+
+### What matched
+
+- `git push` and `gh pr create` each raised a permission prompt and ran only after a Yes there.
+  The permission record of each in the transcript is `{"decision":"accept","source":
+  "user_temporary","ruleSource":"localSettings","grantScope":"once","reasonCode":
+  "rule:localSettings"}`, the record of a Yes in the prompt.
+- A push chained with a `git status` was refused by the `tool.call` hook, before any prompt.
+- Headless, a push was refused, in this checkout and in `C:\Dev\Temp\askprobe\repo`.
+
+### What differed
+
+- The prompt was raised by the `permissions.ask` rules of 0.35.2 and earlier, which are still in
+  this checkout's `.claude/settings.local.json`: `Rule PowerShell(git -C * push *) from project
+  local settings overrides auto mode.` No push mode is in that text, so the first push was taken
+  for one that ran with no prompt.
+- Two notices were printed before the prompt: `session-skills: its tool.check hook was skipped.
+  "cc-plugin-sec-default" runs first and sent the event on past it.`, then `session-skills tried
+  to reword an ask rule in your settings from a PowerShell call (PowerShell(git -C * push *)); the
+  ask rule holds over the plugins you install (allowModsToOverrideDenyRules)`.
+- In the 2.1.329 binary, the `tool.check` hook of `cc-plugin-sec-default` checks the call again
+  without the plugins a person installs when one of them answers differently from the verdict
+  beneath and is no stricter. That second check prints the skip notice. The guard keeps the second
+  verdict where it comes from a settings rule, a classic hook, a setting, or a deny, so the rule's
+  ask replaced the plugin's. In `askprobe\repo`, with no such rules, the verdict beneath was a
+  plain ask, and the plugin's ask was kept.
+
+### What is still open
+
+- After the old rules are deleted from `.claude/settings.local.json` by hand, the notices stop and
+  the plugin's prompt is shown. That case was not probed interactively on this machine.
+
 ## Record a PowerShell stdin trap with the powershell skill
 
 In PowerShell 7.6 on Windows, a string piped into a native command arrives with a CRLF line
