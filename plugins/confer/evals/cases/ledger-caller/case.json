@@ -23,6 +23,20 @@
       "summary": "`Notify` runs as a ledger subscriber and calls `Service.Load`, which calls `ledger.Post`. Post now delivers to subscribers while holding the `delivering` mutex and the nested Post waits on that same mutex, so the first fare that triggers an autoload deadlocks: the tap never returns and every later Post blocks."
     },
     {
+      "path": "ledger/ledger.go",
+      "line": 100,
+      "severity": "high",
+      "defect": "autoload-deadlock",
+      "summary": "`deliver` holds the non-reentrant `delivering` mutex while it calls subscribers, and the autoload subscriber wired in `cmd/farecardd/main.go` posts to the ledger, so its nested `Post` waits on the mutex its own goroutine holds."
+    },
+    {
+      "path": "topup/topup.go",
+      "line": 64,
+      "severity": "high",
+      "defect": "load-retry-double-capture",
+      "summary": "For a retried order this `Post` now returns the stored entry and a nil error instead of `ErrDuplicate`, so `Load` goes on to capture the payment again."
+    },
+    {
       "path": "topup/topup.go",
       "line": 71,
       "severity": "high",
