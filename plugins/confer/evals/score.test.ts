@@ -70,6 +70,23 @@ test('a case with no defects has no recall, and every confirmed finding is a fal
   expect(score(clean, { confirmed: [entry('a', file, 3)] })).toMatchObject({ defects: 0, reported: 1, precision: 0, recall: null, unmatched: ['a'] })
 })
 
+test('each reviewer is credited with the defects it raised in its own first round', () => {
+  const c = { id: 'c', findings: [at(file, 10, { defect: 'a' }), at(file, 50, { defect: 'b' }), at(file, 90, { defect: 'c' }), at(file, 130, { defect: 'd' })] }
+  const raised = (id: string, line: number, round: number, phase = 0) => entry(id, file, line, { foundBy: id.startsWith('C') ? 'claude' : 'codex', phase, round })
+  const s = score(c, {
+    confirmed: [
+      { ...raised('C1', 10, 1), foundBy: 'both', same: [raised('X2', 11, 1)] },
+      raised('X1', 50, 2),
+      raised('C3', 130, 1, 1),
+    ],
+    refuted: [raised('C2', 90, 1)],
+  })
+  const unfinished = score(c, { singleReviewer: { claude: [], codex: [raised('F1', 50, 1)] } })
+
+  expect(s.firstRound).toEqual({ claude: ['a', 'c'], codex: ['a'] })
+  expect(unfinished.firstRound).toEqual({ claude: [], codex: ['b'] })
+})
+
 test('an expired run reports nothing but raises its single-reviewer findings', () => {
   const s = score({ id: 'c', findings: [at(file, 5)] }, { singleReviewer: { claude: [entry('a', file, 5)], codex: [] } })
 

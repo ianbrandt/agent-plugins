@@ -1,7 +1,7 @@
 // Scores the --findings report of a review, a plan review, or a question, or the interview that drafts a plan, against a case. Erasable TypeScript only, so Node can strip the types.
 type CaseFinding = { path: string; line: number | null; defect?: string }
 export type Case = { id: string; findings: CaseFinding[] }
-type Entry = { id: string; path: string; line?: number | null; evidence?: string; fix?: string; same?: Entry[] }
+type Entry = { id: string; path: string; line?: number | null; evidence?: string; fix?: string; foundBy?: string; phase?: number; round?: number; same?: Entry[] }
 type Side = { requested?: unknown; resolvedModels?: unknown; costUsd?: number | null; tokens?: unknown }
 export type Report = {
   outcome?: string
@@ -23,7 +23,10 @@ const samePath = (reported: string, wanted: string) => {
 }
 const locations = (e: Entry): Entry[] => [e, ...(e.same ?? [])]
 const gap = (a: Entry, f: CaseFinding) => (a.line == null || f.line == null ? 0 : Math.abs(a.line - f.line))
-const matches = (e: Entry, f: CaseFinding) => locations(e).some(l => samePath(l.path, f.path) && gap(l, f) <= maxLineGap)
+const at = (l: Entry, f: CaseFinding) => samePath(l.path, f.path) && gap(l, f) <= maxLineGap
+const matches = (e: Entry, f: CaseFinding) => locations(e).some(l => at(l, f))
+// The head of a defect both found is foundBy both; its id prefix, C or X, is the side that raised it.
+const sideOf = (l: Entry) => (l.foundBy !== 'both' ? l.foundBy : l.id.startsWith('C') ? 'claude' : 'codex')
 const distance = (e: Entry, f: CaseFinding) => Math.min(...locations(e).filter(l => samePath(l.path, f.path)).map(l => gap(l, f)))
 
 export function score(c: Case, report: Report) {
@@ -54,6 +57,8 @@ export function score(c: Case, report: Report) {
     ...Object.values(report.singleReviewer ?? {}).flat(),
   ]
   const raised = new Set(c.findings.flatMap((f, i) => (all.some(e => matches(e, f)) ? [defectOf(i)] : [])))
+  const raisedFirst = (side: string) =>
+    [...new Set(c.findings.flatMap((f, i) => (all.flatMap(locations).some(l => sideOf(l) === side && l.phase === 0 && l.round === 1 && at(l, f)) ? [defectOf(i)] : [])))]
   const reported = reportedEntries.length
   return {
     reported,
@@ -61,6 +66,8 @@ export function score(c: Case, report: Report) {
     defects: defects.size,
     found: found.size,
     raised: raised.size,
+    // What each reviewer found on its own, before it saw the other's findings.
+    firstRound: { claude: raisedFirst('claude'), codex: raisedFirst('codex') },
     precision: reported === 0 ? null : matched.size / reported,
     recall: defects.size === 0 ? null : found.size / defects.size,
     missed: c.findings.flatMap((f, i) => (owner[i] === -1 ? [f.line] : [])),
