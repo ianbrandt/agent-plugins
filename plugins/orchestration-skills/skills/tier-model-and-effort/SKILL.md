@@ -84,8 +84,8 @@ appears in the session's skill list:
   reviewer explicitly, or both come from that skill's defaults and the CLI's configuration.
 - **A stalled stage.** A routing skill, such as `claudex-route`, hands the reproduction and the
   failed approaches to the other provider. Try it before the Escalation tier.
-- **Its model.** The other provider's top model, `gpt-6-astra` as of 2026-09-24, with `gpt-6-sol`
-  as the step down when that plan's quota runs low. Usage on that side counts against the other
+- **Its model.** The other provider's top model, with its next model down as the step down when
+  that plan's quota runs low. Usage on that side counts against the other
   provider's plan, not the Claude weekly limit. The Claude reviewer inside a cross-provider review
   still counts.
 
