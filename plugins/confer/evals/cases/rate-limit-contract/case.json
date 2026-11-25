@@ -1,0 +1,38 @@
+{
+  "message": "Rate-limit partner API requests per route",
+  "findings": [
+    {
+      "path": "src/support.ts",
+      "line": 10,
+      "severity": "medium",
+      "defect": "support-reset-tenant-key",
+      "summary": "Buckets are now keyed by `bucketKey(tenantId, route)`, but the support console still calls `limiter.reset(tenant.id)`, which matches no key. Resetting a throttled tenant deletes nothing, the tenant stays throttled, and the console prints that the tenant has not used its rate limit."
+    },
+    {
+      "path": "src/limiter.ts",
+      "line": 47,
+      "severity": "high",
+      "defect": "exempt-routes-limited",
+      "summary": "`policyFor` now returns undefined to mean the route is exempt, and handles unknown plans itself, but `check` still falls back to `plans.free` on undefined. `GET /v1/status` and `GET /v1/limits` are rate-limited at the free plan for every tenant, so a partner polling either once a second gets 429s after the first 30 requests."
+    },
+    {
+      "path": "src/keys.ts",
+      "line": 8,
+      "severity": "medium",
+      "defect": "bucket-key-tenant-colon",
+      "summary": "Tenant IDs outside the US region contain a colon (`eu:nordic`, from `tenantId` in tenants.ts), and `parseBucketKey` ends the tenant at the first colon. Every EU and AP tenant is reported as tenant `eu` or `ap` in `usageReport`, with routes such as `nordic:GET /v1/search`, and `limitsFor` returns an empty list to each of them from `GET /v1/limits`."
+    }
+  ],
+  "decoys": [
+    {
+      "path": "src/limiter.ts",
+      "line": 38,
+      "summary": "Pruning loses no throttling state: `refill` in bucket.ts clamps the tokens to exactly `capacity` with `Math.min`, so `secondsToFull` is exactly 0 only for a full bucket, and a new bucket also starts full."
+    },
+    {
+      "path": "src/middleware.ts",
+      "line": 13,
+      "summary": "`RateLimit-Reset` takes seconds, and `Decision.reset` is already in seconds: limiter.ts sets it from `bucket.secondsToFull`, unlike `retryAfterMs`, so it needs no division by 1000."
+    }
+  ]
+}
