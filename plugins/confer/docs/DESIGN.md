@@ -26,8 +26,9 @@ uses native events only. Under some managed settings, a user plugin's `classic.*
 - By default, Codex runs `gpt-6.2-sol` at the routine and complex tiers and `gpt-6.2-astra` at the
   critical and escalation tiers. In the review eval on 2026-11-25, each found all seven planted
   defects at its tiers with no failed or partial run, as `gpt-6.1-sol` and `gpt-6-astra` did, so
-  the models are not ranked by that eval. Its cases are changes of one to four files, so a long
-  review, where developers report that `gpt-6.2-astra` stops early, is not covered.
+  the models are not ranked by that eval. Developers report that `gpt-6.2-astra` stops early on a
+  long task, but at the critical tier on the 25-file `warehouse-sync` case each model raised all
+  six planted defects in its first round, including the five in the last files of the diff.
 - Claude Code resolves a model alias through its `ANTHROPIC_DEFAULT_*_MODEL` pin, for a reviewer
   spawn and for `$.model.complete` alike, so Confer passes the alias as is.
 - Where a tier's Claude model is the `fable` alias, Confer sends a one-line completion to that alias
