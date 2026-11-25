@@ -6,7 +6,7 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSyn
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { base, commit, git, headless, must, runDir, tiers } from './headless.mjs'
-import { row, score } from './score.ts'
+import { maxLineGap, row, score } from './score.ts'
 
 const [tier, ...rest] = process.argv.slice(2)
 const overrides = []
@@ -39,15 +39,18 @@ function build(c) {
   return dir
 }
 
-// Fails a case when the change is empty or a finding is not at a line of its file.
+// Fails a case when the change is empty, a finding or decoy is not at a line of its file, or a decoy is next to a finding.
 function check(c, dir) {
   if (!must(git(dir, 'diff', '--name-only', 'HEAD^', 'HEAD'), 'git diff').trim()) throw new Error('the change is empty')
-  for (const f of c.findings) {
+  for (const f of [...c.findings, ...(c.decoys ?? [])]) {
     const file = join(dir, f.path)
     if (!existsSync(file)) throw new Error(`${f.path} is not in the project`)
     const lines = readFileSync(file, 'utf8').split('\n').length - 1
     if (f.line !== null && !(f.line >= 1 && f.line <= lines)) throw new Error(`${f.path}:${f.line} is past the end of the file`)
   }
+  // A decoy this close to a finding would be scored as it.
+  for (const d of c.decoys ?? [])
+    if (c.findings.some(f => f.path === d.path && (f.line === null || Math.abs(f.line - d.line) <= maxLineGap))) throw new Error(`the decoy at ${d.path}:${d.line} is within ${maxLineGap} lines of a finding`)
 }
 
 const cases = readdirSync(join(here, 'cases'), { withFileTypes: true }).filter(d => d.isDirectory()).map(d => ({ id: d.name, ...JSON.parse(readFileSync(join(here, 'cases', d.name, 'case.json'), 'utf8')) }))

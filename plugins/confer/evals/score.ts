@@ -1,6 +1,8 @@
 // Scores the --findings report of a review, a plan review, or a question, or the interview that drafts a plan, against a case. Erasable TypeScript only, so Node can strip the types.
 type CaseFinding = { path: string; line: number | null; defect?: string }
-export type Case = { id: string; findings: CaseFinding[] }
+// A decoy is code that looks like a defect but is correct.
+type Decoy = { path: string; line: number | null }
+export type Case = { id: string; findings: CaseFinding[]; decoys?: Decoy[] }
 type Entry = { id: string; path: string; line?: number | null; evidence?: string; fix?: string; foundBy?: string; phase?: number; round?: number; same?: Entry[] }
 type Side = { requested?: unknown; resolvedModels?: unknown; costUsd?: number | null; tokens?: unknown }
 export type Report = {
@@ -15,16 +17,16 @@ export type Report = {
   sides?: { claude: Side; codex: Side }
 }
 
-const maxLineGap = 3
+export const maxLineGap = 3
 const norm = (p: string) => p.replace(/\\/g, '/').replace(/^\.\//, '')
 const samePath = (reported: string, wanted: string) => {
   const r = norm(reported)
   return r === wanted || r.endsWith(`/${wanted}`)
 }
 const locations = (e: Entry): Entry[] => [e, ...(e.same ?? [])]
-const gap = (a: Entry, f: CaseFinding) => (a.line == null || f.line == null ? 0 : Math.abs(a.line - f.line))
-const at = (l: Entry, f: CaseFinding) => samePath(l.path, f.path) && gap(l, f) <= maxLineGap
-const matches = (e: Entry, f: CaseFinding) => locations(e).some(l => at(l, f))
+const gap = (a: Entry, f: CaseFinding | Decoy) => (a.line == null || f.line == null ? 0 : Math.abs(a.line - f.line))
+const at = (l: Entry, f: CaseFinding | Decoy) => samePath(l.path, f.path) && gap(l, f) <= maxLineGap
+const matches = (e: Entry, f: CaseFinding | Decoy) => locations(e).some(l => at(l, f))
 // The head of a defect both found is foundBy both; its id prefix, C or X, is the side that raised it.
 const sideOf = (l: Entry) => (l.foundBy !== 'both' ? l.foundBy : l.id.startsWith('C') ? 'claude' : 'codex')
 const distance = (e: Entry, f: CaseFinding) => Math.min(...locations(e).filter(l => samePath(l.path, f.path)).map(l => gap(l, f)))
@@ -59,6 +61,9 @@ export function score(c: Case, report: Report) {
   const raised = new Set(c.findings.flatMap((f, i) => (all.some(e => matches(e, f)) ? [defectOf(i)] : [])))
   const raisedFirst = (side: string) =>
     [...new Set(c.findings.flatMap((f, i) => (all.flatMap(locations).some(l => sideOf(l) === side && l.phase === 0 && l.round === 1 && at(l, f)) ? [defectOf(i)] : [])))]
+  const perSide = <T>(of: (side: string) => T) => ({ claude: of('claude'), codex: of('codex') })
+  const decoys = c.decoys ?? []
+  const label = (d: Decoy) => `${d.path}:${d.line}`
   const reported = reportedEntries.length
   return {
     reported,
@@ -67,7 +72,11 @@ export function score(c: Case, report: Report) {
     found: found.size,
     raised: raised.size,
     // What each reviewer found on its own, before it saw the other's findings.
-    firstRound: { claude: raisedFirst('claude'), codex: raisedFirst('codex') },
+    firstRound: perSide(raisedFirst),
+    decoysRaised: perSide(side => decoys.filter(d => all.flatMap(locations).some(l => sideOf(l) === side && at(l, d))).map(label)),
+    decoysConfirmed: decoys.filter(d => reportedEntries.some(e => matches(e, d))).map(label),
+    // Findings refuted or withdrawn that match no defect: a reviewer's false alarms the other caught.
+    rejected: perSide(side => [...(report.refuted ?? []), ...(report.withdrawn ?? [])].flatMap(locations).filter(l => sideOf(l) === side && !c.findings.some(f => at(l, f))).length),
     precision: reported === 0 ? null : matched.size / reported,
     recall: defects.size === 0 ? null : found.size / defects.size,
     missed: c.findings.flatMap((f, i) => (owner[i] === -1 ? [f.line] : [])),

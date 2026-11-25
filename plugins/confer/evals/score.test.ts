@@ -87,6 +87,21 @@ test('each reviewer is credited with the defects it raised in its own first roun
   expect(unfinished.firstRound).toEqual({ claude: [], codex: ['b'] })
 })
 
+test('each reviewer is charged with the decoys it raised and its rejected findings that match no defect', () => {
+  const c = { id: 'c', findings: [at(file, 10)], decoys: [at(file, 30), at(file, 60)] }
+  const by = (id: string, line: number) => entry(id, file, line, { foundBy: id.startsWith('C') ? 'claude' : 'codex' })
+  const s = score(c, {
+    confirmed: [by('C1', 10), { ...by('X1', 61), foundBy: 'both', same: [by('C2', 60)] }],
+    refuted: [by('C3', 30), by('X2', 10)],
+    withdrawn: [by('C4', 200)],
+  })
+
+  expect(s.decoysRaised).toEqual({ claude: ['src/stock.py:30', 'src/stock.py:60'], codex: ['src/stock.py:60'] })
+  expect(s.decoysConfirmed).toEqual(['src/stock.py:60'])
+  expect(s.rejected).toEqual({ claude: 2, codex: 0 })
+  expect(score({ id: 'c', findings: [] }, {}).decoysRaised).toEqual({ claude: [], codex: [] })
+})
+
 test('an expired run reports nothing but raises its single-reviewer findings', () => {
   const s = score({ id: 'c', findings: [at(file, 5)] }, { singleReviewer: { claude: [entry('a', file, 5)], codex: [] } })
 
