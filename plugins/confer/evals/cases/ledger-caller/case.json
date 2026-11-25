@@ -1,0 +1,52 @@
+{
+  "message": "Index ledger entries by card, make posts safe to retry, and add transfers",
+  "findings": [
+    {
+      "path": "statement/statement.go",
+      "line": 41,
+      "severity": "high",
+      "defect": "statement-overwrites-history",
+      "summary": "`Entries` now returns the ledger's own per-card slice instead of a copy, and `Build` filters it in place with `all[:0]`. Each statement copies the month's entries over the start of the card's stored history, so the ledger loses older entries and holds duplicates. Downloading the same statement again shows trips twice and a wrong opening balance, and the writes race with concurrent readers of the card."
+    },
+    {
+      "path": "statement/statement.go",
+      "line": 47,
+      "severity": "high",
+      "defect": "statement-overwrites-history",
+      "summary": "This `append` writes into the backing array that `Entries` now shares with the ledger, overwriting the card's stored entries."
+    },
+    {
+      "path": "topup/autoload.go",
+      "line": 69,
+      "severity": "high",
+      "defect": "autoload-deadlock",
+      "summary": "`Notify` runs as a ledger subscriber and calls `Service.Load`, which calls `ledger.Post`. Post now delivers to subscribers while holding the `delivering` mutex and the nested Post waits on that same mutex, so the first fare that triggers an autoload deadlocks: the tap never returns and every later Post blocks."
+    },
+    {
+      "path": "topup/topup.go",
+      "line": 71,
+      "severity": "high",
+      "defect": "load-retry-double-capture",
+      "summary": "Load relies on `ErrDuplicate` to detect a retried order, but Post now returns the stored entry with a nil error for a repeated ID on the same card. A client that retries an order after a timeout has its payment card captured a second time while the fare card is credited once, and the retry counts against the daily load limit again."
+    },
+    {
+      "path": "topup/topup.go",
+      "line": 80,
+      "severity": "high",
+      "defect": "load-retry-double-capture",
+      "summary": "On a retried order Post no longer fails, so this capture runs again for an order that was already paid."
+    }
+  ],
+  "decoys": [
+    {
+      "path": "ledger/ledger.go",
+      "line": 89,
+      "summary": "`record` writes the ledger's maps without taking `l.mu`, but its only caller is Post, which holds `l.mu` across the call."
+    },
+    {
+      "path": "fare/charge.go",
+      "line": 82,
+      "summary": "`Charged` is taken from the stored entry rather than the computed fare, and negated. Fare amounts are stored negative, and on a retried tap Post returns the entry from the first attempt, whose amount is what the rider was charged. The recomputed fare would be wrong there, because the first attempt now looks like a paid fare inside the transfer window."
+    }
+  ]
+}
