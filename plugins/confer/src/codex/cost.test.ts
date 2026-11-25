@@ -6,6 +6,8 @@ test('cost is estimated from uncached, cached, cache-write, and output tokens', 
 
   expect(estimateCostUsd('gpt-6.1-sol', usage)?.toFixed(7)).toBe('1.9100000')
   expect(estimateCostUsd('gpt-6-astra', usage)?.toFixed(7)).toBe('9.8500000')
+  expect(estimateCostUsd('gpt-6.2-sol', usage)?.toFixed(7)).toBe('1.9100000')
+  expect(estimateCostUsd('gpt-6.2-astra', usage)?.toFixed(7)).toBe('7.6400000')
 })
 
 test("a Bedrock model is priced at Bedrock's rate", () => {

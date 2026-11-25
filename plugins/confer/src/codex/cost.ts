@@ -5,6 +5,9 @@ import type { CodexUsage } from './events'
 const prices = new Map([
   ['gpt-6.1-sol', { input: 2, cached: 0.1, cacheWrite: 2.5, output: 10 }],
   ['gpt-6-astra', { input: 10, cached: 1, cacheWrite: 12.5, output: 50 }],
+  // From developers.openai.com/api/docs/pricing on 2026-11-25, at the 30-minute cache-write rate.
+  ['gpt-6.2-sol', { input: 2, cached: 0.1, cacheWrite: 2.5, output: 10 }],
+  ['gpt-6.2-astra', { input: 8, cached: 0.4, cacheWrite: 10, output: 40 }],
   // Bedrock us-east-1 In-Region and US CRIS rates, from the docs.aws.amazon.com/bedrock model
   // cards on 2026-11-07.
   ['bedrock-gpt-6.1-sol', { input: 2.2, cached: 0.11, cacheWrite: 2.75, output: 11 }],
