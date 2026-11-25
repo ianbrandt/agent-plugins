@@ -226,6 +226,14 @@ with "while" or "but" in place of "and", was flagged on 8 of 8 checks, and the t
 under rule 6 on none of 8. On the 20 clean texts with "while" or ", but", 6 of 40 calls came back
 with only rejected findings, against 7 of 39 before.
 
+Every review and both classifiers are sent with a reply cap of 16,384 tokens, set in `gate.ts`.
+Thinking counts toward the cap. With no cap set, the reviews of three `migrate_backlog` calls of
+12,000 to 43,000 characters each came back with no text, and the user was shown the toast below.
+Two of those calls were sent again three times at each of three caps, on Sonnet 5.5 at `high`: with
+no cap, two of six replies ended at 3,072 output tokens with no text and a third ended there with
+its findings cut short. At 8,192 and at 32,000 all 12 replies had text, the longest took 6,171
+tokens, and the slowest took 41 seconds of the 60 a call is given.
+
 Every review and both classifiers are sent at `high` effort. It is set in `gate.ts` so that the
 level depends neither on the session's effort nor on a default that could change. It is the level an
 unset effort resolved to: 15 clean texts were sent with no effort from sessions at Low and at Max,
@@ -282,7 +290,7 @@ The command goes through on every failure, so a commit is not blocked when no mo
 The first time in a session that a check fails, the user is told once that a review did not run, in
 a toast, which is shown to the user and not to the model. The reason is in the toast: the API error
 kind and HTTP status, a call that was cut off or went 60 seconds without a reply, a reply with no
-text, or the message of an error thrown in the check. Each later check is still tried. A reply from
+text within the cap, or the message of an error thrown in the check. Each later check is still tried. A reply from
 a call that was answered is not such a failure, whatever its form.
 
 A toast can close before the user reads it, and neither the transcript nor the desktop app's log

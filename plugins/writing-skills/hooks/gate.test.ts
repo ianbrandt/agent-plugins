@@ -37,6 +37,8 @@ type World = {
   session?: string
   // A policy that refuses the lint tool's registration.
   unlisted?: boolean
+  // The model's reply has no text block.
+  empty?: boolean
 }
 
 // What the model streams beneath the plugin for the next response.
@@ -49,7 +51,7 @@ const response: { chunks: any[]; fail: boolean } = { chunks: [], fail: false }
 function world(on: any, w: World = {}) {
   const base = w.base ?? '2.1.289'
   const files: Record<string, string> = { ...w.files }
-  const seen = { reader: [] as string[], commands: [] as string[], tool: [] as string[], system: '', systemBlocks: undefined as unknown, toasts: [] as string[], files, ran: 0, gh: [] as string[], sent: [] as string[], origins: [] as unknown[], contexts: [] as string[][], efforts: [] as unknown[][] }
+  const seen = { reader: [] as string[], commands: [] as string[], tool: [] as string[], system: '', systemBlocks: undefined as unknown, toasts: [] as string[], files, ran: 0, gh: [] as string[], sent: [] as string[], origins: [] as unknown[], contexts: [] as string[][], efforts: [] as unknown[][], caps: [] as unknown[] }
   // On Windows an engine-level step turns a "/foo" path into "C:\foo" before the
   // mock sees it, so each lookup reads it back as POSIX. On macOS a "C:/foo"
   // path is not absolute, so the engine prepends the cwd and the drive letter
@@ -84,6 +86,8 @@ function world(on: any, w: World = {}) {
       : [seen.reader, w.verdict]
     list.push(e.prompt)
     seen.efforts.push([list === seen.reader ? 'review' : 'classifier', e.effort])
+    seen.caps.push(e.maxTokens)
+    if (w.empty) return { value: { isAnswered: false, reason: 'empty-reply', usage: {} } }
     return { value: w.down || reply === undefined ? { isAnswered: false, reason: 'api-error', status: 529, error: 'overloaded', usage: {} } : { isAnswered: true, text: reply, usage: {} } }
   })
   on('tool.call', (_$: any, e: any) => {
@@ -175,6 +179,15 @@ test('a commit is not stopped when the model call fails, and the user is told on
   expect(seen.toasts).toHaveLength(1)
   expect(seen.toasts[0]).toContain('A model review did not run: API error overloaded, HTTP 529.')
   expect(seen.toasts[0]).not.toContain('writing-skills:')
+})
+
+// Thinking counts toward the cap: at the default, a review of a long text ended
+// with no text block (docs/DESIGN.md).
+test('a review is sent with a reply cap, and a reply with no text is reported with it', async ($: any, on: any) => {
+  const seen = world(on, { empty: true })
+  expect((await bash($, SAYS)).result).toEqual({ stdout: 'ran' })
+  expect(seen.caps).toEqual([16384])
+  expect(seen.toasts[0]).toContain('A model review did not run: the reply had no text within 16384 tokens.')
 })
 
 test('each toast is also kept in a log, with its time and session', async ($: any, on: any) => {

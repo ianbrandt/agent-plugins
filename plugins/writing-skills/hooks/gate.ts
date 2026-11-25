@@ -73,10 +73,15 @@ class Off extends Error {}
 function why(reply: any): string {
   if (reply.reason === 'api-error') return `API error ${reply.error}${reply.status ? `, HTTP ${reply.status}` : ''}`
   if (reply.reason === 'aborted') return `the call was cut off, or had no reply within ${TIMEOUT / 1000} seconds`
-  return 'the reply had no text'
+  return `the reply had no text within ${MAX_TOKENS} tokens`
 }
 
 const TIMEOUT = 60000
+
+// Thinking counts toward the reply's cap. At the default cap a review of a long
+// text ended at 3,072 output tokens with no text block; the longest reply
+// measured took 6,171 (docs/DESIGN.md).
+const MAX_TOKENS = 16384
 
 async function ask($: any, system: string[], prompt: string): Promise<string> {
   const parts: string[] = []
@@ -88,6 +93,7 @@ async function ask($: any, system: string[], prompt: string): Promise<string> {
     // An unset effort resolves to high today. It is set here so that the level depends neither on
     // the session's effort nor on a default that could change (docs/DESIGN.md).
     effort: 'high',
+    maxTokens: MAX_TOKENS,
     timeoutMs: TIMEOUT,
   })
   if (!reply.isAnswered) throw new Off(why(reply))
