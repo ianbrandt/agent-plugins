@@ -1,0 +1,43 @@
+{
+  "message": "Open bookings on a rolling window and allow longer bookings",
+  "findings": [
+    {
+      "path": "courts/booking.py",
+      "line": 68,
+      "severity": "medium",
+      "defect": "member-clash-misses-running-booking",
+      "summary": "`BookingStore.between` returns only bookings that start inside [start, end), so the member check misses a longer booking that started earlier and is still running. A member with 18:00 to 19:30 on Court 1 can also book Court 2 at 19:00. The check needs the same look-back and `b.end > start` filter as the court check above it."
+    },
+    {
+      "path": "courts/window.py",
+      "line": 17,
+      "severity": "high",
+      "defect": "opening-day-from-utc-date",
+      "summary": "`book` passes `start` in UTC, so `start.date()` is the UTC date. In Sydney a slot before 11:00 (10:00 in winter) falls on the previous UTC date, so its booking opens a day early: on 2 March at 09:00 a full member can book 08:00 on 10 March, which should open on 3 March, while the booking sheet still shows it closed. The date should come from `clock.local(start)`."
+    },
+    {
+      "path": "courts/booking.py",
+      "line": 71,
+      "severity": "high",
+      "defect": "daily-limit-slots-as-minutes",
+      "summary": "`Booking.length` is a count of 30-minute slots, but it is added to `minutes` and compared with `DAILY_MINUTES`. Three hours already booked count as 6, so the 120-minute limit is never reached in practice: a member can book 90 minutes in the morning and 90 more in the evening."
+    }
+  ],
+  "decoys": [
+    {
+      "path": "courts/booking.py",
+      "line": 60,
+      "summary": "The look-back of `MAX_MINUTES - SLOT_MINUTES` looks one slot short but is right. Bookings start on slot boundaries, `Booking.end` is exclusive, and `between` includes its start bound, so the earliest booking that can still be running at `start` begins 60 minutes before it, and the `b.end > start` filter drops the rest."
+    },
+    {
+      "path": "courts/window.py",
+      "line": 22,
+      "summary": "Passing `tzinfo=` to `datetime.combine` gives a wrong local-mean-time offset only with pytz. `CLUB_TZ` is a `zoneinfo.ZoneInfo` (courts/config.py), which resolves the offset for that date, daylight saving included, and `clock.day_bounds` and `slots.day_slots` build club times the same way."
+    },
+    {
+      "path": "courts/booking.py",
+      "line": 59,
+      "summary": "`length=minutes // SLOT_MINUTES` looks like a unit mix-up, but `Booking.length` is a number of slots (courts/models.py), and `Booking.end` multiplies it by `SLOT_MINUTES`. A 90-minute booking is stored with a length of 3, and the court check on the next line gets an end 90 minutes after the start."
+    }
+  ]
+}
