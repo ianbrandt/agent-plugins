@@ -1,1 +1,1 @@
-{ "extends": "../tsconfig.json", "include": ["../types", "."] }
+{ "extends": "../tsconfig.json", "include": ["../types", "."], "exclude": ["cases"] }
