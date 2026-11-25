@@ -78,16 +78,17 @@ re-verify passes used about 40% of the tokens spent on Fable.
 A skill that runs another provider's model is optional, and nothing here depends on one. Where one
 appears in the session's skill list:
 
-- **Silent-failure verify.** A cross-provider review skill, such as `claudex-code-review` from the
-  `claudex-loop` plugin, replaces the verify stage for a unit whose failure could go unnoticed. It
-  does not run beside a Critical verify. Pass the Critical tier's model and effort for the Claude
-  reviewer explicitly, or both come from that skill's defaults and the CLI's configuration.
-- **A stalled stage.** A routing skill, such as `claudex-route`, hands the reproduction and the
-  failed approaches to the other provider. Try it before the Escalation tier.
-- **Its model.** The other provider's top model, with its next model down as the step down when
-  that plan's quota runs low. Usage on that side counts against the other
-  provider's plan, not the Claude weekly limit. The Claude reviewer inside a cross-provider review
-  still counts.
+- **Silent-failure verify.** A cross-provider review skill, such as `/confer:review` from the
+  `confer` plugin, replaces the verify stage for a unit whose failure could go unnoticed. It does
+  not run beside a Critical verify.
+- **A stalled stage.** Put the reproduction and the failed approaches to both providers as a
+  question, as with `/confer:ask`. Try it before the Escalation tier.
+- **Only at the user's request.** Confer's skills run when the user asks for one or one is called for
+  in the repo's plan. Otherwise propose the run, and say what it is for.
+- **Its models.** Pass the tier, as in `--tier critical` for a silent-failure verify: both
+  reviewers' models and efforts are set per tier in that plugin's settings. Usage on the other
+  provider's side counts against that provider's plan, not the Claude weekly limit. The Claude
+  reviewer inside a cross-provider review still counts.
 
 Without one, a silent-failure verify runs at the Critical tier, and a stalled stage goes to the
 Escalation tier.
