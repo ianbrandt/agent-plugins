@@ -1,0 +1,47 @@
+{
+  "message": "Add incremental sync from the warehouse feed",
+  "findings": [
+    {
+      "path": "scripts/backfill_cursors.py",
+      "line": 33,
+      "severity": "high",
+      "defect": "backfill-off-by-one",
+      "summary": "The checkpoint is the last sequence number applied, and sync fetches the movements after it. Seeding it with `last + 1` makes the first sync skip movement `last + 1`, so its quantity never reaches the store. It should be `last`."
+    },
+    {
+      "path": "warehouse/reconcile.py",
+      "line": 159,
+      "severity": "high",
+      "defect": "correction-sign",
+      "summary": "The correction passes `d.on_hand - d.counted`, the opposite of `d.difference`. A level of 10 counted at 7 is moved to 13 instead of 7, so `--apply` doubles each discrepancy rather than fixing it."
+    },
+    {
+      "path": "warehouse/reports.py",
+      "line": 150,
+      "severity": "medium",
+      "defect": "csv-columns-swapped",
+      "summary": "The keys of `net_change` are `(sku, location)`, but the loop unpacks them as `(location, sku)`, so each CSV row has the location under `sku` and the SKU under `location`."
+    },
+    {
+      "path": "warehouse/retry.py",
+      "line": 160,
+      "severity": "high",
+      "defect": "retry-after-unit",
+      "summary": "`retry_after_ms` is in milliseconds, but it is compared with and returned as a wait in seconds. A server that asks for 2 seconds makes the sync sleep 2000 seconds."
+    },
+    {
+      "path": "warehouse/store.py",
+      "line": 159,
+      "severity": "high",
+      "defect": "batch-dropped-on-duplicate",
+      "summary": "One movement already stored makes the transaction raise, which rolls back the whole batch, and the error is swallowed with a return of 0. The new movements in that batch are lost, and the sync then saves a checkpoint past them, so they are never fetched again. Duplicates should be skipped one movement at a time."
+    },
+    {
+      "path": "warehouse/sync.py",
+      "line": 174,
+      "severity": "medium",
+      "defect": "poll-wait-not-reset",
+      "summary": "`wait` doubles after each idle run but is never set back to `poll_interval` after a run that finds movements. After a quiet spell the feed is polled at `max_poll_interval` for the rest of the process, so sync falls minutes behind."
+    }
+  ]
+}
