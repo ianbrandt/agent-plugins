@@ -332,6 +332,18 @@ test('a defect both reviewers found is reported once, found by both', async ($, 
   expect(done.report.confirmed).toHaveLength(1)
 })
 
+test('each finding in the report has the round it was raised in', async ($, on) => {
+  world(on, { codex: [codexSays(first()), codexSays(later([ruling('C1', 'agree')], [bug('1', { line: 9 })])), codexSays(later([ruling('X1', 'agree')]))] })
+
+  const round1 = await begin($)
+  await claude($, round1, first([bug('1')]))
+  await claude($, await call($, 'review_round', { run: round1.run }), later([ruling('C1', 'agree')]))
+  await claude($, await call($, 'review_round', { run: round1.run }), later([ruling('X1', 'agree')]))
+  const done = await call($, 'review_round', { run: round1.run })
+
+  expect(done.report.confirmed).toMatchObject([{ id: 'C1', round: 1 }, { id: 'X1', round: 2 }])
+})
+
 test('a defect both reviewers found is fixed once', async ($, on) => {
   let fixed = false
   const { codexPrompts } = world(on, {

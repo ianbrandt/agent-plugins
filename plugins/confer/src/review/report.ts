@@ -13,6 +13,7 @@ const view = (f: Finding, isAsk = false) => ({
   id: f.id,
   foundBy: f.side,
   phase: f.phase,
+  round: f.raisedInRound,
   status: f.status,
   ...(isAsk
     ? { answer: f.fix, reasons: f.evidence }
