@@ -26,7 +26,7 @@ or later, signed in or set up for a provider.
    `[model_providers.*]` block with its own slugs), run
    `/confer:import-codex-models` once to copy the Codex model ids into
    Confer's settings. The install dialog's packaged defaults
-   (`gpt-6.1-sol`, `gpt-6-astra`) are the standard OpenAI Codex subscription
+   (`gpt-6.2-sol`, `gpt-6.2-astra`) are the standard OpenAI Codex subscription
    ids; leave them as typed, then overwrite them with the import command.
    See [Import Codex Model IDs](#import-codex-model-ids) below. The Claude
    model and effort settings can be left at their defaults.

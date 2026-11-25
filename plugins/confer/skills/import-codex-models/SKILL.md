@@ -68,5 +68,5 @@ own slugs.
   `/plugin` after the import.
 - Existing values under the four tier keys are overwritten on each import.
   Warn the user before writing where the keys already contain user-set ids
-  that differ from both the plugin's packaged defaults (`gpt-6.1-sol`,
-  `gpt-6-astra`) and the ids about to be written.
+  that differ from both the plugin's packaged defaults (`gpt-6.2-sol`,
+  `gpt-6.2-astra`) and the ids about to be written.

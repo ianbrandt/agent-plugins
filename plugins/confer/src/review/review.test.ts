@@ -735,7 +735,7 @@ test('a fix review with no pick decides the Claude side again from a usage figur
   expect(fixing).toMatchObject({
     tier: 'complex',
     claude: { model: 'opus', effort: 'xhigh' },
-    codex: { model: 'gpt-6.1-sol', effort: 'xhigh' },
+    codex: { model: 'gpt-6.2-sol', effort: 'xhigh' },
     fallback: { reason: 'usage', percent: 85 },
   })
   expect(state(files, round1.run).phases.map((p: any) => p.fallback)).toEqual([undefined, { reason: 'usage', percent: 85 }])

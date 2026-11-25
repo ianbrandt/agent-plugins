@@ -46,7 +46,7 @@ test('a sure pick runs at its tier with no question', async ($, on) => {
   expect(await choose($, {})).toEqual({
     tier: 'complex',
     claude: { model: 'opus', effort: 'high' },
-    codex: { model: 'gpt-6.1-sol', effort: 'xhigh' },
+    codex: { model: 'gpt-6.2-sol', effort: 'xhigh' },
     args: [],
   })
   expect(asked).toEqual([])
@@ -62,15 +62,15 @@ test('each tier pairs the models and efforts of the table', async ($, on) => {
 
   expect(await sides('routine')).toEqual([
     { model: 'sonnet', effort: 'high' },
-    { model: 'gpt-6.1-sol', effort: 'medium' },
+    { model: 'gpt-6.2-sol', effort: 'medium' },
   ])
   expect(await sides('critical')).toEqual([
     { model: 'fable', effort: 'high' },
-    { model: 'gpt-6-astra', effort: 'high' },
+    { model: 'gpt-6.2-astra', effort: 'high' },
   ])
   expect(await sides('escalation')).toEqual([
     { model: 'fable', effort: 'xhigh' },
-    { model: 'gpt-6-astra', effort: 'max' },
+    { model: 'gpt-6.2-astra', effort: 'max' },
   ])
 })
 
@@ -152,7 +152,7 @@ test('arguments set either side, and the tier fills the rest', async ($, on) => 
   expect(choice).toEqual({
     tier: 'complex',
     claude: { model: 'opus', effort: 'high' },
-    codex: { model: 'gpt-6.1-sol', effort: 'low' },
+    codex: { model: 'gpt-6.2-sol', effort: 'low' },
     args: ['--fix', 'src/'],
   })
   expect(asked).toEqual([])
@@ -187,7 +187,7 @@ test('no question is asked when arguments set both sides or the tier', async ($,
   expect(second).toEqual({
     tier: 'critical',
     claude: { model: 'fable', effort: 'high' },
-    codex: { model: 'gpt-6-astra', effort: 'high' },
+    codex: { model: 'gpt-6.2-astra', effort: 'high' },
     args: [],
   })
   expect(asked).toEqual([])
